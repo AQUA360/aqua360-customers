@@ -38,6 +38,7 @@ from .views import (
     InvoiceStatusDictionaryOVView,
     ProcedureTariffDictionaryOVView,
     PropertiesOVView,
+    AddressesOVView,
 )
 
 urlpatterns = [
@@ -234,5 +235,7 @@ urlpatterns = [
     ),
     # /ov/properties/?search=<text>
     path("properties/", PropertiesOVView.as_view(), name="properties-ov"),
+    # /ov/addresses/?search=<text>
+    path("addresses/", AddressesOVView.as_view(), name="addresses-ov"),
 ]
 

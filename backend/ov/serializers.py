@@ -1910,6 +1910,60 @@ class PropertyItemSerializer(serializers.Serializer):
         return obj.address_city.name if obj.address_city else None
 
 
+class SupplyPointAddressItemSerializer(serializers.Serializer):
+    """Adreça d'un punt de subministrament per a l'autocompletat de l'OV.
+
+    Retorna l'adreça completa formatada (`Address.__str__`, amb escala, pis
+    i porta), els seus camps atòmics i els punts que la fan servir, amb el
+    token del punt i el de la seva finca (els que demanen els tràmits).
+    """
+
+    address = serializers.SerializerMethodField()
+    street_type = serializers.SerializerMethodField()
+    street_name = serializers.SerializerMethodField()
+    street_number = serializers.SerializerMethodField()
+    stair = serializers.CharField(allow_null=True)
+    building = serializers.CharField(allow_null=True)
+    floor = serializers.CharField(allow_null=True)
+    door = serializers.CharField(allow_null=True)
+    address_extra = serializers.CharField(allow_null=True)
+    postal_code = serializers.CharField(allow_null=True)
+    city = serializers.SerializerMethodField()
+    supply_points = serializers.SerializerMethodField()
+
+    def get_address(self, obj):
+        return str(obj)
+
+    def get_street_type(self, obj):
+        return (
+            obj.street.type.abbreviation
+            if obj.street and obj.street.type
+            else None
+        )
+
+    def get_street_name(self, obj):
+        return obj.street.name if obj.street else None
+
+    def get_street_number(self, obj):
+        return obj.street_number.number if obj.street_number else None
+
+    def get_city(self, obj):
+        return obj.city.name if obj.city else obj.city_name
+
+    def get_supply_points(self, obj):
+        return [
+            {
+                "token": supply_point.token,
+                "property_token": (
+                    supply_point.property.token
+                    if supply_point.property
+                    else None
+                ),
+            }
+            for supply_point in obj.supply_points_address.all()
+        ]
+
+
 def _property_address(property):
     parts = []
     if property.address_street:

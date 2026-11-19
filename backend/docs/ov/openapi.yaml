@@ -48,6 +48,7 @@ info:
     | `/ov/dictionary/contract-request-types/` | GET | Diccionario de tipos de solicitud de contrato activos (`token`, `name`) |
     | `/ov/dictionary/procedure-tariffs/` | GET | Diccionario de tarifas activas de trámites con precio fijo o tabla por calibre/consumo |
     | `/ov/properties/` | GET | Autocompletado de propiedades por dirección (resultados paginados) |
+    | `/ov/addresses/` | GET | Autocompletado de direcciones de puntos de suministro con escalera, piso y puerta (resultados paginados) |
 
     ## Autenticación
 
@@ -1674,6 +1675,76 @@ paths:
                 results:
                   - token: PR-001
                     address: C/ Major, 123, 08001 Barcelona
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /ov/addresses/:
+    get:
+      tags:
+        - Contrato
+      summary: Autocompletado de direcciones de puntos de suministro
+      description: |
+        Devuelve las direcciones de los puntos de suministro que coinciden con
+        `search`, con el detalle de la vivienda o local (escalera, piso y
+        puerta) que la dirección de la finca de `/ov/properties/` no incluye.
+
+        Mismas reglas de búsqueda que `/ov/properties/`: `search` es
+        obligatorio y debe tener al menos 3 caracteres (si no, `400`). La
+        puntuación (espacios, `,`, `.`, `;`, `/`) se trata como separador y
+        cada término debe coincidir con algún campo (nombre o tipo de calle,
+        número, ciudad, código postal, escalera, piso o puerta); todos los
+        términos se combinan con AND. Así `Major 21 2n` afina hasta la
+        vivienda. Un `search` compuesto solo por puntuación devuelve `400`.
+
+        No se filtra por el estado del punto de suministro: también aparecen
+        las direcciones de puntos dados de baja, para poder buscarlas y
+        volver a darlos de alta. Cada dirección aparece una sola vez aunque
+        la compartan varios puntos; sus tokens (y el de la finca de cada uno)
+        se devuelven en `supply_points`. Orden: calle, número, escalera, piso
+        y puerta.
+      operationId: listSupplyPointAddresses
+      security:
+        - tokenAuth: []
+      parameters:
+        - name: search
+          in: query
+          required: true
+          description: Texto a buscar (mínimo 3 caracteres)
+          schema:
+            type: string
+            minLength: 3
+          example: Major 21 2n
+        - $ref: "#/components/parameters/pageParam"
+        - $ref: "#/components/parameters/limitParam"
+      responses:
+        "200":
+          description: Direcciones coincidentes, paginadas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupplyPointAddressListResponse"
+              example:
+                count: 1
+                page: 1
+                limit: 20
+                total_pages: 1
+                results:
+                  - address: C. Major, 21 Esc. A 2n-1a, Barcelona
+                    street_type: C
+                    street_name: Major
+                    street_number: 21
+                    stair: A
+                    building: null
+                    floor: 2n
+                    door: 1a
+                    address_extra: null
+                    postal_code: "08001"
+                    city: Barcelona
+                    supply_points:
+                      - token: SP-001
+                        property_token: PR-001
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -5135,6 +5206,113 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PropertyItem"
+
+    SupplyPointAddressItem:
+      type: object
+      required:
+        - address
+        - supply_points
+      properties:
+        address:
+          type: string
+          description: |
+            Dirección completa ya formateada, con escalera, edificio, piso,
+            puerta y ampliación (`Address.__str__`).
+          example: C. Major, 21 Esc. A 2n-1a, Barcelona
+        street_type:
+          type: string
+          nullable: true
+          description: Abreviatura del tipo de vía (`street.type.abbreviation`)
+          example: C
+        street_name:
+          type: string
+          nullable: true
+          description: Nombre de la vía (`street.name`)
+          example: Major
+        street_number:
+          type: integer
+          nullable: true
+          description: Número de la vía (`street_number.number`)
+          example: 21
+        stair:
+          type: string
+          nullable: true
+          description: Escalera
+          example: A
+        building:
+          type: string
+          nullable: true
+          description: Edificio
+        floor:
+          type: string
+          nullable: true
+          description: Piso
+          example: 2n
+        door:
+          type: string
+          nullable: true
+          description: Puerta
+          example: 1a
+        address_extra:
+          type: string
+          nullable: true
+          description: Ampliación de la dirección (local, bar...)
+        postal_code:
+          type: string
+          nullable: true
+          description: Código postal
+          example: "08001"
+        city:
+          type: string
+          nullable: true
+          description: Municipio (`city.name` o, si no hay, `city_name`)
+          example: Barcelona
+        supply_points:
+          type: array
+          description: |
+            Puntos de suministro con esta dirección (activos o de baja),
+            ordenados por token.
+          items:
+            type: object
+            required:
+              - token
+            properties:
+              token:
+                type: string
+                description: Token del punto de suministro (`SupplyPoint.token`)
+                example: SP-001
+              property_token:
+                type: string
+                nullable: true
+                description: Token de la finca del punto (`Property.token`)
+                example: PR-001
+
+    SupplyPointAddressListResponse:
+      type: object
+      description: Envoltorio paginado del autocompletado de direcciones.
+      required:
+        - count
+        - page
+        - limit
+        - total_pages
+        - results
+      properties:
+        count:
+          type: integer
+          description: Número total de direcciones que cumplen la búsqueda
+        page:
+          type: integer
+          description: Página actual
+        limit:
+          type: integer
+          description: Tamaño de página aplicado
+        total_pages:
+          type: integer
+          description: Número total de páginas
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/SupplyPointAddressItem"
 
     ProcedureTariffItem:
       type: object

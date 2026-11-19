@@ -1,7 +1,7 @@
 from django.http import FileResponse
 from django.conf import settings
 from django.db import connection, transaction
-from django.db.models import Case, Count, F, Prefetch, Q, When
+from django.db.models import Case, Count, Exists, F, OuterRef, Prefetch, Q, When
 from django.utils import translation, timezone
 from django.utils.dateparse import parse_date
 from django.utils.translation import gettext as _
@@ -15,6 +15,7 @@ from billing.utils.biller_period_service import current_and_next_cycles
 from billing.views.invoice_pdf_view import generate_report_invoice_pdf
 from coredata.utils.pdf_utils import merge_pdfs
 from coredata.models import (
+    Address,
     ConfigProject,
     Person,
     PersonAddress,
@@ -91,6 +92,7 @@ from ov.serializers import (
     InvoiceStatusDictionarySerializer,
     ProcedureTariffDictionarySerializer,
     PropertyItemSerializer,
+    SupplyPointAddressItemSerializer,
     PersonDataSerializer,
     QuickPayRequestSerializer,
     QuickPayResponseSerializer,
@@ -1771,6 +1773,108 @@ class PropertiesOVView(APIView):
             )
 
         serializer = PropertyItemSerializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)
+
+
+class AddressesOVView(APIView):
+    """GET /ov/addresses/?search=<text>[&page=<n>&limit=<n>]
+
+    Autocompletat d'adreces dels punts de subministrament, amb el detall de
+    l'habitatge o local (escala, pis i porta), que l'adreça de la finca de
+    `/ov/properties/` no té. Mateixes regles de cerca que `/ov/properties/`:
+    `search` obligatori de com a mínim 3 caràcters, la puntuació fa de
+    separador i cada paraula ha de coincidir (AND) amb el carrer, el tipus
+    de via, el número, la població, el codi postal, l'escala, el pis o la
+    porta.
+
+    No es filtra per l'estat del punt: també surten els de baixa, perquè
+    precisament es pot buscar l'adreça per tornar-lo a donar d'alta. Cada
+    adreça surt un sol cop encara que la comparteixin diversos punts; els
+    seus tokens (i el de la finca de cadascun) van a `supply_points`.
+    """
+
+    permission_classes = [IsAuthenticated]
+    pagination_class = OVLimitPagination
+    min_search_length = 3
+
+    def get(self, request):
+        search = (request.query_params.get("search") or "").strip()
+        if not search:
+            return Response(
+                {"error": "Search is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if len(search) < self.min_search_length:
+            return Response(
+                {"error": "Search must be at least 3 characters"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        tokens = _property_search_tokens(search)
+        if not tokens:
+            return Response(
+                {"error": "Search must contain at least one valid term"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        filters = Q()
+        for token in tokens:
+            token_filters = (
+                Q(street__name__icontains=token)
+                | Q(street__name_2__icontains=token)
+                | Q(street__type__abbreviation__icontains=token)
+                | Q(city__name__icontains=token)
+                | Q(city_name__icontains=token)
+                | Q(postal_code__icontains=token)
+                | Q(stair__icontains=token)
+                | Q(floor__icontains=token)
+                | Q(door__icontains=token)
+            )
+            try:
+                token_filters |= Q(street_number__number=int(token))
+            except ValueError:
+                pass
+            filters &= token_filters
+
+        # Exists en lloc d'un join amb els punts: cada adreça surt un sol cop
+        # sense haver de fer DISTINCT.
+        addresses = (
+            Address.objects.filter(
+                Exists(SupplyPoint.objects.filter(address=OuterRef("pk")))
+            )
+            .filter(filters)
+            .select_related(
+                "street__type",
+                "street_number__number_type",
+                "city",
+                "country",
+            )
+            .prefetch_related(
+                Prefetch(
+                    "supply_points_address",
+                    queryset=SupplyPoint.objects.select_related(
+                        "property"
+                    ).order_by("token", "id"),
+                )
+            )
+            .order_by(
+                "street__name",
+                "street_number__number",
+                "stair",
+                "floor",
+                "door",
+                "id",
+            )
+        )
+
+        paginator = self.pagination_class()
+        try:
+            page = paginator.paginate_queryset(addresses, request, view=self)
+        except NotFound:
+            return Response(
+                {"error": "Invalid page"}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        serializer = SupplyPointAddressItemSerializer(page, many=True)
         return paginator.get_paginated_response(serializer.data)
 
 

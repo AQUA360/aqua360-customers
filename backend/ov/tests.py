@@ -2434,6 +2434,184 @@ class PropertiesOVTests(TestCase):
         self.assertEqual(response.status_code, 401)
 
 
+class AddressesOVTests(TestCase):
+    """`GET /ov/addresses/?search=` — autocompletat d'adreces dels punts de
+    subministrament amb escala, pis i porta, sense duplicats i sense
+    filtrar per l'estat del punt."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(
+            username="ov-addresses-test", password="not-used"
+        )
+        street_type = StreetType.objects.create(
+            abbreviation="C", name="Carrer"
+        )
+        country = Country.objects.create(name="Espanya", iso_code="ES")
+        city = City.objects.create(token="CITY-ADDR-1", name="Vilanova")
+        street_major = Street.objects.create(
+            name="Major", type=street_type, city=city
+        )
+        street_petit = Street.objects.create(name="Petit", city=city)
+        number_21 = StreetNumber.objects.create(street=street_major, number=21)
+        cls.finca = Property.objects.create(token="PR-ADDR-1", is_active=True)
+
+        def make_address(street, number, **fields):
+            return Address.objects.create(
+                street=street,
+                street_number=number,
+                city=city,
+                country=country,
+                postal_code="08800",
+                **fields,
+            )
+
+        cls.address_2n1a = make_address(
+            street_major, number_21, stair="A", floor="2n", door="1a"
+        )
+        cls.address_1r2a = make_address(
+            street_major, number_21, stair="A", floor="1r", door="2a"
+        )
+        cls.address_baixa = make_address(
+            street_major, number_21, stair="B", floor="3r", door="1a"
+        )
+        cls.address_without_sp = make_address(
+            street_major, number_21, stair="C", floor="4t", door="1a"
+        )
+        cls.address_petit = make_address(street_petit, None, floor="Baixos")
+
+        SupplyPoint.objects.create(
+            token="SP-ADDR-1", address=cls.address_2n1a, property=cls.finca
+        )
+        # Dos punts amb la mateixa adreça: ha de sortir un sol cop
+        SupplyPoint.objects.create(
+            token="SP-ADDR-2", address=cls.address_1r2a, property=cls.finca
+        )
+        SupplyPoint.objects.create(token="SP-ADDR-3", address=cls.address_1r2a)
+        # Punt de baixa: l'adreça també ha de sortir
+        SupplyPoint.objects.create(
+            token="SP-ADDR-OFF", address=cls.address_baixa, is_active=False
+        )
+        SupplyPoint.objects.create(token="SP-ADDR-4", address=cls.address_petit)
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def _search(self, term, **params):
+        return self.client.get(
+            reverse("addresses-ov"), {"search": term, **params}
+        )
+
+    def _addresses(self, response):
+        return [item["address"] for item in response.data["results"]]
+
+    def test_returns_formatted_address_atomic_fields_and_supply_points(self):
+        response = self._search("Major 21 2n")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.data["results"],
+            [
+                {
+                    "address": "C. Major, 21 Esc. A 2n-1a, Vilanova",
+                    "street_type": "C",
+                    "street_name": "Major",
+                    "street_number": 21,
+                    "stair": "A",
+                    "building": None,
+                    "floor": "2n",
+                    "door": "1a",
+                    "address_extra": None,
+                    "postal_code": "08800",
+                    "city": "Vilanova",
+                    "supply_points": [
+                        {"token": "SP-ADDR-1", "property_token": "PR-ADDR-1"}
+                    ],
+                }
+            ],
+        )
+
+    def test_shared_address_is_returned_once_with_all_supply_points(self):
+        response = self._search("Major 1r")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(
+            response.data["results"][0]["supply_points"],
+            [
+                {"token": "SP-ADDR-2", "property_token": "PR-ADDR-1"},
+                {"token": "SP-ADDR-3", "property_token": None},
+            ],
+        )
+
+    def test_includes_inactive_supply_points_and_skips_addresses_without_sp(self):
+        response = self._search("Major 21")
+
+        self.assertEqual(response.status_code, 200)
+        # Ordre: carrer, número, escala, pis, porta
+        self.assertEqual(
+            self._addresses(response),
+            [
+                str(self.address_1r2a),
+                str(self.address_2n1a),
+                str(self.address_baixa),
+            ],
+        )
+
+    def test_search_matches_stair_floor_door_city_and_postal_code(self):
+        for term, expected in (
+            ("Major 21 B", [str(self.address_baixa)]),
+            ("Baixos", [str(self.address_petit)]),
+            ("Major 3r 1a", [str(self.address_baixa)]),
+            ("Petit Vilanova 08800", [str(self.address_petit)]),
+        ):
+            with self.subTest(term=term):
+                response = self._search(term)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(self._addresses(response), expected)
+
+    def test_results_are_paginated(self):
+        response = self._search("Vilanova", limit=2, page=2)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["count"], 4)
+        self.assertEqual(response.data["total_pages"], 2)
+        self.assertEqual(len(response.data["results"]), 2)
+
+    def test_query_count_does_not_grow_with_results(self):
+        def count_queries(term):
+            with CaptureQueriesContext(connection) as queries:
+                response = self._search(term)
+            self.assertEqual(response.status_code, 200)
+            return len(response.data["results"]), len(queries)
+
+        one_result, one_queries = count_queries("Major 2n")
+        all_results, all_queries = count_queries("Vilanova")
+
+        self.assertEqual((one_result, all_results), (1, 4))
+        # Sense N+1: les mateixes consultes per a 1 adreça que per a 4
+        self.assertEqual(one_queries, all_queries)
+
+    def test_invalid_search_returns_400(self):
+        for term, error in (
+            ("", "Search is required"),
+            ("ab", "Search must be at least 3 characters"),
+            ("...", "Search must contain at least one valid term"),
+        ):
+            with self.subTest(term=term):
+                response = self._search(term)
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(response.data, {"error": error})
+
+    def test_requires_authentication(self):
+        response = APIClient().get(
+            reverse("addresses-ov"), {"search": "Major"}
+        )
+
+        self.assertEqual(response.status_code, 401)
+
+
 class PersonDataOVTests(TestCase):
     """`GET /ov/person-data/?dni=` — dades de contacte de la persona
     identificada pel DNI, sense contracte, incloent-hi les files inactives."""
