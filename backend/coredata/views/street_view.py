@@ -1,12 +1,12 @@
 from rest_framework import viewsets
-from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
+from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import OrderingFilter, SearchFilter
 
 from coredata.models import Street, StreetType
 from coredata.serializers import StreetSerializer, StreetTypeSerializer
 from coredata.filters.street_filter import StreetFilter
-from coredata.permissions import AddressPermission
+from coredata.permissions import StreetPermission
 
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -18,7 +18,7 @@ class StreetViewSet(viewsets.ModelViewSet):
     """
     queryset = Street.objects.all().select_related('city', 'type').order_by('name', 'name_2', 'type')
     serializer_class = StreetSerializer
-    permission_classes = [IsAuthenticated, DjangoModelPermissions | AddressPermission]
+    permission_classes = [IsAuthenticated, StreetPermission]
     filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
     filterset_class = StreetFilter
     search_fields = ['name', 'name_2', 'type__name', 'type__abbreviation']
@@ -58,7 +58,7 @@ class StreetViewSet(viewsets.ModelViewSet):
         return Response({'streets': data}, status=200)
 
     def get_permissions(self):
-        if self.action in ('permissions', 'resolve_ids'):
+        if self.action == 'permissions':
             return [IsAuthenticated()]
         return super().get_permissions()
 
@@ -68,7 +68,7 @@ class StreetTypeViewSet(viewsets.ModelViewSet):
     """
     queryset = StreetType.objects.all().order_by('abbreviation')
     serializer_class = StreetTypeSerializer
-    permission_classes = [IsAuthenticated, DjangoModelPermissions | AddressPermission]
+    permission_classes = [IsAuthenticated, StreetPermission]
     filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
     search_fields = ['name', 'abbreviation']
     ordering_fields =  ['name', 'abbreviation']

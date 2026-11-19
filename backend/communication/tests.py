@@ -21,6 +21,9 @@ from communication.serializers.communication_process_serializer import (
 )
 from communication.views.manage_communication_process_view import _CONFIG_CACHE, filter_by_supply_cut
 from communication.utils.communication_service import get_com_values, refactor_text
+from communication.utils.send_errors import (
+    describe_email_error, email_generic_error, email_no_recipient_error, sms_rejection_reason,
+)
 from contract.models import Contract, ContractStatus
 from coredata.models import Address, City, ConfigProject, Country, Person, PersonContact, Street, StreetNumber
 from coredata.serializers import PersonCommunicationSerializer
@@ -1173,11 +1176,13 @@ class SmsSendingTests(TestCase):
         from integrations.outbound.broadcaster.exceptions import BroadcasterError
 
         comm = self.make_comm()
-        with patch('integrations.outbound.broadcaster.client.BroadcasterClient.send_sms', side_effect=BroadcasterError('HTTP 403')):
+        error = BroadcasterError('Error resposta Broadcaster 403: <html>', status_code=403)
+        with patch('integrations.outbound.broadcaster.client.BroadcasterClient.send_sms', side_effect=error):
             self.handle(comm)
 
         self.assertEqual(comm.status, self.rejected)
-        self.assertIn('HTTP 403', comm.rejection_reason)
+        self.assertEqual(comm.rejection_reason, sms_rejection_reason(error))
+        self.assertNotIn('<html>', comm.rejection_reason)
         self.assertIsNone(comm.sms_sent_at)
 
     def test_retry_after_email_error_does_not_resend_sms(self):
@@ -1268,13 +1273,92 @@ class SmsSendingTests(TestCase):
             Communication.objects.filter(id=comm.id).update(status=self.rejected, rejection_reason='Error sending email')
 
         comm = self.make_comm('email,sms')
-        with patch('integrations.outbound.broadcaster.client.BroadcasterClient.send_sms', side_effect=BroadcasterError('HTTP 500')), \
+        error = BroadcasterError('Error resposta Broadcaster 500', status_code=500)
+        with patch('integrations.outbound.broadcaster.client.BroadcasterClient.send_sms', side_effect=error), \
                 patch('communication.utils.communication_service.send_electronic_mail', side_effect=email_fails):
             self.handle(comm)
 
         self.assertEqual(comm.status, self.rejected)
-        self.assertIn('Error sending email', comm.rejection_reason)
-        self.assertIn('HTTP 500', comm.rejection_reason)
+        self.assertEqual(comm.rejection_reason, f"Error sending email\n{sms_rejection_reason(error)}")
+
+    def test_email_error_stores_readable_reason(self):
+        import smtplib
+        from unittest.mock import patch
+
+        comm = self.make_email_comm('email')
+        error = smtplib.SMTPRecipientsRefused({'recipient@example.com': (550, b'5.1.1 User unknown')})
+        with patch('communication.utils.communication_service._send_via_smtp', side_effect=error):
+            self.handle(comm)
+
+        self.assertEqual(comm.status, self.rejected)
+        self.assertEqual(comm.rejection_reason, describe_email_error(error))
+        self.assertNotIn('recipient@example.com', comm.rejection_reason)
+        self.assertNotIn('User unknown', comm.rejection_reason)
+
+    def test_unknown_email_error_stores_generic_reason(self):
+        from unittest.mock import patch
+
+        comm = self.make_email_comm('email')
+        error = AttributeError("'HTTPResponse' object has no attribute 'add_note'")
+        with patch('communication.utils.communication_service._send_via_smtp', side_effect=error), \
+                self.assertLogs('communication.utils.send_errors', 'ERROR'):
+            self.handle(comm)
+
+        self.assertEqual(comm.status, self.rejected)
+        self.assertEqual(comm.rejection_reason, email_generic_error())
+
+    def test_msgraph_error_stores_graph_reason(self):
+        from unittest.mock import patch
+        from django.test import override_settings
+        from communication.tests_send_errors import graph_http_error
+
+        comm = self.make_email_comm('email')
+        error = graph_http_error(400, 'ErrorInvalidRecipients')
+        error.add_note('ErrorInvalidRecipients: detail')
+        with override_settings(EMAIL_BACKEND='msgraphbackend.MSGraphBackend'), \
+                patch('communication.utils.communication_service._send_via_msgraph', side_effect=error):
+            self.handle(comm)
+
+        self.assertEqual(comm.status, self.rejected)
+        self.assertEqual(comm.rejection_reason, describe_email_error(error))
+        self.assertNotIn('ErrorInvalidRecipients', comm.rejection_reason)
+
+    def test_sender_without_default_email_uses_first(self):
+        from unittest.mock import patch
+        from communication.utils.send_errors import email_no_sender_error
+
+        # Sense adreça predeterminada: es fa servir la primera adreça de l'empresa.
+        comm = self.make_email_comm('email')
+        config_email = comm.company_config_email
+        config_email.is_default = False
+        config_email.save()
+        Communication.objects.filter(id=comm.id).update(company_config_email=None)
+        comm.refresh_from_db()
+        with patch('communication.utils.communication_service._send_via_smtp') as send:
+            self.handle(comm)
+        self.assertTrue(send.called)
+        self.assertNotEqual(comm.rejection_reason, email_no_sender_error())
+
+    def test_no_sender_email_stores_readable_reason(self):
+        from communication.utils.send_errors import email_no_sender_error
+
+        # Sense cap adreça de remitent: motiu propi, no l'error genèric de preparació.
+        comm = self.make_email_comm('email')
+        Communication.objects.filter(id=comm.id).update(company_config_email=None)
+        comm.refresh_from_db()
+        comm.company_config.company_config_emails.all().delete()
+        self.handle(comm)
+        self.assertEqual(comm.status, self.rejected)
+        self.assertEqual(comm.rejection_reason, email_no_sender_error())
+
+    def test_missing_recipient_stores_readable_reason(self):
+        comm = self.make_email_comm('email')
+        Communication.objects.filter(id=comm.id).update(used_email='')
+        comm.refresh_from_db()
+        self.handle(comm)
+
+        self.assertEqual(comm.status, self.rejected)
+        self.assertEqual(comm.rejection_reason, email_no_recipient_error())
 
 
 class ClaimDocumentsAttachDefaultTests(SupplyCutProcessTestCase):

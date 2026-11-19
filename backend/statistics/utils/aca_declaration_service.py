@@ -65,6 +65,12 @@ def declared_line_ids(declarations):
     ).values('invoicelineitem_id')
 
 
+def declared_invoice_ids_without_lines(declarations):
+    return AcaDeclaration.invoices.through.objects.filter(
+        acadeclaration__in=declarations,
+    ).values('invoice_id')
+
+
 def aca_declaration_selection(start_date, end_date, request):
     """Factures i línies de cànon que declara l'A1 per dates entre start_date i end_date (dates).
 
@@ -81,20 +87,27 @@ def aca_declaration_selection(start_date, end_date, request):
     start_key, end_key = (start_date.year, start_date.month), (end_date.year, end_date.month)
     declared_invoice_ids = set(InvoiceLineItem.objects.filter(
         id__in=declared_line_ids(declarations),
-    ).values_list('invoice_id', flat=True))
+    ).values_list('invoice_id', flat=True)) | set(
+        declared_invoice_ids_without_lines(declarations).values_list('invoice_id', flat=True)
+    )
 
-    # Mesos presentats dins el període: les línies declarades. Si el període només en cobreix una
-    # part, les de les factures emeses dins el període.
+    # Mesos presentats dins el període: les línies declarades (i les factures declarades sense línies).
+    # Si el període només en cobreix una part, les de les factures emeses dins el període.
     frozen_lines_q = Q(pk__in=[])
+    frozen_invoices_q = Q(pk__in=[])
     for declaration in declarations:
         if not start_key <= (declaration.year, declaration.month) <= end_key:
             continue
         first_day, last_day = month_range(declaration.year, declaration.month)
         lines_q = Q(id__in=declared_line_ids([declaration.id]))
+        invoices_q = Q(id__in=declared_invoice_ids_without_lines([declaration.id]))
         if first_day < start_date or last_day > end_date:
             lines_q &= Q(invoice__issue_date__range=(start_date, end_date))
+            invoices_q &= Q(issue_date__range=(start_date, end_date))
         frozen_lines_q |= lines_q
+        frozen_invoices_q |= invoices_q
     frozen_invoice_ids = set(InvoiceLineItem.objects.filter(frozen_lines_q).values_list('invoice_id', flat=True))
+    frozen_invoice_ids |= set(Invoice.objects.filter(frozen_invoices_q).values_list('id', flat=True))
 
     # Mesos oberts: el criteri actual, sense les factures ja declarades en algun mes
     open_ids = {
@@ -127,7 +140,10 @@ def build_aca_declaration(exploitation, year, month, presented_at, listed_number
     """Línies de cànon que es van declarar en un mes ja presentat, reconstruïdes amb l'estat actual:
     les factures del mes que entren a l'A1 creades fins a `presented_at`, més les que el full de factures
     de l'informe presentat llista (encara que després s'hagin anul·lat o desactivat) i les indicades a mà.
-    D'una factura sense cap línia de cànon activa s'agafen les desactivades (es van declarar així)."""
+    D'una factura sense cap línia de cànon activa s'agafen les desactivades (es van declarar així).
+    Les factures d'ús agrícola sense cap línia de cànon es desen a part; si hi ha full de factures
+    presentat, només les que hi surten (els informes d'abans no les declaraven)."""
+    from billing.utils.generate_factdeta_service import AGRICULTURAL_USE_ACA, use_aca_invoices_q
     from statistics.utils.report_billing_service import _aca_product_token_q
 
     aca_product_token = ConfigProject.objects.get(token="token_product_aca").value
@@ -136,7 +152,9 @@ def build_aca_declaration(exploitation, year, month, presented_at, listed_number
     other_declarations = AcaDeclaration.objects.exclude(exploitation=exploitation, year=year, month=month)
     declared_elsewhere = set(InvoiceLineItem.objects.filter(
         id__in=declared_line_ids(other_declarations),
-    ).values_list('invoice_id', flat=True))
+    ).values_list('invoice_id', flat=True)) | set(
+        declared_invoice_ids_without_lines(other_declarations).values_list('invoice_id', flat=True)
+    )
 
     invoice_ids = set(current_aca_invoices(first_day, last_day).filter(
         exploitation=exploitation, created_at__lte=presented_at, is_excluded=False,
@@ -174,9 +192,16 @@ def build_aca_declaration(exploitation, year, month, presented_at, listed_number
             else:
                 variable += Decimal(str(line.price or 0))
 
+    agricultural_invoice_ids = set(Invoice.objects.filter(
+        use_aca_invoices_q(AGRICULTURAL_USE_ACA), id__in=invoice_ids,
+    ).exclude(id__in=list(lines_by_invoice)).values_list('id', flat=True))
+    if listed_numbers:
+        agricultural_invoice_ids &= set(listed.values()) | set(forced.values())
+
     return SimpleNamespace(
         line_ids=line_ids,
-        invoice_ids=set(lines_by_invoice),
+        invoice_ids=set(lines_by_invoice) | agricultural_invoice_ids,
+        agricultural_invoice_ids=agricultural_invoice_ids,
         fixed_amount=fixed.quantize(Decimal('0.01')),
         variable_amount=variable.quantize(Decimal('0.01')),
         unresolved=unresolved,

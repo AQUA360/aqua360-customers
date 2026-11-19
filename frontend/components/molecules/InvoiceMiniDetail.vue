@@ -1,6 +1,6 @@
 <script setup>
 
-import { computed, ref, watch, onMounted } from 'vue';
+import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue';
 
 import { useI18n } from 'vue-i18n';
 
@@ -211,6 +211,49 @@ const exportColumns = computed(() => {
 
 const showSend = computed(() => !!props.contract);
 
+// Width needed by each flexible column (holder, amounts) to show its content.
+const FLEX_COLUMN_MIN_WIDTH = 110;
+
+// Fixed-width columns of the full layout, in px.
+const fixedColumnsWidth = computed(() => {
+  let width = 80 + 170 + 80 + (props.is_info ? 200 : 120); // date, invoice, payment date, status/title
+  if (showPaymentSummary.value) width += 140;
+  if (props.show_payments) width += 50;
+  if (showSend.value) width += 70;
+  return width;
+});
+
+// The full layout needs room for the fixed columns plus the flexible ones
+// (holder, left to pay, total). Below that (narrow screens, subregion open)
+// the compact layout stacks related columns so everything stays visible:
+// payment date under the issue date, payment status under the status and
+// left to pay under the total.
+const tableWidth = ref(0);
+const compact = computed(() => {
+  if (!tableWidth.value) return false;
+  const flexColumns = props.is_info ? 2 : 3;
+  return tableWidth.value < fixedColumnsWidth.value + flexColumns * FLEX_COLUMN_MIN_WIDTH;
+});
+
+const tableEl = ref(null);
+let tableObserver = null;
+
+watch(tableEl, (el, previous) => {
+  if (typeof ResizeObserver === 'undefined') return;
+  if (!tableObserver) {
+    tableObserver = new ResizeObserver((entries) => {
+      tableWidth.value = entries[0]?.contentRect.width || 0;
+    });
+  }
+  if (previous) tableObserver.unobserve(previous);
+  if (el) tableObserver.observe(el);
+});
+
+onBeforeUnmount(() => {
+  tableObserver?.disconnect();
+  tableObserver = null;
+});
+
 const gridTemplateColumns = computed(() => {
 
   // minmax(0, 1fr) keeps every row's tracks identical to the header's,
@@ -218,15 +261,19 @@ const gridTemplateColumns = computed(() => {
   const fr = 'minmax(0, 1fr)';
 
   const cols = [
-    '80px', // date
+    '80px', // date (+ payment date in compact mode)
     // Invoice number + redirect icon must fit on one line.
     'minmax(170px, 1fr)', // invoice
-    '80px', // payment date
-    // The title column (info mode) needs more room than the status badge.
-    props.is_info ? '200px' : '120px',
   ];
 
-  if (showPaymentSummary.value) {
+  if (!compact.value) {
+    cols.push('80px'); // payment date
+  }
+
+  // The title column (info mode) needs more room than the status badge.
+  cols.push(props.is_info ? '200px' : '120px');
+
+  if (showPaymentSummary.value && !compact.value) {
     cols.push('140px'); // payment status
   }
 
@@ -235,7 +282,8 @@ const gridTemplateColumns = computed(() => {
     cols.push(fr);
   }
 
-  cols.push(fr, fr); // left to pay, total
+  // Left to pay and total; a single stacked column in compact mode.
+  cols.push(...(compact.value ? [fr] : [fr, fr]));
 
   if (props.show_payments) {
     cols.unshift('50px');
@@ -625,6 +673,7 @@ watch(
   <!-- Invoice table -->
   <div
     v-else-if="localData && localData.length > 0"
+    ref="tableEl"
     class="min-w-full text-sm text-slate-800 mt-2 overflow-x-auto"
   >
 
@@ -638,15 +687,16 @@ watch(
 
       <span v-if="show_payments"></span>
 
-      <span class="p-2 pl-2 text-slate-900 font-bold flex items-center">
+      <span class="p-2 pl-2 text-slate-900 font-bold flex flex-col justify-center">
         {{ t('common.date') }}
+        <span v-if="compact" class="text-xs font-normal">{{ t('billing_block.payment') }}</span>
       </span>
 
       <span class="p-2 pl-2 text-slate-900 font-bold flex items-center">
         {{ t('invoice') }}
       </span>
 
-      <span class="p-2 pl-2 text-slate-900 font-bold flex items-center">
+      <span v-if="!compact" class="p-2 pl-2 text-slate-900 font-bold flex items-center">
         {{ t('billing_block.payment') }}
       </span>
 
@@ -655,10 +705,13 @@ watch(
         class="p-2 pl-2 text-slate-900 font-bold"
       >
         {{ t('common.status') }}
+        <span v-if="compact && showPaymentSummary" class="block text-xs font-normal">
+          {{ t('billing_block.payment_status_column') }}
+        </span>
       </span>
 
       <span
-        v-if="showPaymentSummary"
+        v-if="showPaymentSummary && !compact"
         class="p-2 pl-2 text-slate-900 font-bold"
       >
         {{ t('billing_block.payment_status_column') }}
@@ -679,15 +732,17 @@ watch(
       </span>
 
       <span
+        v-if="!compact"
         class="p-2 pl-2 text-slate-900 font-bold flex items-center"
       >
         {{ t('billing_block.total_to_pay') }}
       </span>
 
       <span
-        class="p-2 pl-2 text-slate-900 font-bold flex items-center"
+        class="p-2 pl-2 text-slate-900 font-bold flex flex-col justify-center min-w-0 break-words"
       >
         {{ t('common.total') }}
+        <span v-if="compact" class="text-xs font-normal">{{ t('billing_block.total_to_pay') }}</span>
       </span>
 
       <span
@@ -748,6 +803,10 @@ watch(
           }}
         </p>
 
+        <p v-if="compact" class="text-xs mt-1" :title="t('billing_block.payment')">
+          {{ item.paid_at ? formatDate(item.paid_at) : '-' }}
+        </p>
+
       </div>
 
       <!-- Invoice -->
@@ -805,7 +864,7 @@ watch(
       </div>
 
       <!-- Payment date -->
-      <div class="footering text-slate-500 p-2 w-full">
+      <div v-if="!compact" class="footering text-slate-500 p-2 w-full">
 
         <p>
           {{
@@ -828,11 +887,17 @@ watch(
           :color="item.status_color"
         />
 
+        <AtomsInvoicePaymentStatus
+          v-if="compact && showPaymentSummary"
+          :summary="item.payment_summary"
+          class="mt-1"
+        />
+
       </div>
 
       <!-- Payment status -->
       <div
-        v-if="showPaymentSummary"
+        v-if="showPaymentSummary && !compact"
         class="footering text-slate-500 p-2 w-full min-w-0"
       >
 
@@ -858,7 +923,7 @@ watch(
       <!-- Holder -->
       <div
         v-if="!props.is_info"
-        class="footering text-slate-500 p-2 w-full"
+        class="footering text-slate-500 p-2 w-full min-w-0 break-words"
       >
 
         <p>
@@ -872,7 +937,7 @@ watch(
       </div>
 
       <!-- Left to pay -->
-      <div class="footering text-slate-500 p-2 w-full">
+      <div v-if="!compact" class="footering text-slate-500 p-2 w-full min-w-0 break-words">
 
         <p>
           {{
@@ -884,8 +949,8 @@ watch(
 
       </div>
 
-      <!-- Total -->
-      <div class="footering text-slate-500 p-2 w-full">
+      <!-- Total (+ left to pay in compact mode) -->
+      <div class="footering text-slate-500 p-2 w-full min-w-0 break-words">
 
         <p>
           {{
@@ -893,6 +958,10 @@ watch(
               item.total_final
             )
           }}
+        </p>
+
+        <p v-if="compact" class="text-xs mt-1" :title="t('billing_block.total_to_pay')">
+          {{ formatMoneyWithCurrency(item.left_to_pay) }}
         </p>
 
       </div>

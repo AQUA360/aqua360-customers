@@ -56,12 +56,8 @@ const closePhotoModal = () => {
 
 const showControlReadings = ref(props.showControl);
 
-const photoSrc = computed(() => {
-  const photo = modalPhoto.value;
-  if (!photo || typeof photo !== 'string') return '';
-  if (photo.startsWith('data:') || photo.startsWith('http')) return photo;
-  return `data:image/jpeg;base64,${photo}`;
-});
+// Les fotos de /media/ exigeixen el token: es carreguen només amb el modal obert.
+const photoSrc = useAuthenticatedImage(() => (showPhotoModal.value ? modalPhoto.value : ''));
 
 // A reading copied to other contracts sharing the meter (copied_from) is shown
 // as a single row: copies are folded into their original when both are listed

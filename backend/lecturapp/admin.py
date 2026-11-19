@@ -1,8 +1,28 @@
+from django import forms
 from django.contrib import admin
 from .models import ReadingOperator, Token
+from .validators import validate_operator_password
+
+
+class ReadingOperatorAdminForm(forms.ModelForm):
+    class Meta:
+        model = ReadingOperator
+        fields = '__all__'
+
+    def clean_password(self):
+        password = self.cleaned_data.get('password')
+        # Només es valida si es canvia (si no, el camp conté el hash desat)
+        if password and 'password' in self.changed_data:
+            validate_operator_password(
+                password, operator=self.instance, username=self.cleaned_data.get('username'),
+                name=self.cleaned_data.get('name'), surname=self.cleaned_data.get('surname'),
+            )
+        return password
+
 
 @admin.register(ReadingOperator)
 class ReadingOperatorAdmin(admin.ModelAdmin):
+    form = ReadingOperatorAdminForm
     list_display = ['username', 'name', 'surname', 'is_active', 'created_at']
     list_filter = ['is_active', 'created_at']
     search_fields = ['username', 'name', 'surname']

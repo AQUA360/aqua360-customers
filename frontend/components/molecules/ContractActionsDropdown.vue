@@ -161,9 +161,9 @@ const deleteContract = () => {
             <Icon name="fa6-solid:person-walking-arrow-right" class="display-inline mr-2" />
             {{ t('contract_block.new_surrogation') }}
         </DropdownOption>
-        <DropdownOption :name="t('contract_block.tenant_changes')" @click="tenantChange">
+        <DropdownOption :name="t('contract_block.change_persons')" @click="tenantChange">
             <Icon name="fa6-solid:people-arrows" class="display-inline mr-2" /> {{
-                t('contract_block.tenant_changes') }}
+                t('contract_block.change_persons') }}
         </DropdownOption>
         <DropdownOption :disabled="!contract?.supply_point_default" :name="t('contract_block.change_of_name')" @click="changeName">
             <Icon name="fa6-solid:id-card" class="display-inline mr-2" /> {{ t('contract_block.change_of_name') }}

@@ -11,6 +11,10 @@ const props = defineProps({
   isSubRegion: {
     type: Boolean,
     default: false
+  },
+  reload: {
+    type: [Boolean, Number],
+    default: false
   }
 });
 
@@ -45,6 +49,14 @@ const emit = defineEmits(['show-detail', 'generate-payment-proof']);
 const showDetail = function (component, id) {
   emit('show-detail', component, id)
 }
+
+watch(() => props.invoice_id, () => {
+  getData();
+});
+
+watch(() => props.reload, () => {
+  getData();
+});
 
 getData();
 

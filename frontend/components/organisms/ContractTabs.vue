@@ -1207,7 +1207,7 @@ const groupedPriceRates = computed(() => {
         </div>
 
         <div class="my-2">
-          <ClaimRequestList :contract_id="contract.id" :isSubRegion="isSubRegion" @show-detail="showDetail" />
+          <ClaimRequestList :contract_id="contract.id" :isSubRegion="isSubRegion && !isPinned" @show-detail="showDetail" />
         </div>
       </div>
     </section>

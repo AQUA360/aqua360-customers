@@ -1,6 +1,7 @@
 import json
 import logging
 import pika
+from urllib.parse import urlsplit, urlunsplit
 from django.conf import settings
 from django.db import DatabaseError
 from billing.models import Reading
@@ -173,6 +174,23 @@ def _get_last_reading_info(supply_point):
             else None
         ),
     }
+
+
+def mask_url_password(url):
+    """URL de RabbitMQ sense la contrasenya, per escriure-la als registres.
+
+    `amqps://usuari:secret@host:5671/vhost` -> `amqps://usuari:***@host:5671/vhost`.
+    Si no es pot interpretar, no se n'escriu res (podria contenir la contrasenya).
+    """
+    try:
+        parts = urlsplit(url or "")
+        if parts.password is None:
+            return url or ""
+        netloc = parts.netloc.rsplit("@", 1)[1]
+        user = parts.username or ""
+        return urlunsplit(parts._replace(netloc=f"{user}:***@{netloc}"))
+    except ValueError:
+        return "(URL no vàlida)"
 
 
 def _get_connection():

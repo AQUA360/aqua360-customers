@@ -14,6 +14,7 @@ from datetime import timedelta
 from pathlib import Path
 import os
 import re
+from urllib.parse import unquote, urlsplit
 from decouple import config, Csv
 from django.core.exceptions import ImproperlyConfigured
 
@@ -54,6 +55,21 @@ def _resolve_secret_key(secret_key, debug):
             "print(get_random_secret_key())\""
         )
     return secret_key
+
+
+SUPPORTED_LANGUAGE_CODES = ("ca", "es", "gl", "en")
+DEFAULT_LANGUAGE_CODE = "ca"
+
+
+def _resolve_language(value):
+    """Codi d'idioma suportat a partir de `value`; si no ho és, `ca`.
+
+    `LANGUAGE` també és una variable del locale del sistema (GNU gettext, p. ex. `ast` o
+    `es_ES:es`) i python-decouple prioritza l'entorn sobre el `.env`: sense aquesta
+    comprovació, un codi no suportat acabaria als camps d'idioma de 2 caràcters.
+    """
+    code = (value or "").strip().split(":")[0].replace("-", "_").split("_")[0].lower()
+    return code if code in SUPPORTED_LANGUAGE_CODES else DEFAULT_LANGUAGE_CODE
 
 
 # SECURITY WARNING: keep the secret key used in production secret!
@@ -119,7 +135,7 @@ AZURE_CONTAINER_NAME = config("AZURE_CONTAINER_NAME", default="")
 CLOUD_BUCKET_NAME = config("CLOUD_BUCKET_NAME", default="")
 
 ENV = config("ENV", default="")
-LANGUAGE = config("LANGUAGE", default="ca")
+LANGUAGE = _resolve_language(config("LANGUAGE", default=DEFAULT_LANGUAGE_CODE))
 
 VERIFACTU_ENABLED = config("VERIFACTU_ENABLED", default=False, cast=bool)
 # Verifactu SOAP Configuration
@@ -395,7 +411,7 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/5.0/topics/i18n/
 
-LANGUAGE_CODE = config("LANGUAGE_CODE", default=config("LANGUAGE", default="ca"))  # Fallback to LANGUAGE if set
+LANGUAGE_CODE = _resolve_language(config("LANGUAGE_CODE", default=LANGUAGE))  # Si no hi és, el de LANGUAGE
 
 LANGUAGES = [
     ('ca', 'Català'),
@@ -559,7 +575,42 @@ INVOICE_LANGUAGE = os.getenv("INVOICE_LANGUAGE", "ca")  # Default to 'ca' if not
 
 # RabbitMQ Configuration
 RABBITMQ_ENABLED = config("RABBITMQ_ENABLED", default=False, cast=bool)
-RABBITMQ_URL = config("RABBITMQ_URL", default="amqp://guest:guest@localhost:5672//")
+# Credencials conegudes (les de fàbrica de RabbitMQ i les del .env.example): no es poden fer
+# servir fora de desenvolupament. Sense usuari a la URL, pika també es connecta com a guest.
+INSECURE_RABBITMQ_CREDENTIALS = {("guest", "guest"), ("user", "password")}
+
+
+def _resolve_rabbitmq_url(url, enabled, debug):
+    """Retorna la RABBITMQ_URL a fer servir o atura l'arrencada si falta o és insegura.
+
+    Sense RabbitMQ activat no cal URL. Activat, ha de ser definida; i amb DEBUG=False no pot
+    portar credencials conegudes. Els missatges no inclouen la URL, perquè porta la contrasenya.
+    """
+    url = (url or "").strip()
+    if not enabled:
+        return url
+    if not url:
+        raise ImproperlyConfigured(
+            "RABBITMQ_ENABLED=True però falta RABBITMQ_URL al .env "
+            "(amqps://<usuari>:<contrasenya>@<host>:5671/<vhost>)."
+        )
+    if debug:
+        return url
+    try:
+        parts = urlsplit(url)
+        credentials = (unquote(parts.username or "guest"), unquote(parts.password or "guest"))
+    except ValueError:
+        raise ImproperlyConfigured("RABBITMQ_URL no és una URL vàlida.") from None
+    if credentials in INSECURE_RABBITMQ_CREDENTIALS:
+        raise ImproperlyConfigured(
+            "RABBITMQ_URL fa servir unes credencials conegudes (guest/guest o les de l'exemple, "
+            "o no porta usuari) i DEBUG=False: cal un usuari propi de la instal·lació amb una "
+            "contrasenya llarga i aleatòria."
+        )
+    return url
+
+
+RABBITMQ_URL = _resolve_rabbitmq_url(config("RABBITMQ_URL", default=""), RABBITMQ_ENABLED, DEBUG)
 
 # Optional: when empty, the GMAO integration keeps the legacy single-queue behaviour
 INSTANCE_UID = config("INSTANCE_UID", default="").strip()
@@ -616,6 +667,23 @@ OV_ACTIVE_CONTRACTS_ENDPOINT = config("OV_ACTIVE_CONTRACTS_ENDPOINT", default="/
 OV_SYNC_ENABLED = config("OV_SYNC_ENABLED", default=False, cast=bool)
 OV_SYNC_HOUR = config("OV_SYNC_HOUR", default=4, cast=int)
 OV_SYNC_MINUTE = config("OV_SYNC_MINUTE", default=0, cast=int)
+
+# Webhooks de sortida: avisen un sistema extern (POST) quan es crea un contracte,
+# es dona de baixa, s'anul·la una baixa o s'emeten factures. Vegeu
+# integrations/outbound/webhooks/. Desactivats per defecte: només s'activen a la
+# instal·lació que en té (variables d'entorn pròpies). Activat però sense URL, els
+# avisos es desen com a "disabled" i no s'envien. Sense WEBHOOKS_SECRET tampoc: mai s'envien sense signar.
+WEBHOOKS_ENABLED = config("WEBHOOKS_ENABLED", default=False, cast=bool)
+WEBHOOKS_URL = config("WEBHOOKS_URL", default="").strip()
+WEBHOOKS_SECRET = config("WEBHOOKS_SECRET", default="")
+# Valors fixos (iguals a totes les instal·lacions)
+WEBHOOKS_TIMEOUT = 10  # segons per petició
+# Espera abans de cada reintent (segons): 1 min, 5 min, 15 min, 1 h, 3 h, 6 h, 12 h.
+# Exhaurits, l'avís queda com a "failed" i es pot reenviar amb `resend_webhooks`.
+WEBHOOKS_RETRY_DELAYS = [60, 300, 900, 3600, 3 * 3600, 6 * 3600, 12 * 3600]
+WEBHOOKS_SEND_INTERVAL = 0.2  # segons entre enviaments: no saturar el receptor
+WEBHOOKS_SEND_BATCH = 100  # avisos per execució de la tasca; si en queden, es torna a encuar
+WEBHOOKS_BILLING_CHUNK_SIZE = 500  # factures per avís de facturació massiva
 
 SIGNING_BASE_URL = config("SIGNING_BASE_URL", default="")
 SIGNING_API_KEY = config("SIGNING_API_KEY", default="")

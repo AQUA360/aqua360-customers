@@ -654,7 +654,7 @@ def _verifactu_invoice_config():
     return ExportConfig(
         queryset=lambda: VerifactuNotification.objects.all().select_related("batch"),
         filterset_class=VerifactuNotificationFilter,
-        permission_classes=[IsAuthenticated, export_permission_class('verifactu', 'verifactunotification')],
+        permission_classes=[IsAuthenticated, export_permission_class('billing', 'invoice')],
         available_columns=available_columns,
         default_columns=list(available_columns.keys()),
         document_entity="VERIFACTU_NOTIFICATION",

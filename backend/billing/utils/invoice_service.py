@@ -3071,7 +3071,7 @@ def check_piggy_bank(invoice, total, generate_payment=False):
         from billing.utils.payment_service import generate_payment_movement
         new_payment.status = pending_status
         generate_payment_movement(new_payment, paid_status, new_payment.payment_date, payment_type.token, None, None)
-        piggy_bank.amount -= total_paid
+        piggy_bank.amount = Decimal(piggy_bank.amount) - Decimal(total_paid)
         piggy_bank.save()
         new_movement = PiggyBankMovement.objects.create(
             token=generate_token(PiggyBankMovement),
