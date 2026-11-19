@@ -20,7 +20,12 @@ const data = ref(null);
 const contractData = ref(null);
 const paymentStatusPaidToken = ref(null);
 
+// Identificador de la càrrega vigent: si es canvia de gestió mentre una càrrega
+// encara és en curs, la resposta antiga es descarta i no substitueix la nova.
+let currentLoadId = 0;
+
 const getData = async () => {
+  const loadId = ++currentLoadId;
   pending.value = true;
   error.value = null;
 
@@ -30,13 +35,15 @@ const getData = async () => {
       props.contractId ? $ClaimRequestApiService.getContracts(props.id, null, null, props.contractId) : null,
       props.contractId ? $ConfigProjectApiService.get('payment_status_paid_token') : null,
     ]);
+    if (loadId !== currentLoadId) return;
     data.value = detail;
     contractData.value = contracts?.results?.[0] || null;
     paymentStatusPaidToken.value = paidToken;
   } catch (err) {
+    if (loadId !== currentLoadId) return;
     error.value = err;
   } finally {
-    pending.value = false;
+    if (loadId === currentLoadId) pending.value = false;
   }
 }
 
