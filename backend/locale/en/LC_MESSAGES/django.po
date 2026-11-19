@@ -4497,3 +4497,59 @@ msgstr "The SMS could not be sent: the phone %(phone)s cannot receive SMS."
 #: integrations/outbound/broadcaster/client.py
 msgid "The SMS could not be sent: there is no phone number."
 msgstr "The SMS could not be sent: there is no phone number."
+
+#: billing/views/invoice_view.py
+msgid "Only a pre-invoice can be billed to the new contract."
+msgstr "Only a pre-invoice can be billed to the new contract."
+
+#: billing/views/invoice_view.py
+msgid "The invoice does not belong to a billing."
+msgstr "The invoice does not belong to a billing."
+
+#: billing/views/invoice_view.py
+msgid "The contract has no pending termination."
+msgstr "The contract has no pending termination."
+
+#: billing/views/invoice_view.py
+msgid "The pending termination has no active new contract."
+msgstr "The pending termination has no active new contract."
+
+#: billing/views/invoice_view.py
+msgid "The new contract has billing blocked."
+msgstr "The new contract has billing blocked."
+
+#: billing/views/invoice_view.py
+msgid "The invoice has no readings."
+msgstr "The invoice has no readings."
+
+#: billing/views/invoice_view.py
+msgid "The invoice has readings of another contract."
+msgstr "The invoice has readings of another contract."
+
+#: billing/views/invoice_view.py
+msgid "The invoice has readings of a supply point that is not in the new contract."
+msgstr "The invoice has readings of a supply point that is not in the new contract."
+
+#: billing/views/invoice_view.py
+msgid "The new contract has no initial reading for the meter."
+msgstr "The new contract has no initial reading for the meter."
+
+#: billing/views/invoice_view.py
+msgid "The invoice has readings prior to the new contract's initial reading."
+msgstr "The invoice has readings prior to the new contract's initial reading."
+
+#: billing/views/invoice_view.py
+msgid "Part of the consumption is prior to the new contract: review the readings."
+msgstr "Part of the consumption is prior to the new contract: review the readings."
+
+#: billing/views/invoice_view.py
+msgid "The new contract already has this reading."
+msgstr "The new contract already has this reading."
+
+#: billing/views/invoice_view.py
+msgid "The invoice of the new contract could not be generated."
+msgstr "The invoice of the new contract could not be generated."
+
+#: billing/views/invoice_view.py
+msgid "An unexpected error has occurred."
+msgstr "An unexpected error has occurred."

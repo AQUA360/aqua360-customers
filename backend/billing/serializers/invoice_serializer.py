@@ -320,10 +320,21 @@ class InvoiceMinimalListSerializer(serializers.ModelSerializer):
     
     has_possible_leak_comm = serializers.SerializerMethodField()
     has_readings = serializers.SerializerMethodField()
+    pending_termination_new_contract = serializers.SerializerMethodField()
 
     class Meta:
         model = Invoice
         fields = '__all__'
+
+    def get_pending_termination_new_contract(self, obj):
+        """Alta nova a la qual es pot passar la factura (avís de baixa pendent), o None."""
+        from billing.utils.pending_termination_service import get_successor_contract, is_pending_termination_warning
+        if not obj.contract_id or not obj.warning_id or not is_pending_termination_warning(obj.warning):
+            return None
+        successor = get_successor_contract(obj.contract)
+        if successor is None:
+            return None
+        return {'id': successor.id, 'token': successor.token}
 
     def get_period_to(self, obj):
         last_reading = obj.readings.order_by('-reading_date').first()

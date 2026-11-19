@@ -116,6 +116,12 @@
           @click="recalculateSmart" :title="isInvoiceProcessed ? t('billing_block.invoice_already_processed') : t('common.recalculate')">
           <Icon :name="loadingRecalculate ? 'fa6-solid:spinner' : 'fa6-solid:arrows-rotate'" :class="{ 'animate-spin': loadingRecalculate }" />
         </button>
+        <button v-if="!props.finalized && invoice.pending_termination_new_contract" :disabled="isInvoiceProcessed || loadingBillToNewContract"
+          class="w-8 h-8 bg-red-500 text-white rounded-full flex flex-shrink-0 items-center justify-center enabled:hover:bg-red-600 transition-all duration-200 disabled:opacity-30 ml-1"
+          @click="billToNewContract"
+          :title="isInvoiceProcessed ? t('billing_block.invoice_already_processed') : t('billing_block.bill_to_new_contract', { token: invoice.pending_termination_new_contract.token })">
+          <Icon :name="loadingBillToNewContract ? 'fa6-solid:spinner' : 'fa6-solid:right-left'" :class="{ 'animate-spin': loadingBillToNewContract }" />
+        </button>
       </div>
     </div>
     <InvoiceListDetail :finalized="props.finalized" :show="props.showDetail" @show-detail="showDetail" @show-edit="showEdit" :id="invoice.id" :isSubRegion="true"></InvoiceListDetail>
@@ -306,6 +312,24 @@ const recalculateSmart = async () => {
     loadingRecalculate.value = false;
     console.error(error);
     toast.error(t("billing_block.error_recalculate_smart"));
+  }
+}
+
+// Contracte amb la baixa pendent (canvi de titular): la prefactura passa a la nova alta.
+const loadingBillToNewContract = ref(false);
+const billToNewContract = async () => {
+  const newContract = invoice.value.pending_termination_new_contract;
+  if (!newContract || !confirm(t('confirmation_text_block.confirm_bill_to_new_contract', { token: newContract.token }))) return;
+  loadingBillToNewContract.value = true;
+  try {
+    const response = await $InvoiceApiService.billToNewContract(invoice.value.id);
+    toast.success(t('billing_block.correct_bill_to_new_contract'));
+    emit('open-region', { id: response?.id || invoice.value.id, entity: 'InvoiceRegion' });
+  } catch (error) {
+    // El motiu (p. ex. consum anterior a l'alta) ja el mostra l'apiManager en un toast.
+    console.error(error);
+  } finally {
+    loadingBillToNewContract.value = false;
   }
 }
 

@@ -5077,3 +5077,59 @@ msgstr "Non se puido enviar o SMS: o teléfono %(phone)s non pode recibir SMS."
 #: integrations/outbound/broadcaster/client.py
 msgid "The SMS could not be sent: there is no phone number."
 msgstr "Non se puido enviar o SMS: non hai ningún teléfono."
+
+#: billing/views/invoice_view.py
+msgid "Only a pre-invoice can be billed to the new contract."
+msgstr "Só se pode pasar á nova alta unha prefactura."
+
+#: billing/views/invoice_view.py
+msgid "The invoice does not belong to a billing."
+msgstr "A factura non pertence a ningunha facturación."
+
+#: billing/views/invoice_view.py
+msgid "The contract has no pending termination."
+msgstr "O contrato non ten ningunha baixa pendente."
+
+#: billing/views/invoice_view.py
+msgid "The pending termination has no active new contract."
+msgstr "A baixa pendente non ten ningunha alta nova activa."
+
+#: billing/views/invoice_view.py
+msgid "The new contract has billing blocked."
+msgstr "A nova alta ten a facturación bloqueada."
+
+#: billing/views/invoice_view.py
+msgid "The invoice has no readings."
+msgstr "A factura non ten lecturas."
+
+#: billing/views/invoice_view.py
+msgid "The invoice has readings of another contract."
+msgstr "A factura ten lecturas doutro contrato."
+
+#: billing/views/invoice_view.py
+msgid "The invoice has readings of a supply point that is not in the new contract."
+msgstr "A factura ten lecturas dun punto de subministración que non é da nova alta."
+
+#: billing/views/invoice_view.py
+msgid "The new contract has no initial reading for the meter."
+msgstr "A nova alta non ten lectura inicial do contador."
+
+#: billing/views/invoice_view.py
+msgid "The invoice has readings prior to the new contract's initial reading."
+msgstr "A factura ten lecturas anteriores á lectura inicial da nova alta."
+
+#: billing/views/invoice_view.py
+msgid "Part of the consumption is prior to the new contract: review the readings."
+msgstr "Parte do consumo é anterior á nova alta: revisade as lecturas."
+
+#: billing/views/invoice_view.py
+msgid "The new contract already has this reading."
+msgstr "A nova alta xa ten esta lectura."
+
+#: billing/views/invoice_view.py
+msgid "The invoice of the new contract could not be generated."
+msgstr "Non se puido xerar a factura da nova alta."
+
+#: billing/views/invoice_view.py
+msgid "An unexpected error has occurred."
+msgstr "Produciuse un erro inesperado."

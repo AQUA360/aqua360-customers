@@ -3166,5 +3166,17 @@
             "value": "false",
             "file": null
         }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 267,
+        "fields": {
+            "created_at": "2026-11-19T00:00:00.000Z",
+            "updated_at": "2026-11-19T00:00:00.000Z",
+            "token": "invoice_warning_pending_termination",
+            "name": "Token de l'avís de factura de contracte amb baixa pendent",
+            "value": "pending_termination",
+            "file": null
+        }
     }
 ]

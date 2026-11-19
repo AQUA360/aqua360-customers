@@ -6,6 +6,7 @@ from billing.utils.invoice_service import (
     _resolve_recalculation_persons,
     generate_consumption_invoice_multiple,
 )
+from billing.utils.pending_termination_service import pending_termination_warning_for
 from coredata.models import ConfigProject
 from statistics.utils.billing_amount_average import is_high_amount_for_period
 
@@ -113,7 +114,8 @@ def _get_invoice_warning(invoice, contracts):
         if is_high_amount_for_period(invoice.total_final, contracts, invoice.billing_period_year, invoice.billing_period_month, exclude_invoice_id=invoice.id):
             warning = invoice_warning_high_amount
 
-    return warning
+    # Baixa iniciada (canvi de titular...): té prioritat, potser la factura és de la nova alta.
+    return pending_termination_warning_for(invoice.contract) or warning
 
 
 def delete_and_recalculate_invoice(invoice_id):
