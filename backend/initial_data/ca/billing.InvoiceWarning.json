@@ -82,5 +82,19 @@
             "position": 6,
             "is_default": false
         }
+    },
+    {
+        "model": "billing.invoicewarning",
+        "pk": 7,
+        "fields": {
+            "created_at": "2026-11-19T00:00:00.000Z",
+            "updated_at": "2026-11-19T00:00:00.000Z",
+            "token": "pending_termination",
+            "name": "Contracte amb baixa pendent",
+            "color": "#ef4444",
+            "description": "El contracte té una baixa iniciada i no finalitzada (p. ex. un canvi de titular): reviseu si la factura ha d'anar a la nova alta.",
+            "position": 7,
+            "is_default": false
+        }
     }
 ]

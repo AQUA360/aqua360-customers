@@ -924,6 +924,8 @@ class BillingViewSet(viewsets.ModelViewSet):
               elif invoice.total_final and invoice_warning_high_amount:
                   if is_high_amount_for_period(invoice.total_final, [contract], invoice.billing_period_year, invoice.billing_period_month, exclude_invoice_id=invoice.id):
                       warning = invoice_warning_high_amount
+              from billing.utils.pending_termination_service import pending_termination_warning_for
+              warning = pending_termination_warning_for(contract) or warning
 
               if warning:
                   invoice.warning = warning
