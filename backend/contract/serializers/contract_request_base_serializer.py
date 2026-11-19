@@ -134,5 +134,43 @@ class ContractRequestSerializer(serializers.ModelSerializer):
                 'token': instance.contract.first().token,
                 'holder': instance.contract.first().holder.id if instance.contract.first().holder else None,
             }
-        
-        return representation 
+
+        self._set_initial_readings(instance, representation)
+
+        return representation
+
+    def _set_initial_readings(self, instance, representation):
+        """La lectura inicial de l'alta es desa inactiva fins a finalitzar-la, i el
+        `last_meter_reading` del punt només mira les actives: sense això, en tornar a desar
+        un pas anterior el pas "Situació actual" la tornava a mostrar com a pendent."""
+        from billing.models import Reading
+
+        supply_points = list(representation.get('supply_points') or [])
+        if representation.get('supply_point_default'):
+            supply_points.append(representation['supply_point_default'])
+        if not instance.pk or not supply_points:
+            return
+
+        initial_readings = {}
+        readings = Reading.objects.filter(
+            contract_request=instance, is_initial=True
+        ).select_related('alert').order_by('-id')
+        for reading in readings:
+            initial_readings.setdefault((reading.supply_point_id, reading.meter_id), reading)
+
+        for supply_point in supply_points:
+            reading = initial_readings.get((supply_point.get('id'), supply_point.get('meter_id')))
+            if not reading:
+                continue
+            supply_point['last_meter_reading'] = {
+                'id': reading.id,
+                'reading_date': reading.reading_date,
+                'reading_value': reading.reading_value,
+                'consumption_days': reading.consumption_days,
+                'is_estimated': reading.is_estimated,
+                'contract_request_id': instance.id,
+                'is_initial': True,
+                'meter_id': reading.meter_id,
+                'alert': reading.alert.name if reading.alert else None,
+                'alert_notes': reading.alert_notes,
+            }
