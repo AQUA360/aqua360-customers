@@ -31,6 +31,7 @@ import PriceIntervalRegion from './PriceIntervalRegion.vue';
 import CalendarTaskEdit from '../molecules/CalendarTaskEdit.vue';
 import PiggyBankRegion from './PiggyBankRegion.vue';
 import ContractDebtRegion from './ContractDebtRegion.vue';
+import CommitmentDepositRegion from './CommitmentDepositRegion.vue';
 import EstimatedBagRegion from './EstimatedBagRegion.vue';
 import AddReading from '../molecules/AddReading.vue';
 import MassiveInvoiceDownload from './MassiveInvoiceDownload.vue';
@@ -98,6 +99,8 @@ const selectedCustomInvoice = ref(null);
 const showRegionDetailComponent = ref(null);
 const regionDetailId = ref(null);
 const showRegion = ref(false);
+// Regions de resum que es mostren en un panell lateral més estret
+const narrowRegion = computed(() => showRegionDetailComponent.value === 'ClaimRequestRegion');
 const isSubRegionOpen = ref(false);
 
 const isChecked = ref(false);
@@ -556,7 +559,7 @@ const setActiveTab = (tab) => {
       <AppLoading :text="$t('common.loading')" />
     </div>
     <div v-else-if="objectPermissions?.can_view" class="pr-2 relative pb-24 transition-all duration-500 ease"
-      :class="{ 'h-full overflow-y-auto': !isSubRegion, 'mr-[48vw]': showRegion }">
+      :class="{ 'h-full overflow-y-auto': !isSubRegion, 'mr-[48vw]': showRegion && !narrowRegion, 'mr-[max(36vw,480px)]': showRegion && narrowRegion }">
         <TypedConfirmationModal v-model:open="showConfirmationModal"
             :message="t('confirmation_text_block.confirm_delete_contract')"
             :expected-phrase="t('confirmation_phrase_block.delete_contract')" @confirm="deleteContract" />
@@ -710,8 +713,10 @@ const setActiveTab = (tab) => {
         </div>
     </div>
     <div v-if="showRegion == true" role="region" id="subregion"
-        class="h-full border-l border-gray-100 transition-all duration-500 ease text-base bg-white flex flex-col overflow-hidden fixed top-0 right-0 w-[48vw] z-50"
+        class="h-full border-l border-gray-100 transition-all duration-500 ease text-base bg-white flex flex-col overflow-hidden fixed top-0 right-0 z-50"
         :class="{
+            'w-[36vw] min-w-[480px]': narrowRegion,
+            'w-[48vw]': !narrowRegion,
             'translate-x-0': showRegion,
             'translate-x-full': !showRegion,
         }">
@@ -757,6 +762,10 @@ const setActiveTab = (tab) => {
                 :isSubRegion="true" @changed="handleChange" @show-subregion="handleSubRegionEvent" />
             <ContractDebtRegion v-if="showRegionDetailComponent === 'ContractDebtRegion'" :id="parseInt(regionDetailId)"
                 :isSubRegion="true" @changed="getContractData(false)" @show-subregion="handleSubRegionEvent" />
+            <CommitmentDepositRegion v-if="showRegionDetailComponent === 'CommitmentDepositRegion'"
+                :id="parseInt(regionDetailId)" :isSubRegion="true" />
+            <OrganismsClaimRequestRegion v-if="showRegionDetailComponent === 'ClaimRequestRegion'"
+                :id="parseInt(regionDetailId)" :contractId="contract.id" :isSubRegion="true" />
             <EstimatedBagRegion v-if="showRegionDetailComponent === 'EstimatedBagRegion'" :id="parseInt(regionDetailId)"
                 :isSubRegion="true" />
             <AddReading v-if="showRegionDetailComponent === 'AddReading'" :contract="contract"
