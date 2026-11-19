@@ -1838,6 +1838,8 @@ export default {
     tenant: 'Inquilino',
     tenant_change: 'Cambio de inquilino',
     tenant_changes: 'Cambios de inquilino',
+    change_persons: 'Cambio de persoas',
+    holder_change_not_name_change: 'Cambiar o titular aquí non é un cambio de nome: só substitúe a persoa titular do mesmo contrato. Para un cambio de nome, usa a opción «Cambio de nome».',
     current_tenant: 'Inquilino actual',
     new_tenant: 'Novo inquilino',
     select_tenant: 'Seleccionar ou engadir inquilino',
@@ -2324,6 +2326,8 @@ export default {
     recapture: 'Recaptación',
     recalc_invoices: 'Recalcular facturas',
     correct_recalculate_smart: 'Factura recalculada correctamente',
+    bill_to_new_contract: 'Facturar á nova alta ({token})',
+    correct_bill_to_new_contract: 'Factura pasada á nova alta',
     error_recalculate_smart: 'Erro ao recalcular a factura',
     invoice_already_processed: 'A factura xa está procesada e non se pode eliminar nin recalcular',
     recalculate_estimated_readings: 'Recalcular estimadas',
@@ -4101,6 +4105,7 @@ export default {
     confirm_existing_process: 'Xa hai {count} proceso de comunicación para este corte. Queres iniciar outro?',
   },
   confirmation_text_block:   {
+    confirm_holder_change_not_name_change: 'Cambiar o titular desde aquí non é o proceso correcto para facer un cambio de nome (para iso está a opción «Cambio de nome»). Seguro que queres continuar?',
     confirm_kill_queue_task: 'Seguro que queres matar esta tarefa? O proceso deterase e marcarase como errónea.',
     confirm_skip_queue_task: 'Seguro que queres saltar esta tarefa e pasar á seguinte da cola? Marcarase como saltada.',
     confirm_restart_queue_task: 'Seguro que queres reiniciar esta tarefa? Volverase a encolar desde cero.',
@@ -4181,6 +4186,7 @@ export default {
     confirm_return_reading_batch_to_pending: 'Seguro que queres volver á configuración? O lote deixará de estar pendente de procesar e volverá a estar pendente.',
     confirm_validate_batch: 'Seguro que queres validar este lote de facturas?',
     confirm_recalculate_smart: 'Estás seguro de que queres recalcular esta factura de forma intelixente? Teranse en conta as modificacións de lecturas de control.',
+    confirm_bill_to_new_contract: 'Eliminarase esta prefactura e as súas lecturas pasarán á nova alta {token}, onde se xerará a factura dentro desta facturación. Queres continuar?',
     confirm_validate_readings_batch: 'Seguro que queres validar estas lecturas?',
     confirm_terminate_contracts: 'Estás seguro de que queres proceder coa baixa dos contratos seleccionados?',
     confirm_create_orders: 'Estás seguro de que queres crear as ordes de traballo?',
@@ -4560,7 +4566,7 @@ export default {
     error_delete: 'Erro ao eliminar os datos'
   },
   breadcrumb:   {
-    change_tenant: 'Cambio de inquilino',
+    change_tenant: 'Cambio de persoas',
     follow_contracts: 'Seguimento de contratos',
     incidents: 'Incidencias',
     process_communications: 'Procesos de comunicación',
