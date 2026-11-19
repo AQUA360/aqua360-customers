@@ -67,6 +67,8 @@ def emit(event_type, object_type, object_id, build_data, dedupe_key=None, schedu
         return None
 
     configured = webhooks_configured()
+    if not configured and getattr(settings, "WEBHOOKS_URL", "") and not getattr(settings, "WEBHOOKS_SECRET", ""):
+        logger.warning("Webhooks amb URL però sense WEBHOOKS_SECRET: l'avís es desa com a disabled i no s'envia")
     event_id = uuid.uuid4()
     now = timezone.now()
     key = dedupe_key or f"{event_type}:{event_id}"

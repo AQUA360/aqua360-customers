@@ -184,7 +184,7 @@ class SendTest(TestCase):
         self.assertEqual(event.status, WebhookEvent.STATUS_FAILED)
         self.assertFalse(post.call_args.kwargs["allow_redirects"])
 
-    @override_settings(WEBHOOKS_URL="https://user:pwd@receiver.example/hooks?token=abc#x")
+    @override_settings(WEBHOOKS_URL="https://user:pwd@receiver.example/hooks/tok-path?token=abc#x")
     @mock.patch("integrations.outbound.webhooks.client.requests.post")
     def test_logs_do_not_keep_url_credentials(self, post):
         post.side_effect = requests.ConnectionError("https://user:pwd@receiver.example/hooks?token=abc")
@@ -194,7 +194,7 @@ class SendTest(TestCase):
 
         event.refresh_from_db()
         log = IntegrationRequestLog.objects.get(provider="webhooks")
-        self.assertEqual(log.endpoint, "https://receiver.example/hooks")
+        self.assertEqual(log.endpoint, "https://receiver.example")
         for text in (log.error_message, event.last_error):
             self.assertNotIn("token", text)
             self.assertNotIn("pwd", text)
@@ -269,6 +269,31 @@ class SendTest(TestCase):
         post.return_value = http_response(401)
         with self.assertRaises(CommandError):
             call_command("send_test_webhook", stdout=io.StringIO())
+
+    def test_send_test_webhook_busy_sender_is_an_error(self):
+        @contextmanager
+        def busy():
+            yield False
+
+        with mock.patch("integrations.management.commands.send_test_webhook.single_sender", busy), \
+                mock.patch("integrations.management.commands.send_test_webhook.schedule_send") as schedule:
+            with self.assertRaises(CommandError):
+                call_command("send_test_webhook", stdout=io.StringIO())
+            schedule.assert_called_once()
+
+    def test_response_read_is_limited(self):
+        from integrations.outbound.webhooks.client import _read_limited
+
+        response = mock.Mock()
+        response.raw.read.side_effect = lambda size, decode_content=True: b"x" * size
+        self.assertEqual(len(_read_limited(response)), 2000)
+        response.close.assert_called_once()
+
+        # Termini exhaurit: no es llegeix res més i es tanca igualment
+        slow = mock.Mock()
+        self.assertEqual(_read_limited(slow, deadline_seconds=0), "")
+        slow.raw.read.assert_not_called()
+        slow.close.assert_called_once()
 
     @override_settings(WEBHOOKS_URL="")
     def test_task_skips_without_url(self):

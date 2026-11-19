@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 PROVIDER = "webhooks"
 RESPONSE_READ_LIMIT = 2000  # bytes de la resposta que es desen per al diagnòstic
+RESPONSE_READ_SECONDS = 2  # temps màxim llegint-la (a més del timeout de cada lectura)
 USER_AGENT = "aqua360-customers-webhooks/1.0"
 # Respostes que poden anar bé més endavant: es reintenten
 RETRYABLE_STATUS = {408, 429}
@@ -55,25 +56,33 @@ def build_headers(event_type, event_id, timestamp, body, secret):
 
 
 def safe_url(url):
-    """URL sense query, fragment ni usuari/contrasenya: per als logs i la sortida
-    de les ordres (hi podria haver un token)."""
+    """Només l'origen de la URL (esquema, host i port): per als logs i la sortida
+    de les ordres. El camí, la query o l'usuari podrien portar un token."""
     parts = urlsplit(url or "")
     host = parts.hostname or ""
     if parts.port:
         host = f"{host}:{parts.port}"
-    return urlunsplit((parts.scheme, host, parts.path, "", ""))
+    return urlunsplit((parts.scheme, host, "", "", ""))
 
 
-def _read_limited(response, limit=RESPONSE_READ_LIMIT):
-    """Llegeix com a molt `limit` bytes de la resposta: n'hi ha prou per al
-    diagnòstic i un receptor lent no reté l'enviador."""
+def _read_limited(response, limit=RESPONSE_READ_LIMIT, deadline_seconds=RESPONSE_READ_SECONDS):
+    """Llegeix com a molt `limit` bytes i durant com a molt `deadline_seconds`: n'hi
+    ha prou per al diagnòstic i un receptor lent no reté l'enviador."""
+    chunks = []
+    size = 0
+    deadline = time.monotonic() + deadline_seconds
     try:
-        chunk = response.raw.read(limit, decode_content=True) or b""
+        while size < limit and time.monotonic() < deadline:
+            chunk = response.raw.read(min(256, limit - size), decode_content=True)
+            if not chunk:
+                break
+            chunks.append(chunk)
+            size += len(chunk)
     except Exception:
-        return ""
+        pass
     finally:
         response.close()
-    return chunk.decode("utf-8", errors="replace").replace("\x00", "")
+    return b"".join(chunks).decode("utf-8", errors="replace").replace("\x00", "")
 
 
 def _log_request(event, url, status_code, success, error, response_text):

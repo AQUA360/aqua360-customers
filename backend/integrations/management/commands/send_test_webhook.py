@@ -35,8 +35,11 @@ class Command(BaseCommand):
                 send_event(event.pk)
         if not acquired:
             schedule_send()
-            self.stdout.write("L'enviador està ocupat: l'avís de prova queda pendent i s'enviarà en breu.")
-            return
+            # No s'ha pogut confirmar l'entrega: per als scripts, és un error
+            raise CommandError(
+                "L'enviador està ocupat: l'avís de prova queda pendent i s'enviarà en breu. "
+                "Comprova'n l'estat a l'admin o torna-ho a provar."
+            )
 
         # Només compta l'estat final (el pot haver enviat el worker mateix)
         event.refresh_from_db()
