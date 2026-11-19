@@ -1,7 +1,51 @@
+from rest_framework.permissions import DjangoModelPermissions
+
 from coredata.models import MainPermission
 
 
 AUTH_USER_MGMT_MODELS = frozenset({'user', 'group', 'permission'})
+
+
+class DjangoModelViewPermissions(DjangoModelPermissions):
+    """Permís base de les vistes de model: DjangoModelPermissions de DRF no demana res
+    per a GET/HEAD (qualsevol usuari autenticat llegeix); aquest demana `view_<model>`.
+    OPTIONS (metadades) continua obert als usuaris autenticats; les escriptures demanen
+    add/change/delete del model.
+
+    - `read_fallback_perms`: altres permisos que també donen lectura (pantalles d'altres
+      mòduls que consulten aquest model). Mai donen escriptura.
+    - `read_only_actions`: accions d'un ViewSet que només consulten encara que siguin POST
+      (p. ex. resoldre una llista d'ids): s'hi aplica la regla de lectura.
+    """
+
+    perms_map = {
+        **DjangoModelPermissions.perms_map,
+        'GET': ['%(app_label)s.view_%(model_name)s'],
+        'HEAD': ['%(app_label)s.view_%(model_name)s'],
+        'OPTIONS': [],
+    }
+    read_fallback_perms = ()
+    read_only_actions = ()
+
+    def has_permission(self, request, view):
+        if getattr(view, 'action', None) in self.read_only_actions:
+            return self.has_read_permission(request, view)
+        if super().has_permission(request, view):
+            return True
+        return request.method in ('GET', 'HEAD') and self.has_read_fallback(request.user)
+
+    def has_read_permission(self, request, view):
+        """La regla de GET, sigui quin sigui el mètode de la petició."""
+        user = request.user
+        if not user or not user.is_authenticated:
+            return False
+        model = self._queryset(view).model
+        return user.has_perms(self.get_required_permissions('GET', model)) or self.has_read_fallback(user)
+
+    def has_read_fallback(self, user):
+        if not user or not user.is_authenticated:
+            return False
+        return any(user.has_perm(perm) for perm in self.read_fallback_perms)
 
 
 class PermissionManager:

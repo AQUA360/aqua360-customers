@@ -1,6 +1,7 @@
 from rest_framework import permissions
 from rest_framework import exceptions
 
+from auth.permissions import DjangoModelViewPermissions
 from auth.roles import is_canonical_superuser
 from billing.permissions import InvoicePermission
 from claimrequest.permissions import ClaimRequestPermission
@@ -105,3 +106,45 @@ class AddressPermission(permissions.BasePermission):
             claim_request_permission = False
         
         return person_permission or contract_permission or supply_point_permission or invoice_permission or claim_request_permission
+
+# Carrers i tipus de via: els fan servir els selectors d'adreça de moltes pantalles
+# (persones, contractes, punts de subministrament, comptadors, escomeses, finques, rutes,
+# talls, ordres, comunicacions, reclamacions...). Els rols no donen `view_street` (no és
+# a cap MainPermission), així que qui pot llegir algun d'aquests mòduls pot llegir els
+# carrers; modificar-los demana el permís del model.
+ADDRESS_READ_PERMS = (
+    'coredata.view_street',
+    'coredata.change_street',
+    'coredata.view_person',
+    'contract.view_contract',
+    'contract.view_contractrequest',
+    'contract.view_piggybank',
+    'service.view_supplypoint',
+    'service.view_meter',
+    'service.view_connection',
+    'service.view_connectionrequest',
+    'service.view_property',
+    'service.view_route',
+    'service.view_supplycut',
+    'billing.view_invoice',
+    'billing.view_reading',
+    'claimrequest.view_claimrequest',
+    'order.view_order',
+    'communication.view_communication',
+    'fraud.view_fraud',
+)
+
+
+class StreetPermission(DjangoModelViewPermissions):
+    """Lectura amb el permís del model o d'un mòdul que fa servir adreces; escriptura
+    amb add/change/delete del model. `resolve_ids` és un POST que només consulta."""
+
+    read_fallback_perms = ADDRESS_READ_PERMS
+    read_only_actions = ('resolve_ids',)
+
+
+class HolidayPermission(DjangoModelViewPermissions):
+    """Festius: els llegeix la configuració d'incidències (càlcul de terminis en dies
+    hàbils); modificar-los demana el permís del model."""
+
+    read_fallback_perms = ('notification.view_incident',)
