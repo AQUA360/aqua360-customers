@@ -556,7 +556,44 @@ class UpdateBillingDataOVIBANSerializer(serializers.Serializer):
             )
 
 
-class BillingContractInvoicesOVSerializer(serializers.Serializer):
+def ov_pdf_from_date():
+    """Data a partir de la qual l'OV ofereix el PDF de les factures
+    (`ConfigProject` `ov_pdf_from`). `None` si no està configurada o no és una
+    data vàlida: llavors tots els PDF es consideren disponibles."""
+    from coredata.models import ConfigProject
+
+    value = (
+        ConfigProject.objects.filter(token="ov_pdf_from")
+        .values_list("value", flat=True)
+        .first()
+    )
+    if not value:
+        return None
+    try:
+        return parse_date(value)
+    except ValueError:
+        return None
+
+
+class OVPdfAvailableMixin:
+    """`pdf_available` amb una sola consulta a `ConfigProject` per petició: la
+    data es desa al context del serialitzador arrel, que comparteixen tots
+    els elements d'un `many=True`."""
+
+    def _ov_pdf_from(self):
+        context = self.context
+        if "ov_pdf_from" not in context:
+            context["ov_pdf_from"] = ov_pdf_from_date()
+        return context["ov_pdf_from"]
+
+    def get_pdf_available(self, obj) -> bool:
+        pdf_from_date = self._ov_pdf_from()
+        if pdf_from_date and obj.issue_date and obj.issue_date < pdf_from_date:
+            return False
+        return True
+
+
+class BillingContractInvoicesOVSerializer(OVPdfAvailableMixin, serializers.Serializer):
 
     contract_number = serializers.CharField(source="contract.token", read_only=True)
     invoice_number = serializers.CharField(source="serie_final", read_only=True)
@@ -591,18 +628,41 @@ class BillingContractInvoicesOVSerializer(serializers.Serializer):
             return None
         return {"token": obj.status.token, "name": obj.status.name}
 
-    def get_pdf_available(self, obj) -> bool:
-        from coredata.models import ConfigProject
 
-        date_str = ConfigProject.objects.filter(token="ov_pdf_from").first()
-        if not date_str or not date_str.value:
-            return True  # If config not set, assume all PDFs are available
-        else:
-            value = date_str.value
-            pdf_from_date = parse_date(value)
-            if obj.issue_date < pdf_from_date:
-                return False
-            return True
+class PersonInvoiceOVSerializer(OVPdfAvailableMixin, serializers.Serializer):
+    """Una factura de `GET /ov/person-invoices/`. A diferència de
+    `/ov/invoices/`, `invoice_amount` és el total i el pendent va a
+    `pending_amount`. `is_holder`/`is_payer` es calculen amb el DNI ja
+    normalitzat del context (`dni`) contra les dades congelades a la factura;
+    si la factura no té pagador, el pagador és el titular."""
+
+    invoice_number = serializers.CharField(source="serie_final", read_only=True)
+    invoice_token = serializers.CharField(source="token", read_only=True)
+    invoice_date = serializers.DateField(source="issue_date", read_only=True)
+    invoice_amount = serializers.FloatField(source="total_final", read_only=True)
+    pending_amount = serializers.FloatField(source="left_to_pay", read_only=True)
+    invoice_status = serializers.SerializerMethodField()
+    status = serializers.SerializerMethodField()
+    pdf_available = serializers.SerializerMethodField()
+    is_holder = serializers.SerializerMethodField()
+    is_payer = serializers.SerializerMethodField()
+
+    def get_invoice_status(self, obj):
+        return obj.status.name if obj.status else None
+
+    def get_status(self, obj):
+        if not obj.status:
+            return None
+        return {"token": obj.status.token, "name": obj.status.name}
+
+    def get_is_holder(self, obj):
+        return bool(obj.customer_token_final) and (
+            obj.customer_token_final == self.context.get("dni")
+        )
+
+    def get_is_payer(self, obj):
+        payer = obj.payer_token_final or obj.customer_token_final
+        return bool(payer) and payer == self.context.get("dni")
 
 
 class InvoiceConsumptionSerializer(serializers.ModelSerializer):
