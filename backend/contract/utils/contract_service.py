@@ -883,6 +883,7 @@ def _get_new_person_bank(person, bank_account, bank, country, swift_code):
             swift=swift_code,
             is_default=True,
             iban=bank_account,
+            origin=PersonBank.ORIGIN_MANUAL,
         )
     
     return new_person_bank
