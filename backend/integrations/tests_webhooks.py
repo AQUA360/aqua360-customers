@@ -3,6 +3,7 @@ import hashlib
 import hmac
 import io
 import json
+import time
 from contextlib import contextmanager
 from unittest import mock
 
@@ -127,7 +128,7 @@ class SendTest(TestCase):
         event.refresh_from_db()
         return event
 
-    @mock.patch("integrations.outbound.webhooks.client.requests.post")
+    @mock.patch("integrations.outbound.webhooks.client._NoRedirectSession.post")
     def test_2xx_marks_sent_and_logs(self, post):
         post.return_value = http_response(204, "")
         event = self._pending()
@@ -146,7 +147,7 @@ class SendTest(TestCase):
         self.assertTrue(log.success)
         self.assertEqual(log.object_id, str(event.event_id))
 
-    @mock.patch("integrations.outbound.webhooks.client.requests.post")
+    @mock.patch("integrations.outbound.webhooks.client._NoRedirectSession.post")
     def test_5xx_is_retried_later(self, post):
         post.return_value = http_response(503)
         event = self._pending()
@@ -161,7 +162,7 @@ class SendTest(TestCase):
         send_pending_webhooks()
         self.assertEqual(post.call_count, 1)
 
-    @mock.patch("integrations.outbound.webhooks.client.requests.post")
+    @mock.patch("integrations.outbound.webhooks.client._NoRedirectSession.post")
     def test_network_error_is_retried(self, post):
         post.side_effect = requests.ConnectionError("no hi ha xarxa")
         event = self._pending()
@@ -172,7 +173,7 @@ class SendTest(TestCase):
         self.assertEqual(event.status, WebhookEvent.STATUS_PENDING)
         self.assertIn("ConnectionError", event.last_error)
 
-    @mock.patch("integrations.outbound.webhooks.client.requests.post")
+    @mock.patch("integrations.outbound.webhooks.client._NoRedirectSession.post")
     def test_redirect_is_not_a_delivery(self, post):
         post.return_value = http_response(302)
         event = self._pending()
@@ -184,7 +185,7 @@ class SendTest(TestCase):
         self.assertFalse(post.call_args.kwargs["allow_redirects"])
 
     @override_settings(WEBHOOKS_URL="https://user:pwd@receiver.example/hooks/tok-path?token=abc#x")
-    @mock.patch("integrations.outbound.webhooks.client.requests.post")
+    @mock.patch("integrations.outbound.webhooks.client._NoRedirectSession.post")
     def test_logs_do_not_keep_url_credentials(self, post):
         post.side_effect = requests.ConnectionError("https://user:pwd@receiver.example/hooks?token=abc")
         event = self._pending()
@@ -198,7 +199,7 @@ class SendTest(TestCase):
             self.assertNotIn("token", text)
             self.assertNotIn("pwd", text)
 
-    @mock.patch("integrations.outbound.webhooks.client.requests.post")
+    @mock.patch("integrations.outbound.webhooks.client._NoRedirectSession.post")
     def test_log_failure_keeps_delivery_result(self, post):
         post.return_value = http_response(200)
         event = self._pending()
@@ -209,7 +210,7 @@ class SendTest(TestCase):
         event.refresh_from_db()
         self.assertEqual(event.status, WebhookEvent.STATUS_SENT)
 
-    @mock.patch("integrations.outbound.webhooks.client.requests.post")
+    @mock.patch("integrations.outbound.webhooks.client._NoRedirectSession.post")
     def test_4xx_fails_without_retry(self, post):
         post.return_value = http_response(400, "bad")
         event = self._pending()
@@ -220,7 +221,7 @@ class SendTest(TestCase):
         self.assertEqual(event.status, WebhookEvent.STATUS_FAILED)
         self.assertEqual(event.last_status_code, 400)
 
-    @mock.patch("integrations.outbound.webhooks.client.requests.post")
+    @mock.patch("integrations.outbound.webhooks.client._NoRedirectSession.post")
     def test_exhausted_retries_fail(self, post):
         post.return_value = http_response(500)
         event = self._pending(attempts=7)
@@ -230,7 +231,7 @@ class SendTest(TestCase):
         event.refresh_from_db()
         self.assertEqual(event.status, WebhookEvent.STATUS_FAILED)
 
-    @mock.patch("integrations.outbound.webhooks.client.requests.post")
+    @mock.patch("integrations.outbound.webhooks.client._NoRedirectSession.post")
     def test_resend_command_requeues_failed(self, post):
         post.return_value = http_response(200)
         event = self._pending(status=WebhookEvent.STATUS_FAILED, attempts=3)
@@ -243,7 +244,7 @@ class SendTest(TestCase):
         self.assertEqual(event.status, WebhookEvent.STATUS_PENDING)
         self.assertEqual(event.attempts, 0)
 
-    @mock.patch("integrations.outbound.webhooks.client.requests.post")
+    @mock.patch("integrations.outbound.webhooks.client._NoRedirectSession.post")
     def test_send_test_webhook_command(self, post):
         post.return_value = http_response(200)
         out = io.StringIO()
@@ -251,7 +252,7 @@ class SendTest(TestCase):
         self.assertIn("Entregat", out.getvalue())
         self.assertEqual(WebhookEvent.objects.get().event_type, "webhook.test")
 
-    @mock.patch("integrations.outbound.webhooks.client.requests.post")
+    @mock.patch("integrations.outbound.webhooks.client._NoRedirectSession.post")
     def test_only_one_sender_at_a_time(self, post):
         self._pending()
 
@@ -263,7 +264,7 @@ class SendTest(TestCase):
             self.assertEqual(send_pending_webhooks(), {"status": "busy"})
         post.assert_not_called()
 
-    @mock.patch("integrations.outbound.webhooks.client.requests.post")
+    @mock.patch("integrations.outbound.webhooks.client._NoRedirectSession.post")
     def test_send_test_webhook_fails_with_error_code(self, post):
         post.return_value = http_response(401)
         with self.assertRaises(CommandError):
@@ -280,7 +281,7 @@ class SendTest(TestCase):
                 call_command("send_test_webhook", stdout=io.StringIO())
             schedule.assert_called_once()
 
-    @mock.patch("integrations.outbound.webhooks.client.requests.post")
+    @mock.patch("integrations.outbound.webhooks.client._NoRedirectSession.post")
     def test_response_body_is_never_read(self, post):
         for status_code in (200, 400):
             post.return_value = http_response(status_code)
@@ -291,6 +292,44 @@ class SendTest(TestCase):
             self.assertFalse(post.return_value.raw.method_calls)
             self.assertFalse(post.return_value.iter_content.called)
             post.return_value.close.assert_called_once()
+
+    def test_slow_redirect_body_does_not_hold_the_sender(self):
+        """Servidor real que respon 302 amb Location i envia el cos molt a poc a poc."""
+        import socket
+        import threading
+
+        listener = socket.socket()
+        listener.bind(("127.0.0.1", 0))
+        listener.listen(1)
+        port = listener.getsockname()[1]
+        stop = threading.Event()
+
+        def serve():
+            conn, _ = listener.accept()
+            conn.recv(65536)
+            conn.sendall(b"HTTP/1.1 302 Found\r\nLocation: /altre\r\nContent-Length: 1000\r\n\r\n")
+            while not stop.wait(0.5):
+                try:
+                    conn.sendall(b"x")
+                except OSError:
+                    break
+            conn.close()
+
+        thread = threading.Thread(target=serve, daemon=True)
+        thread.start()
+        try:
+            event = self._pending()
+            with override_settings(WEBHOOKS_URL=f"http://127.0.0.1:{port}/hook"):
+                started = time.monotonic()
+                send_pending_webhooks()
+                elapsed = time.monotonic() - started
+        finally:
+            stop.set()
+            listener.close()
+        event.refresh_from_db()
+        self.assertEqual(event.status, WebhookEvent.STATUS_FAILED)
+        self.assertEqual(event.last_status_code, 302)
+        self.assertLess(elapsed, 3)
 
     @override_settings(WEBHOOKS_URL="")
     def test_task_skips_without_url(self):

@@ -22,7 +22,7 @@ class Command(BaseCommand):
                 "(WEBHOOKS_ENABLED, WEBHOOKS_URL, WEBHOOKS_SECRET)."
             )
 
-        event = emit(TEST_EVENT, "test", "", lambda: {"message": "Avís de prova del Customers"}, schedule=False)
+        event = emit(TEST_EVENT, "test", "", lambda: {"message": "Aviso de prueba de Customers"}, schedule=False)
         if event is None:
             raise CommandError("No s'ha pogut desar l'avís de prova: mira el log.")
 
