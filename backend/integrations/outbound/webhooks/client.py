@@ -17,8 +17,6 @@ from integrations.models import IntegrationRequestLog
 logger = logging.getLogger(__name__)
 
 PROVIDER = "webhooks"
-RESPONSE_READ_LIMIT = 2000  # bytes de la resposta que es desen per al diagnòstic
-RESPONSE_READ_SECONDS = 2  # temps màxim llegint-la (a més del timeout de cada lectura)
 USER_AGENT = "aqua360-customers-webhooks/1.0"
 # Respostes que poden anar bé més endavant: es reintenten
 RETRYABLE_STATUS = {408, 429}
@@ -65,30 +63,7 @@ def safe_url(url):
     return urlunsplit((parts.scheme, host, "", "", ""))
 
 
-def _read_limited(response, limit=RESPONSE_READ_LIMIT, deadline_seconds=RESPONSE_READ_SECONDS):
-    """Llegeix com a molt `limit` bytes durant com a molt `deadline_seconds`: n'hi ha
-    prou per al diagnòstic i un receptor lent no reté l'enviador. `read1` torna el
-    que ja ha arribat (una sola lectura del socket), així el termini es comprova
-    entre lectures i el temps total queda limitat a `deadline_seconds` més el
-    timeout d'una lectura."""
-    chunks = []
-    size = 0
-    deadline = time.monotonic() + deadline_seconds
-    try:
-        while size < limit and time.monotonic() < deadline:
-            chunk = response.raw.read1(limit - size)
-            if not chunk:
-                break
-            chunks.append(chunk)
-            size += len(chunk)
-    except Exception:
-        pass
-    finally:
-        response.close()
-    return b"".join(chunks)[:limit].decode("utf-8", errors="replace").replace("\x00", "")
-
-
-def _log_request(event, url, status_code, success, error, response_text):
+def _log_request(event, url, status_code, success, error):
     """El registre no ha de fer perdre el resultat de l'enviament."""
     try:
         with transaction.atomic():
@@ -99,7 +74,6 @@ def _log_request(event, url, status_code, success, error, response_text):
                 method="POST",
                 endpoint=safe_url(url)[:255],
                 request_payload={"event_id": str(event.event_id), "event_type": event.event_type},
-                response_payload={"body": response_text} if response_text else None,
                 status_code=status_code,
                 success=success,
                 error_message=error,
@@ -122,19 +96,16 @@ def deliver(event):
     headers = build_headers(event.event_type, event.event_id, timestamp, body, settings.WEBHOOKS_SECRET)
 
     status_code = None
-    response_text = ""
     try:
         response = requests.post(
             url, data=body, headers=headers, timeout=settings.WEBHOOKS_TIMEOUT,
             allow_redirects=False, stream=True,
         )
         status_code = response.status_code
+        # El cos de la resposta no es llegeix mai: amb el codi n'hi ha prou per
+        # decidir, i un receptor lent no pot retenir l'enviador llegint-lo.
+        response.close()
         success = 200 <= status_code < 300
-        if success:
-            # Entregat: el cos no cal per a res
-            response.close()
-        else:
-            response_text = _read_limited(response)
         retryable = not success and (status_code >= 500 or status_code in RETRYABLE_STATUS)
         error = "" if success else f"HTTP {status_code}"
     except requests.RequestException as exc:
@@ -143,5 +114,5 @@ def deliver(event):
         # Només el tipus: el missatge pot portar la URL sencera
         error = type(exc).__name__
 
-    _log_request(event, url, status_code, success, error, response_text)
+    _log_request(event, url, status_code, success, error)
     return DeliveryResult(success=success, retryable=retryable, status_code=status_code, error=error)

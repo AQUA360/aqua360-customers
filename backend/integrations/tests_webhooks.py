@@ -38,7 +38,6 @@ ACTIVE = override_settings(WEBHOOKS_ENABLED=True, WEBHOOKS_URL=URL, WEBHOOKS_SEC
 def http_response(status_code, text="ok"):
     response = mock.Mock()
     response.status_code = status_code
-    response.raw.read1.return_value = text.encode()
     return response
 
 
@@ -281,29 +280,17 @@ class SendTest(TestCase):
                 call_command("send_test_webhook", stdout=io.StringIO())
             schedule.assert_called_once()
 
-    def test_response_read_is_limited(self):
-        from integrations.outbound.webhooks.client import _read_limited
-
-        response = mock.Mock()
-        response.raw.read1.side_effect = lambda size: b"x" * min(size, 300)
-        self.assertEqual(len(_read_limited(response)), 2000)
-        response.close.assert_called_once()
-
-        # Termini exhaurit: no es llegeix res més i es tanca igualment
-        slow = mock.Mock()
-        self.assertEqual(_read_limited(slow, deadline_seconds=0), "")
-        slow.raw.read1.assert_not_called()
-        slow.close.assert_called_once()
-
     @mock.patch("integrations.outbound.webhooks.client.requests.post")
-    def test_successful_response_body_is_not_read(self, post):
-        post.return_value = http_response(200)
-        self._pending()
+    def test_response_body_is_never_read(self, post):
+        for status_code in (200, 400):
+            post.return_value = http_response(status_code)
+            self._pending()
 
-        send_pending_webhooks()
+            send_pending_webhooks()
 
-        post.return_value.raw.read1.assert_not_called()
-        post.return_value.close.assert_called_once()
+            self.assertFalse(post.return_value.raw.method_calls)
+            self.assertFalse(post.return_value.iter_content.called)
+            post.return_value.close.assert_called_once()
 
     @override_settings(WEBHOOKS_URL="")
     def test_task_skips_without_url(self):
