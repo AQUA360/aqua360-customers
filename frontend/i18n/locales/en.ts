@@ -1838,6 +1838,8 @@ export default {
     tenant: 'Tenant',
     tenant_change: 'Tenant change',
     tenant_changes: 'Tenant changes',
+    change_persons: 'Change persons',
+    holder_change_not_name_change: 'Changing the holder here is not a name change: it only replaces the holder of the same contract. For a name change, use the "Change of name" option.',
     current_tenant: 'Current tenant',
     new_tenant: 'New tenant',
     select_tenant: 'Select or add tenant',
@@ -4103,6 +4105,7 @@ export default {
     confirm_existing_process: 'There is already {count} communication process for this supply cut. Do you want to start another one?',
   },
   confirmation_text_block:   {
+    confirm_holder_change_not_name_change: 'Changing the holder here is not the correct process for a name change (use the "Change of name" option for that). Are you sure you want to continue?',
     confirm_kill_queue_task: 'Are you sure you want to kill this task? The process will be stopped and marked as failed.',
     confirm_skip_queue_task: 'Are you sure you want to skip this task and move to the next one in the queue? It will be marked as skipped.',
     confirm_restart_queue_task: 'Are you sure you want to restart this task? It will be re-queued from scratch.',
@@ -4563,7 +4566,7 @@ export default {
     error_delete: 'Error deleting the data'
   },
   breadcrumb:   {
-    change_tenant: 'Tenant change',
+    change_tenant: 'Change persons',
     follow_contracts: 'Contract tracking',
     incidents: 'Incidents',
     process_communications: 'Communication processes',
