@@ -36,7 +36,10 @@ class Command(BaseCommand):
             self.stdout.write(f"{total} avisos a reenviar.")
             return
         if not webhooks_configured():
-            raise CommandError("Els webhooks no estan activats o no tenen URL (WEBHOOKS_ENABLED, WEBHOOKS_URL).")
+            raise CommandError(
+                "Els webhooks no estan activats o els falta la URL o el secret "
+                "(WEBHOOKS_ENABLED, WEBHOOKS_URL, WEBHOOKS_SECRET)."
+            )
 
         updated = events.update(
             status=WebhookEvent.STATUS_PENDING, attempts=0, next_attempt_at=timezone.now(), last_error="",
