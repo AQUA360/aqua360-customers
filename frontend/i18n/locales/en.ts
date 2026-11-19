@@ -1838,6 +1838,8 @@ export default {
     tenant: 'Tenant',
     tenant_change: 'Tenant change',
     tenant_changes: 'Tenant changes',
+    change_persons: 'Change persons',
+    holder_change_not_name_change: 'Changing the holder here is not a name change: it only replaces the holder of the same contract. For a name change, use the "Change of name" option.',
     current_tenant: 'Current tenant',
     new_tenant: 'New tenant',
     select_tenant: 'Select or add tenant',
@@ -2324,6 +2326,8 @@ export default {
     recapture: 'Recapture',
     recalc_invoices: 'Recalculate invoices',
     correct_recalculate_smart: 'Invoice recalculated successfully',
+    bill_to_new_contract: 'Bill to the new contract ({token})',
+    correct_bill_to_new_contract: 'Invoice moved to the new contract',
     error_recalculate_smart: 'Error recalculating the invoice',
     invoice_already_processed: 'The invoice is already processed and cannot be deleted or recalculated',
     recalculate_estimated_readings: 'Recalculate estimated readings',
@@ -4101,6 +4105,7 @@ export default {
     confirm_existing_process: 'There is already {count} communication process for this supply cut. Do you want to start another one?',
   },
   confirmation_text_block:   {
+    confirm_holder_change_not_name_change: 'Changing the holder here is not the correct process for a name change (use the "Change of name" option for that). Are you sure you want to continue?',
     confirm_kill_queue_task: 'Are you sure you want to kill this task? The process will be stopped and marked as failed.',
     confirm_skip_queue_task: 'Are you sure you want to skip this task and move to the next one in the queue? It will be marked as skipped.',
     confirm_restart_queue_task: 'Are you sure you want to restart this task? It will be re-queued from scratch.',
@@ -4181,6 +4186,7 @@ export default {
     confirm_return_reading_batch_to_pending: 'Are you sure you want to go back to setup? The batch will leave pending processing and return to pending.',
     confirm_validate_batch: 'Are you sure you want to validate this invoice batch?',
     confirm_recalculate_smart: 'Are you sure you want to smart-recalculate this invoice? Control reading modifications will be taken into account.',
+    confirm_bill_to_new_contract: 'This pre-invoice will be deleted and its readings will move to the new contract {token}, where the invoice will be generated within this billing. Do you want to continue?',
     confirm_validate_readings_batch: 'Are you sure you want to validate these readings?',
     confirm_terminate_contracts: 'Are you sure you want to proceed with the termination of the selected contracts?',
     confirm_create_orders: 'Are you sure you want to create the work orders?',
@@ -4560,7 +4566,7 @@ export default {
     error_delete: 'Error deleting the data'
   },
   breadcrumb:   {
-    change_tenant: 'Tenant change',
+    change_tenant: 'Change persons',
     follow_contracts: 'Contract tracking',
     incidents: 'Incidents',
     process_communications: 'Communication processes',

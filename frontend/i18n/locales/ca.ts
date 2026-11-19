@@ -1847,6 +1847,8 @@ export default {
     tenant: 'Llogater',
     tenant_change: 'Canvi de llogater',
     tenant_changes: 'Canvis de llogater',
+    change_persons: 'Canvi de persones',
+    holder_change_not_name_change: "Canviar el titular aquí no és un canvi de nom: només substitueix la persona titular del mateix contracte. Per a un canvi de nom, fes servir l'opció «Canvi de nom».",
     current_tenant: 'Llogater actual',
     new_tenant: 'Nou llogater',
     select_tenant: 'Seleccionar o afegir llogater',
@@ -2379,6 +2381,8 @@ export default {
     recapture: 'Recaptació',
     recalc_invoices: 'Re-calcular factures',
     correct_recalculate_smart: 'Factura recalculada correctament',
+    bill_to_new_contract: 'Facturar a la nova alta ({token})',
+    correct_bill_to_new_contract: 'Factura passada a la nova alta',
     error_recalculate_smart: 'Error al recalcular la factura',
     invoice_already_processed: 'La factura ja està processada i no es pot eliminar ni recalcular',
     recalculate_estimated_readings: 'Recalcular estimades',
@@ -4233,6 +4237,7 @@ export default {
     confirm_existing_process: 'Ja hi ha {count} procés de comunicació per a aquest tall. Vols iniciar-ne un altre?',
   },
   confirmation_text_block:   {
+    confirm_holder_change_not_name_change: "Canviar el titular des d'aquí no és el procés correcte per fer un canvi de nom (per això hi ha l'opció «Canvi de nom»). Segur que vols continuar?",
     confirm_kill_queue_task: 'Segur que vols matar aquesta tasca? El procés s\'aturarà i es marcarà com a errònia.',
     confirm_skip_queue_task: 'Segur que vols saltar aquesta tasca i passar a la següent de la cua? Es marcarà com a saltada.',
     confirm_restart_queue_task: 'Segur que vols reiniciar aquesta tasca? Es tornarà a encuar des de zero.',
@@ -4316,6 +4321,7 @@ export default {
     confirm_return_reading_batch_to_pending: 'Segur que vols tornar a la configuració? El lot deixarà d\'estar pendent de processar i tornarà a estar pendent.',
     confirm_validate_batch: 'Segur que vols validar aquest lot de factures?',
     confirm_recalculate_smart: 'Segur que vols recalcular aquesta factura de forma intel·ligent? Es tindran en compte les modificacions de lectures de control.',
+    confirm_bill_to_new_contract: 'S\'esborrarà aquesta prefactura i les seves lectures passaran a la nova alta {token}, on es generarà la factura dins d\'aquesta facturació. Vols continuar?',
     confirm_validate_readings_batch: 'Segur que vols validar aquestes lectures?',
     confirm_terminate_contracts: 'Segur que vols procedir amb la baixa dels contractes seleccionats?',
     confirm_create_orders: 'Segur que vols crear les ordres de treball?',
@@ -4710,7 +4716,7 @@ export default {
     error_delete: 'Error en eliminar les dades'
   },
   breadcrumb:   {
-    change_tenant: 'Canvi de llogater',
+    change_tenant: 'Canvi de persones',
     follow_contracts: 'Seguiment de contractes',
     incidents: 'Incidències',
     process_communications: 'Processos de comunicació',

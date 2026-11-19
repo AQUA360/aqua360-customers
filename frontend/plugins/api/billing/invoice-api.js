@@ -451,6 +451,12 @@ export default defineNuxtPlugin(nuxtApp => {
       }
     }
 
+    // Passa la prefactura d'un contracte amb la baixa pendent a la nova alta.
+    const billToNewContract = async (id) => {
+      const apiUrl = `${apiHost}${entity}${id}/bill-to-new-contract/`;
+      return await $apiManager.fetch(apiUrl, 'POST');
+    }
+
     const addToCommunicationProcess = async (id) => {
       const apiUrl = `${apiHost}${entity}${id}/add-to-communication-process/`;
       try {
@@ -974,6 +980,7 @@ export default defineNuxtPlugin(nuxtApp => {
       getLogs,
       getDocuments,
       recalculateSmart,
+      billToNewContract,
       addToCommunicationProcess,
       manageMassivelyPaid,
       sendEmail,
