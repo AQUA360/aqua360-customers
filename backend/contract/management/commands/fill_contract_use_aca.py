@@ -116,8 +116,8 @@ def fill_contract_use_aca(update_all_contracts=False, dry_run=False, single_cont
             # Obtenir tots els ContractPriceRate del contracte
             contract_price_rates = contract.price_rates.all()
             
-            # Si no té cap tarifa
-            if not contract_price_rates.exists():
+            # Si no té cap tarifa (els agrícoles continuen: tenen ús ACA «G» sense tarifa de cànon)
+            if not contract_price_rates.exists() and contract.use_type_id not in agricultural_use_type_ids:
                 skipped_reasons['no_price_rates'] += 1
                 if len(skipped_examples['no_price_rates']) < 5:
                     skipped_examples['no_price_rates'].append(contract.token)

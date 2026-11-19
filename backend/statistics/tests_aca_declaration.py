@@ -62,6 +62,7 @@ class AcaDeclarationTests(TestCase):
             fixed_amount=result.fixed_amount, variable_amount=result.variable_amount,
         )
         declaration.line_items.set(result.line_ids)
+        declaration.invoices.set(result.agricultural_invoice_ids)
         return result
 
     def selected(self, period):
@@ -160,13 +161,36 @@ class AcaDeclarationTests(TestCase):
         self.assertEqual(set(invoices.values_list('serie_final', flat=True)), {'FC/1', 'FC/2'})
         self.assertEqual(lines.count(), 4)
 
-    def invoice_without_canon(self, number, used_aca, consumption):
+    def invoice_without_canon(self, number, used_aca, consumption, issue_date=datetime.date(2026, 6, 15)):
         invoice = Invoice.objects.create(
-            serie_final=number, token=number, issue_date=datetime.date(2026, 6, 15), type_final='F', status=self.paid,
+            serie_final=number, token=number, issue_date=issue_date, type_final='F', status=self.paid,
             exploitation=self.masnou, used_aca=used_aca, real_consumption=consumption,
         )
         Payment.objects.create(invoice=invoice, amount=Decimal('1'))
         return invoice
+
+    def test_presented_month_keeps_agricultural_invoices_without_canon(self):
+        self.invoice('FC/1', datetime.date(2026, 6, 10))
+        self.invoice_without_canon('FC/AGR', 'G', 40)
+        result = self.freeze(self.masnou, 2026, 6, timezone.now())
+        self.assertEqual(result.agricultural_invoice_ids, {Invoice.objects.get(serie_final='FC/AGR').id})
+
+        self.assertEqual(self.selected(JUNE), ({'FC/1', 'FC/AGR'}, Decimal('11.00')))
+        self.assertEqual(self.selected(OCTOBER), (set(), Decimal('0.00')))
+
+    def test_agricultural_invoice_not_listed_moves_once(self):
+        # Mes presentat abans de declarar l'ús agrícola: el full de factures no la llista
+        self.invoice('FC/1', datetime.date(2026, 6, 10))
+        self.invoice_without_canon('FC/AGR', 'G', 40)
+        self.freeze(self.masnou, 2026, 6, timezone.now(), listed_numbers=['FC/1'])
+        self.assertEqual(self.selected(JUNE), ({'FC/1'}, Decimal('11.00')))
+        july = (datetime.date(2026, 7, 1), datetime.date(2026, 7, 31))
+        self.assertEqual(self.selected(july), ({'FC/AGR'}, Decimal('0.00')))
+
+        # Es declara al juliol: en presentar-lo s'hi queda i ja no passa a l'agost
+        self.freeze(self.masnou, 2026, 7, timezone.now(), listed_numbers=['FC/AGR'])
+        self.assertEqual(self.selected(july), ({'FC/AGR'}, Decimal('0.00')))
+        self.assertEqual(self.selected((datetime.date(2026, 8, 1), datetime.date(2026, 8, 31))), (set(), Decimal('0.00')))
 
     def test_factdeta_declares_agricultural_consumption_without_canon(self):
         from billing.utils.factdeta_reader import read_factdeta

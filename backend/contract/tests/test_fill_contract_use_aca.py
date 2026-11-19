@@ -23,7 +23,8 @@ class FillContractUseAcaAgriculturalTests(TestCase):
             ('contract_use_aca_agr_use_type_tokens', 'AGRICOLA|REG'),
             ('contract_terminated_status', 'BAIXA'),
         ):
-            ConfigProject.objects.create(token=token, value=value)
+            # public_org_type ja el crea una migració
+            ConfigProject.objects.update_or_create(token=token, defaults={'value': value})
         self.water_rate = PriceRate.objects.create(token='AIGUA_REG', product=Product.objects.create(token='AIGUA'))
         self.canon_rate = PriceRate.objects.create(token='ACA_DOMESTIC', product=Product.objects.create(token='ACA'))
 
@@ -44,3 +45,12 @@ class FillContractUseAcaAgriculturalTests(TestCase):
 
         uses = dict(Contract.objects.values_list('token', 'use_aca'))
         self.assertEqual(uses, {'C-AGR': 'G', 'C-DOM': None, 'C-AGR-ACA': 'D'})
+
+    def test_agricultural_use_type_without_any_price_rate_is_g(self):
+        self.contract('C-AGR', 'AGRICOLA')
+        self.contract('C-DOM', 'DOMESTIC')
+
+        fill_contract_use_aca()
+
+        uses = dict(Contract.objects.values_list('token', 'use_aca'))
+        self.assertEqual(uses, {'C-AGR': 'G', 'C-DOM': None})

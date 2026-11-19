@@ -932,9 +932,15 @@ def generate_aca_summary_report(request, black_fill=None, white_bold_font=None, 
         _aca_invoice_ids, _invoices_by_exploitation, _totals_dict, aca_line_items_qs = _get_aca_invoices_data(
             invoices, aca_product_token, pre_invoice_token, aca_line_items_q
         )
-        # Amb múltiples empreses el codi és el de l'empresa de les factures (totes la mateixa);
-        # si no, el de l'empresa de cada explotació.
-        aca_company = get_records_company(_aca_invoices_company_ids(_aca_invoice_ids)) if use_multiple_companies() else None
+        # Els usos agrícoles es declaren amb el volum consumit, encara que no tinguin cap línia de cànon
+        agricultural_invoices = invoices.filter(
+            use_aca_invoices_q(AGRICULTURAL_USE_ACA), type_final=invoice_type,
+        ).exclude(status__token__in=[pre_invoice_token])
+        # Amb múltiples empreses el codi és el de l'empresa de les factures (totes la mateixa, també
+        # les agrícoles); si no, el de l'empresa de cada explotació.
+        aca_company = get_records_company(_aca_invoices_company_ids(
+            set(_aca_invoice_ids) | set(agricultural_invoices.values_list('id', flat=True))
+        )) if use_multiple_companies() else None
         
         wb = openpyxl.Workbook()
         sheet = wb.active
@@ -984,10 +990,7 @@ def generate_aca_summary_report(request, black_fill=None, white_bold_font=None, 
                 aca_line_items_ex = aca_line_items_qs.filter(invoice__exploitation__name=exploitation).distinct().annotate(
                     effective_use_aca=_aca_effective_use_annotation()
                 )
-                # Els usos agrícoles es declaren amb el volum consumit, encara que no tinguin cap línia de cànon
-                agricultural_invoice_ids = invoices.filter(
-                    use_aca_invoices_q(AGRICULTURAL_USE_ACA), exploitation__name=exploitation, type_final=invoice_type,
-                ).exclude(status__token__in=[pre_invoice_token]).values('id')
+                agricultural_invoice_ids = agricultural_invoices.filter(exploitation__name=exploitation).values('id')
                 invoices_exploitation = Invoice.objects.filter(
                     Q(id__in=aca_line_items_ex.values_list('invoice__id', flat=True)) | Q(id__in=agricultural_invoice_ids)
                 ).select_related('status', 'contract').distinct()
@@ -1095,8 +1098,8 @@ def generate_aca_summary_report(request, black_fill=None, white_bold_font=None, 
                 serie_final_row = _add_invoices_to_sheet(serie_final_sheet, serie_final_row, direct_free_invoices, direct_free_lines, part_fixa_token, "M", is_industrial=True, written_invoice_ids=written_invoice_ids, volumes_by_invoice=volumes_by_invoice)
                 #AGRICOLA (sense línies de cànon)
                 agricultural_lines = aca_line_items_ex.filter(effective_use_aca=AGRICULTURAL_USE_ACA).distinct()
-                agricultural_invoices = invoices_exploitation.filter(use_aca_invoices_q(AGRICULTURAL_USE_ACA))
-                serie_final_row = _add_invoices_to_sheet(serie_final_sheet, serie_final_row, agricultural_invoices, agricultural_lines, part_fixa_token, AGRICULTURAL_USE_ACA, is_industrial=True, written_invoice_ids=written_invoice_ids, volumes_by_invoice=volumes_by_invoice, include_invoices_without_lines=True)
+                exploitation_agricultural_invoices = invoices_exploitation.filter(use_aca_invoices_q(AGRICULTURAL_USE_ACA))
+                serie_final_row = _add_invoices_to_sheet(serie_final_sheet, serie_final_row, exploitation_agricultural_invoices, agricultural_lines, part_fixa_token, AGRICULTURAL_USE_ACA, is_industrial=True, written_invoice_ids=written_invoice_ids, volumes_by_invoice=volumes_by_invoice, include_invoices_without_lines=True)
                 
                 lines_part_fixa = aca_line_items_ex.filter(line_item_type__article__token=part_fixa_token).distinct()
                 print(f"total units fixa: {lines_part_fixa.aggregate(total_units=Sum('units'))['total_units'] or 0}")
