@@ -66,14 +66,17 @@ def safe_url(url):
 
 
 def _read_limited(response, limit=RESPONSE_READ_LIMIT, deadline_seconds=RESPONSE_READ_SECONDS):
-    """Llegeix com a molt `limit` bytes i durant com a molt `deadline_seconds`: n'hi
-    ha prou per al diagnòstic i un receptor lent no reté l'enviador."""
+    """Llegeix com a molt `limit` bytes durant com a molt `deadline_seconds`: n'hi ha
+    prou per al diagnòstic i un receptor lent no reté l'enviador. `read1` torna el
+    que ja ha arribat (una sola lectura del socket), així el termini es comprova
+    entre lectures i el temps total queda limitat a `deadline_seconds` més el
+    timeout d'una lectura."""
     chunks = []
     size = 0
     deadline = time.monotonic() + deadline_seconds
     try:
         while size < limit and time.monotonic() < deadline:
-            chunk = response.raw.read(min(256, limit - size), decode_content=True)
+            chunk = response.raw.read1(limit - size)
             if not chunk:
                 break
             chunks.append(chunk)
@@ -82,7 +85,7 @@ def _read_limited(response, limit=RESPONSE_READ_LIMIT, deadline_seconds=RESPONSE
         pass
     finally:
         response.close()
-    return b"".join(chunks).decode("utf-8", errors="replace").replace("\x00", "")
+    return b"".join(chunks)[:limit].decode("utf-8", errors="replace").replace("\x00", "")
 
 
 def _log_request(event, url, status_code, success, error, response_text):
@@ -126,8 +129,12 @@ def deliver(event):
             allow_redirects=False, stream=True,
         )
         status_code = response.status_code
-        response_text = _read_limited(response)
         success = 200 <= status_code < 300
+        if success:
+            # Entregat: el cos no cal per a res
+            response.close()
+        else:
+            response_text = _read_limited(response)
         retryable = not success and (status_code >= 500 or status_code in RETRYABLE_STATUS)
         error = "" if success else f"HTTP {status_code}"
     except requests.RequestException as exc:
