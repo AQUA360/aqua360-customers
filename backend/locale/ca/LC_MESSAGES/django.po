@@ -2740,6 +2740,10 @@ msgstr "Exempt"
 msgid "Ramader quota 0"
 msgstr "Ramader quota 0"
 
+#: statistics/utils/report_billing_service.py
+msgid "Vol. consumit d'ús agrícola"
+msgstr "Vol. consumit d'ús agrícola"
+
 #: statistics/utils/report_billing_service.py:1172
 #: statistics/utils/report_billing_service.py:2119
 msgid "Factura"
