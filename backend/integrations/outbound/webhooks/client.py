@@ -22,6 +22,15 @@ USER_AGENT = "aqua360-customers-webhooks/1.0"
 RETRYABLE_STATUS = {408, 429}
 
 
+class _NoRedirectSession(requests.Session):
+    """Sessió que no reconeix cap redirecció. Amb allow_redirects=False, requests
+    encara prepara la següent petició d'un 3xx i, per fer-ho, llegeix el cos de la
+    resposta: un receptor lent retindria l'enviador. Sense destí, no llegeix res."""
+
+    def get_redirect_target(self, resp):
+        return None
+
+
 @dataclass
 class DeliveryResult:
     success: bool
@@ -97,14 +106,15 @@ def deliver(event):
 
     status_code = None
     try:
-        response = requests.post(
-            url, data=body, headers=headers, timeout=settings.WEBHOOKS_TIMEOUT,
-            allow_redirects=False, stream=True,
-        )
-        status_code = response.status_code
-        # El cos de la resposta no es llegeix mai: amb el codi n'hi ha prou per
-        # decidir, i un receptor lent no pot retenir l'enviador llegint-lo.
-        response.close()
+        with _NoRedirectSession() as session:
+            response = session.post(
+                url, data=body, headers=headers, timeout=settings.WEBHOOKS_TIMEOUT,
+                allow_redirects=False, stream=True,
+            )
+            status_code = response.status_code
+            # El cos de la resposta no es llegeix mai: amb el codi n'hi ha prou per
+            # decidir, i un receptor lent no pot retenir l'enviador llegint-lo.
+            response.close()
         success = 200 <= status_code < 300
         retryable = not success and (status_code >= 500 or status_code in RETRYABLE_STATUS)
         error = "" if success else f"HTTP {status_code}"
