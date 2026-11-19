@@ -1,11 +1,13 @@
 <script setup>
 import { ref, computed, watch } from 'vue';
+import { format } from 'date-fns';
 import { useI18n } from 'vue-i18n';
 import { useToast } from 'vue-toastification';
 import BankDetail from '../molecules/BankDetail.vue';
 import ButtonSeleccio from '../atoms/ButtonSeleccio.vue';
 import SelectPaymentType from '~/components/molecules/SelectPaymentType.vue';
 import { openAuthenticatedFileUrl } from '~/utils/open-authenticated-file';
+import { formatMoneyWithCurrency } from '~/utils/money';
 const { t } = useI18n();
 const toast = useToast();
 
@@ -18,7 +20,7 @@ const props = defineProps({
 
 const emit = defineEmits(['refresh-data', 'open-person-bank-select', 'close-person-bank-select']);
 
-const { $InvoiceApiService, $ConfiglistApiService, $PaymentApiService, $DocumentManagerApiService } = useNuxtApp();
+const { $InvoiceApiService, $ConfiglistApiService, $PaymentApiService, $DocumentManagerApiService, $ConfigProjectApiService } = useNuxtApp();
 
 const paymentTypeExcludeTokens = computed(() => [
   'BALANCE',
@@ -36,8 +38,16 @@ const openChangePaymentMethodModal = ref(false);
 const openReturnReasonModal = ref(false);
 const openChangeAddressModal = ref(false);
 const openChangeDatesModal = ref(false);
+const openManualPaymentModal = ref(false);
 
 const returningInvoice = ref(false);
+const payingInvoice = ref(false);
+
+const selectedManualPaymentDate = ref(null);
+const selectedManualPaymentMethod = ref(null);
+const manualPaymentTypes = ref([]);
+const skippedPaymentStatusTokens = ref([]);
+let manualPaymentDateCheckTimeout = null;
 
 const liquidation_reasons = ref([]);
 const return_reasons = ref([]);
@@ -98,7 +108,34 @@ const payment_proof_observation = ref('');
 
 const isAnyModalOpen = computed(() => {
   return openLiquidateModal.value || openDateModal.value || openPaymentProofModal.value ||
-    openChangePaymentMethodModal.value || openReturnReasonModal.value || openChangeAddressModal.value || openChangeDatesModal.value;
+    openChangePaymentMethodModal.value || openReturnReasonModal.value || openChangeAddressModal.value ||
+    openChangeDatesModal.value || openManualPaymentModal.value;
+});
+
+const invoiceIssueDate = computed(() => {
+  const issueDate = props.data?.issue_date;
+  if (!issueDate) return null;
+  try {
+    return format(new Date(issueDate), 'yyyy-MM-dd');
+  } catch {
+    return String(issueDate).slice(0, 10);
+  }
+});
+
+const leftToPay = computed(() => Number(props.data?.left_to_pay ?? 0));
+
+const availableBalance = computed(() => {
+  return props.data?.contract_piggy_bank || props.data?.person_piggy_bank || 0;
+});
+
+const isPiggyContract = computed(() => Number(props.data?.contract_piggy_bank || 0) > 0);
+
+const isPiggyBankAvailable = computed(() => Number(availableBalance.value) >= leftToPay.value);
+
+const selectedManualPaymentType = computed(() => {
+  return manualPaymentTypes.value.find(
+    (paymentType) => paymentType.id == selectedManualPaymentMethod.value
+  ) || null;
 });
 
 
@@ -404,6 +441,139 @@ const closeChangeDatesModal = () => {
   selected_invoice_send_date.value = null;
 };
 
+const closeManualPaymentModal = () => {
+  openManualPaymentModal.value = false;
+  selectedManualPaymentDate.value = null;
+  selectedManualPaymentMethod.value = null;
+  manualPaymentTypes.value = [];
+};
+
+const loadSkippedPaymentStatusTokens = async () => {
+  const tokens = [
+    'payment_status_paid_token',
+    'payment_status_cancelled_token',
+    'payment_status_payoff_token',
+    'payment_status_dropped_token',
+    'payment_status_piggy_token',
+    'payment_status_commitment_token',
+  ];
+  const values = await Promise.all(tokens.map(async (token) => {
+    try {
+      return await $ConfigProjectApiService.get(token);
+    } catch (err) {
+      console.error(err);
+      return null;
+    }
+  }));
+  skippedPaymentStatusTokens.value = values.filter(Boolean);
+};
+
+const getManualPaymentTypes = async () => {
+  try {
+    const response = await $ConfiglistApiService.getAll('contract/contract-payment-type');
+    manualPaymentTypes.value = [];
+    (response.results || []).forEach((paymentType) => {
+      if (paymentType.token != 'DIRECT_DEBIT' && paymentType.token != 'ELECTRONIC_INVOICE') {
+        manualPaymentTypes.value.push({
+          id: paymentType.id,
+          name: paymentType.name,
+          token: paymentType.token,
+        });
+      }
+    });
+    if (!isPiggyBankAvailable.value) {
+      manualPaymentTypes.value = manualPaymentTypes.value.filter(
+        (paymentType) => paymentType.token != 'BALANCE'
+      );
+    }
+  } catch (err) {
+    console.error(err);
+  }
+};
+
+const openManualPayment = async () => {
+  selectedManualPaymentMethod.value = null;
+  selectedManualPaymentDate.value = format(new Date(), 'yyyy-MM-dd');
+  await loadSkippedPaymentStatusTokens();
+  await getManualPaymentTypes();
+  openManualPaymentModal.value = true;
+};
+
+const getUnpaidPayments = async () => {
+  const response = await $PaymentApiService.getAll('', [], 1, null, false, props.invoiceId);
+  const payments = response.results || [];
+  return payments.filter((payment) => {
+    if (payment.is_excluded) return false;
+    if (payment.is_active === false) return false;
+    const statusToken = payment.status?.token;
+    if (statusToken && skippedPaymentStatusTokens.value.includes(statusToken)) return false;
+    return true;
+  });
+};
+
+const manualPayInvoice = async () => {
+  if (
+    selectedManualPaymentDate.value
+    && invoiceIssueDate.value
+    && selectedManualPaymentDate.value < invoiceIssueDate.value
+  ) {
+    toast.error(t('warning_block.warning_payment_date_before_invoice_issue_date'));
+    selectedManualPaymentDate.value = invoiceIssueDate.value;
+    return;
+  }
+
+  if (!confirm(t('confirmation_text_block.confirm_short_pay_payment'))) return;
+
+  payingInvoice.value = true;
+  try {
+    if (!skippedPaymentStatusTokens.value.length) {
+      await loadSkippedPaymentStatusTokens();
+    }
+    const unpaidPayments = await getUnpaidPayments();
+    if (!unpaidPayments.length) {
+      toast.warning(t('common.no_records'));
+      return;
+    }
+
+    const paymentMethod = selectedManualPaymentMethod.value;
+    const isBalance = selectedManualPaymentType.value?.token == 'BALANCE';
+
+    for (const payment of unpaidPayments) {
+      await $PaymentApiService.manualPayment({
+        id: payment.id,
+        payment_date: selectedManualPaymentDate.value,
+        is_piggy_contract: isPiggyContract.value,
+        payment_method: paymentMethod,
+        amount: isBalance ? payment.amount : null,
+      });
+    }
+
+    toast.success(t('common.correct_save'));
+    closeManualPaymentModal();
+    emit('refresh-data', false);
+  } catch (err) {
+    console.error(err);
+    toast.error(err?.data?.error || t('common.error'));
+  } finally {
+    payingInvoice.value = false;
+  }
+};
+
+watch(selectedManualPaymentDate, () => {
+  if (manualPaymentDateCheckTimeout) clearTimeout(manualPaymentDateCheckTimeout);
+  manualPaymentDateCheckTimeout = setTimeout(() => {
+    if (
+      selectedManualPaymentDate.value
+      && invoiceIssueDate.value
+      && selectedManualPaymentDate.value < invoiceIssueDate.value
+    ) {
+      toast.warning(t('warning_block.warning_payment_date_before_invoice_issue_date'));
+      selectedManualPaymentDate.value = invoiceIssueDate.value;
+    }
+    manualPaymentDateCheckTimeout = null;
+  }, 1000);
+});
+
 defineExpose({
   openLiquidate,
   openReturnReason,
@@ -412,7 +582,8 @@ defineExpose({
   openPaymentProof,
   openChangeAddress,
   onPersonBankSelected,
-  openChangeDates
+  openChangeDates,
+  openManualPayment,
 });
 </script>
 
@@ -793,6 +964,67 @@ defineExpose({
           <button class="button-primary" @click="saveAddress"
             :disabled="(selected_address == null || selected_address == '') && (accounting_office == null || accounting_office == '') && (managing_body == null || managing_body == '') && (processing_unit == null || processing_unit == '')">
             {{ $t('common.save') }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Manual Payment Modal -->
+    <div v-if="openManualPaymentModal" class="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto"
+      @click="closeManualPaymentModal">
+      <div class="bg-white rounded-lg shadow-xl p-6 max-w-lg w-full mx-4 my-auto relative" @click.stop>
+        <button @click="closeManualPaymentModal"
+          class="absolute top-4 right-4 text-gray-500 hover:text-gray-700">
+          <Icon name="fa6-solid:xmark" class="text-xl" />
+        </button>
+        <div>
+          <label class="block font-medium text-slate-500">{{ t('billing_block.payment_date') }}</label>
+          <div class="pb-4 rounded-lg text-left max-h-[60vh] overflow-y-auto">
+            <AtomsInputDate v-model="selectedManualPaymentDate" label="" class="mb-2"
+              :invalid="selectedManualPaymentDate == null || selectedManualPaymentDate == ''" />
+          </div>
+          <label class="block font-medium text-slate-500">{{ $t('common.select') }} {{ t('common.payment_method')
+          }}</label>
+          <div class="max-w-xl my-2">
+            <select v-model="selectedManualPaymentMethod" class="w-full text-base border border-gray-300 rounded p-2"
+              id="invoice_manual_payment_method">
+              <option value="" selected="selected">-- {{ $t('common.select') }} {{ t('common.payment_method') }}
+              </option>
+              <option v-for="paymentType in manualPaymentTypes" :value="paymentType.id" :key="paymentType.id">
+                {{ paymentType.name }}
+              </option>
+            </select>
+            <div
+              v-if="selectedManualPaymentType?.token == 'BALANCE'"
+              class="flex items-center justify-between gap-2 mt-2">
+              <div>
+                <label class="block font-medium text-slate-500 mb-2">{{ t('common.liquidate') }}</label>
+                <input type="number" :disabled="true" :value="leftToPay" class="input">
+              </div>
+              <div class="flex self-end">
+                <div class="flex items-center gap-2 p-2 rounded border border-slate-300 w-fit">
+                  <Icon name="fa6-solid:piggy-bank" class="text-slate-400" />
+                  <span class="text-slate-500">
+                    {{ t('contract_block.available_balance') }}
+                  </span>
+                  <span class="text-green-600 font-bold">
+                    {{ formatMoneyWithCurrency(availableBalance) }}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div v-else class="mt-2">
+              <label class="block font-medium text-slate-500 mb-2">{{ t('billing_block.total_to_pay') }}</label>
+              <input type="number" :disabled="true" :value="leftToPay" class="input">
+            </div>
+          </div>
+        </div>
+        <div class="flex justify-end">
+          <button class="button-primary flex items-center justify-center gap-2" @click="manualPayInvoice"
+            :disabled="payingInvoice || !selectedManualPaymentDate || !selectedManualPaymentMethod || selectedManualPaymentMethod == ''">
+            <Icon v-if="payingInvoice" name="fa6-solid:spinner" class="animate-spin" />
+            <span v-if="!payingInvoice">{{ $t('common.save') }}</span>
+            <span v-else>{{ $t('common.processing') }}</span>
           </button>
         </div>
       </div>
