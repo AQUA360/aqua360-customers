@@ -2067,6 +2067,10 @@ msgstr "Exento"
 msgid "Ramader quota 0"
 msgstr "Gandeiro cota 0"
 
+#: statistics/utils/report_billing_service.py
+msgid "Vol. consumit d'ús agrícola"
+msgstr "Vol. consumido de uso agrícola"
+
 msgid "Factura"
 msgstr "Factura"
 

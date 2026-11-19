@@ -429,6 +429,8 @@ class AcaDeclaration(models.Model):
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='aca_declarations')
 
     line_items = models.ManyToManyField('billing.InvoiceLineItem', related_name='aca_declarations', blank=True)
+    # Factures declarades sense cap línia de cànon (ús agrícola, amb només el volum consumit)
+    invoices = models.ManyToManyField('billing.Invoice', related_name='aca_declarations', blank=True)
 
     class Meta:
         constraints = [
