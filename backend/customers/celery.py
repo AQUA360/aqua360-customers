@@ -182,6 +182,16 @@ if getattr(settings, "SIGNING_POLL_ENABLED", False):
         "schedule": crontab(minute=f"*/{settings.SIGNING_POLL_MINUTES}"),
     }
 
+if getattr(settings, "WEBHOOKS_ENABLED", False):
+    # Webhooks de sortida: cada avís nou ja encua l'enviament; el beat recull els
+    # reintents i els que s'hagin perdut (p. ex. si el broker no responia).
+    beat_schedule["send-pending-webhooks"] = {
+        "task": "integrations.outbound.webhooks.tasks.send_pending_webhooks",
+        # Sense "expires": amb la cua endarrerida també ha d'arribar (els reintents en
+        # depenen) i el bloqueig d'enviador únic evita duplicats.
+        "schedule": crontab(minute="*"),
+    }
+
 app.conf.beat_schedule = beat_schedule
 """ 'check-send-date': {
     'task': 'communication.tasks.check_send_date',

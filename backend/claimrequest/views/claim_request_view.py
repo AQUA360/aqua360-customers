@@ -2,6 +2,7 @@ import csv
 import datetime
 import io
 
+from django.conf import settings
 from django.forms.utils import ValidationError
 from rest_framework import viewsets, status, views
 from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
@@ -10,6 +11,7 @@ from rest_framework.filters import OrderingFilter, SearchFilter
 from django.db.models import Count, Max, Sum, F, Q
 from rest_framework.decorators import action
 from django.utils.translation import gettext as _
+from django.utils.translation import override
 from rest_framework.response import Response
 from rest_framework import serializers
 from rest_framework.views import APIView
@@ -97,8 +99,11 @@ class ClaimRequestViewSet(viewsets.ModelViewSet):
         decoded_file = file.read().decode('utf-8-sig')
         reader = csv.DictReader(io.StringIO(decoded_file), delimiter=';')
         contract_tokens = []
+        # Headers are written under settings.LANGUAGE_CODE (see excel generate view)
+        with override(settings.LANGUAGE_CODE):
+            contract_header = _("Contracte")
         for row in reader:
-            contract = row.get(_("Contracte"))
+            contract = row.get(contract_header)
             if contract is not None:
                 contract_tokens.append(contract)
         contracts = Contract.objects.filter(

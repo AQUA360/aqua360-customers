@@ -1,6 +1,7 @@
 <script setup>
 import { toRaw, ref, onMounted, computed } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { useToast } from 'vue-toastification';
 
 import _ from 'lodash';
 import H1 from '~/components/atoms/H1.vue';
@@ -11,12 +12,14 @@ const props = defineProps({
 });
 
 const { t } = useI18n();
+const toast = useToast();
 const { $OperatorApiService } = useNuxtApp();
 
 const attemptedSave = ref(false);
 const loading = ref(true);
 const saving = ref(false);
 const usernameError = ref(''); // Backend error for duplicate username
+const passwordErrors = ref([]); // Errors de contrasenya retornats pel backend
 
 const showForm = ref(false);
 const passwordValid = ref(false);
@@ -75,9 +78,23 @@ const getData = async () => {
   loading.value = false;
 }
 
+// Cal contrasenya en crear l'usuari de l'app o si es marca canviar-la
+const isPasswordRequired = computed(() => changePassword.value || !item.value?.app_user);
+
+// Requisits de la contrasenya (el backend també els valida): mínim 8 caràcters i un número
+const passwordRules = computed(() => {
+  const pwd = new_app_user.value.password || '';
+  return [
+    { key: 'min_length', ok: pwd.length >= 8 },
+    { key: 'number', ok: /\p{N}/u.test(pwd) },
+  ];
+});
+const passwordRulesOk = computed(() => passwordRules.value.every(rule => rule.ok));
+
 const save = async () => {
   attemptedSave.value = true;
   usernameError.value = ''; // Clear previous errors
+  passwordErrors.value = [];
   try {
     if (isValid()) {
       saving.value = true;
@@ -131,6 +148,11 @@ const save = async () => {
         usernameError.value = usernameErrors;
       }
     }
+
+    const backendPasswordErrors = error.data?.app_user?.password;
+    if (backendPasswordErrors) {
+      passwordErrors.value = Array.isArray(backendPasswordErrors) ? backendPasswordErrors : [backendPasswordErrors];
+    }
     
     saving.value = false;
   } finally {
@@ -160,8 +182,11 @@ const isValid = () => {
     if (!new_app_user.value.surname || new_app_user.value.surname.trim() === '') return false;
     
     // Only validate password if changing password OR creating new user
-    if (changePassword.value || !item.value.app_user) {
-      if (new_app_user.value.password.length < 6) return false;
+    if (isPasswordRequired.value) {
+      if (!passwordRulesOk.value) {
+        toast.warning(t('user_group.password_rules_not_met'));
+        return false;
+      }
       if (new_app_user.value.password !== new_app_user.value.password_confirm) return false;
     }
   }
@@ -346,9 +371,16 @@ onMounted(() => {
                 {{ t('common.password') }} <span class="text-red-500">*</span>
               </label>
               <input type="password" v-model="new_app_user.password" class="input"
-                :class="{ 'invalid': attemptedSave && (changePassword || !item.app_user) && new_app_user.password.length < 6 }" />
-              <p v-if="attemptedSave && (changePassword || !item.app_user) && new_app_user.password.length < 6" class="mt-1 text-sm text-red-600">
-                {{ t('common.min_length_error', { min: 6 }) }}
+                :class="{ 'invalid': (attemptedSave && isPasswordRequired && !passwordRulesOk) || passwordErrors.length }" />
+              <ul class="mt-2 text-sm flex flex-wrap gap-x-4 gap-y-1">
+                <li v-for="rule in passwordRules" :key="rule.key" class="flex items-center gap-x-2"
+                  :class="rule.ok ? 'text-green-600' : 'text-red-600'">
+                  <Icon :name="rule.ok ? 'fa6-solid:circle-check' : 'fa6-solid:circle-xmark'" />
+                  {{ t(`user_group.password_rule.${rule.key}`) }}
+                </li>
+              </ul>
+              <p v-for="message in passwordErrors" :key="message" class="mt-1 text-sm text-red-600">
+                {{ message }}
               </p>
             </div>
 
@@ -357,11 +389,8 @@ onMounted(() => {
                 {{ t('user_group.repeat_password') }} <span class="text-red-500">*</span>
               </label>
               <input type="password" v-model="new_app_user.password_confirm" class="input"
-                :class="{ 'invalid': attemptedSave && (changePassword || !item.app_user) && (new_app_user.password_confirm.length < 6 || new_app_user.password !== new_app_user.password_confirm) }" />
-              <p v-if="attemptedSave && (changePassword || !item.app_user) && new_app_user.password_confirm.length < 6" class="mt-1 text-sm text-red-600">
-                {{ t('common.min_length_error', { min: 6 }) }}
-              </p>
-              <p v-else-if="attemptedSave && (changePassword || !item.app_user) && new_app_user.password !== new_app_user.password_confirm" class="mt-1 text-sm text-red-600">
+                :class="{ 'invalid': attemptedSave && isPasswordRequired && new_app_user.password !== new_app_user.password_confirm }" />
+              <p v-if="attemptedSave && isPasswordRequired && new_app_user.password !== new_app_user.password_confirm" class="mt-1 text-sm text-red-600">
                 {{ t('user_group.passwords_do_not_match') }}
               </p>
             </div>

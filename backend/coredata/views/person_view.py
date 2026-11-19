@@ -3,7 +3,7 @@ import datetime
 from django.http import Http404
 from rest_framework.decorators import action
 from rest_framework import viewsets
-from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
+from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.response import Response
@@ -20,7 +20,8 @@ from coredata.models import ConfigProject, Person, PersonAddress, PersonContact,
 from coredata.serializers import PersonCommunicationSerializer, PersonSerializer, PersonAddressSerializer, AddressSerializer, PersonMinimalSerializer
 from coredata.filters.person_filter import PersonFilter
 from coredata.filters.address_filter import AddressFilter, PersonAddressFilter
-from coredata.permissions import PersonPermission
+from contract.permissions import can_read_from_related_module
+from coredata.permissions import PersonPermission, PersonReadPermission
 from coredata.utils.address_utils import get_address_complete_without_city
 from coredata.utils.name_utils import generate_token
 
@@ -29,7 +30,7 @@ class PersonViewSet(viewsets.ModelViewSet):
     API endpoint that allows Person to be viewed or edited.
     """
     queryset = Person.objects.all()
-    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    permission_classes = [IsAuthenticated, PersonReadPermission]
     filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
     filterset_class = PersonFilter
     search_fields = ['token', 'name', 'surname']
@@ -57,6 +58,15 @@ class PersonViewSet(viewsets.ModelViewSet):
         ).order_by('token')
         return queryset
     
+    def retrieve(self, request, *args, **kwargs):
+        response = super().retrieve(request, *args, **kwargs)
+        # Qui només llegeix des d'un altre mòdul no veu els comptes bancaris,
+        # igual que l'endpoint de comptes, que demana `view_person`.
+        if not request.user.has_perm('coredata.view_person'):
+            # Llista buida (no s'elimina el camp): el frontend hi fa `.find()`.
+            response.data['banks'] = []
+        return response
+
     def get_serializer_class(self):
         if self.action == 'list':  # Corresponds to GET / (list view)
             return PersonMinimalSerializer
@@ -267,6 +277,8 @@ class PersonViewSet(viewsets.ModelViewSet):
             group_permissions = PermissionManager.get_model_group_permissions(group, 'person')
             return Response(group_permissions, status=status.HTTP_200_OK)
         permissions = PermissionManager.get_model_permissions(request.user, 'person', 'coredata')
+        # Mateix criteri que PersonReadPermission (també llegeixen els mòduls relacionats)
+        permissions['can_view'] = permissions['can_view'] or can_read_from_related_module(request.user)
         return Response(permissions, status=status.HTTP_200_OK)
     
     def get_permissions(self):
