@@ -250,6 +250,10 @@ msgid "Ramader quota 0"
 msgstr "Livestock fee 0"
 
 #: statistics/utils/report_billing_service.py
+msgid "Vol. consumit d'ús agrícola"
+msgstr "Agricultural use consumed vol."
+
+#: statistics/utils/report_billing_service.py
 msgid "Explotació"
 msgstr "Exploitation"
 
