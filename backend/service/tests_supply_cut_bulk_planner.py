@@ -709,6 +709,8 @@ class TestStreetResolveIdsEndpoint(TestCase):
         from coredata.views.street_view import StreetViewSet
         factory = APIRequestFactory()
         user = User.objects.create_user(username='streetuser', password='password')
+        # El planificador de talls llegeix carrers amb el permís de talls (#2654).
+        user.user_permissions.add(Permission.objects.get(content_type__app_label='service', codename='view_supplycut'))
         view = StreetViewSet.as_view({'post': 'resolve_ids'})
         request = factory.post(
             '/coredata/street/resolve-ids/',
@@ -730,11 +732,22 @@ class TestStreetResolveIdsEndpoint(TestCase):
         from coredata.views.street_view import StreetViewSet
         factory = APIRequestFactory()
         user = User.objects.create_user(username='streetuser2', password='password')
+        # El planificador de talls llegeix carrers amb el permís de talls (#2654).
+        user.user_permissions.add(Permission.objects.get(content_type__app_label='service', codename='view_supplycut'))
         view = StreetViewSet.as_view({'post': 'resolve_ids'})
         request = factory.post('/coredata/street/resolve-ids/', {'ids': 'nope'}, format='json')
         force_authenticate(request, user=user)
         response = view(request)
         self.assertEqual(response.status_code, 400)
+
+    def test_resolve_ids_requires_read_permission(self):
+        from coredata.views.street_view import StreetViewSet
+        factory = APIRequestFactory()
+        user = User.objects.create_user(username='streetuser3', password='password')
+        view = StreetViewSet.as_view({'post': 'resolve_ids'})
+        request = factory.post('/coredata/street/resolve-ids/', {'ids': [str(self.street_a.id)]}, format='json')
+        force_authenticate(request, user=user)
+        self.assertEqual(view(request).status_code, 403)
 
 
 class TestSupplyCutLifecycleVulnerability(BulkPlannerFixtureMixin, TestCase):

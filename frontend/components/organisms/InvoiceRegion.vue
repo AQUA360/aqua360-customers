@@ -64,6 +64,7 @@ const { $VerifactuApiService, $InvoiceApiService, $ConfigProjectApiService, $Per
 const pending = ref(true);
 const error = ref(null);
 const reloadLog = ref(false);
+const reloadPayments = ref(false);
 const data = ref(null);
 const invoiceId = ref(props.id);
 
@@ -136,6 +137,7 @@ const getData = async (load = true) => {
   if (load) pending.value = true;
   error.value = null;
   reloadLog.value = !reloadLog.value;
+  reloadPayments.value = !reloadPayments.value;
   try {
     origin_reading.value = await $ConfigProjectApiService.get('origin_reading_token');
     status_confirmed_token.value = await $ConfigProjectApiService.get('invoice_status_confirmed_token');
@@ -470,6 +472,16 @@ const canSaveToPiggyBank = computed(() => {
     && statusToken !== status_canceled_token.value;
 });
 
+const canManualPay = computed(() => {
+  if (!data.value) return false;
+  if (canSaveToPiggyBank.value) return false;
+  const statusToken = data.value.status?.token;
+  if (!statusToken) return false;
+  return statusToken !== status_pending_token.value
+    && statusToken !== status_canceled_token.value
+    && statusToken !== status_paid_token.value;
+});
+
 const saveToPiggyBank = async () => {
   if (!confirm(t("confirmation_text_block.confirm_save_amount_in_piggy_bank"))) return;
   try {
@@ -607,7 +619,7 @@ const handleRefactor = async () => {
         :message="data.type.token != invoice_token ? t('confirmation_text_block.confirm_delete_budget') : t('confirmation_text_block.confirm_delete_pre_invoice')"
         :expected-phrase="data.type.token != invoice_token ? t('confirmation_phrase_block.delete_budget') : t('confirmation_phrase_block.delete_pre_invoice')" @confirm="deleteBudget" />
       <InvoiceRegionModals class="overflow-x-hidden" ref="modalsRef" :invoice-id="invoiceId" :data="data"
-        :local-persons="localPersons" @refresh-data="getData"
+        :local-persons="localPersons" @refresh-data="(load) => { getData(load); emit('changed'); }"
         @open-person-bank-select="showRegionDetailComponent = 'PersonBankSelect'"
         @close-person-bank-select="closeSubRegion" :is_paid="data.status?.token == status_paid_token" />
 
@@ -696,6 +708,14 @@ const handleRefactor = async () => {
             @click="modalsRef?.openDateModalForPayment(data.due_date)">
             <Icon name="fa6-solid:credit-card" class="display-inline mr-2" /> {{ `${t('common.generate')}
             ${t('billing_block.payment').toLowerCase()}` }}
+          </DropdownOption>
+          <DropdownOption
+            v-if="canManualPay"
+            :disabled="allow_changes || !Number(data.left_to_pay) || !(data.total_payments > 0)"
+            :name="t('billing_block.single_pay')"
+            @click="modalsRef?.openManualPayment()">
+            <Icon name="fa6-solid:coins" class="display-inline mr-2" />
+            {{ t('billing_block.single_pay') }}
           </DropdownOption>
           <!-- Pagada: el mètode no es pot canviar sense fer-ne abans el retorn (el moviment comptable no canviaria) -->
           <DropdownOption v-if="data.status?.token != status_canceled_token" :disabled="allow_changes ||
@@ -932,7 +952,8 @@ const handleRefactor = async () => {
 
           <section v-show="activeTab === 'payments'" role="tabpanel" id="tab_payments" class="bg-white antialiased">
             <div class="mt-2">
-              <InvoicePaymentDetail :invoice_id="invoiceId" @show-detail="showDetail" :isSubRegion="isSubRegion"
+              <InvoicePaymentDetail :invoice_id="invoiceId" :reload="reloadPayments" @show-detail="showDetail"
+                :isSubRegion="isSubRegion"
                 @generate-payment-proof="(id, payment_date) => modalsRef?.openPaymentProof(id, payment_date)" />
             </div>
           </section>

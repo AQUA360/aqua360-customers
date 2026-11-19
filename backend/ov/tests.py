@@ -10,7 +10,7 @@ from io import BytesIO, StringIO
 from unittest.mock import patch
 
 from django.conf import settings
-from django.contrib.auth.models import User
+from django.contrib.auth.models import Permission, User
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.cache import cache
 from django.db import connection
@@ -269,6 +269,11 @@ class MeterSerialNumberSerializationTests(TestCase):
         self.client.force_authenticate(self.user)
 
     def test_contract_serializer_endpoint_uses_meter_code(self):
+        # `contract-ov` amb token és la vista interna de contractes
+        # (/contract/contract-ov/<token>/), que demana permís de lectura.
+        self.user.user_permissions.add(
+            Permission.objects.get(content_type__app_label="contract", codename="view_contract")
+        )
         response = self.client.get(
             reverse(
                 "contract-ov",

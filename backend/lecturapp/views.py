@@ -139,7 +139,7 @@ def password_change(request):
         }, status=400)
     
     operator = get_authenticated_operator(request)
-    serializer = ReadingOperatorPasswordChangeSerializer(data=request.POST)
+    serializer = ReadingOperatorPasswordChangeSerializer(data=request.POST, context={'operator': operator})
     
     if serializer.is_valid():
         old_password = serializer.validated_data['old_password']

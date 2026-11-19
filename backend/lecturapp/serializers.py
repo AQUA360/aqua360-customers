@@ -18,6 +18,7 @@ from service.utils.route_scope import (
 )
 from statistics.models import ContractConsumption
 from .models import ReadingOperator
+from .validators import check_operator_password
 
 
 def _reading_mode_flags(context):
@@ -206,7 +207,7 @@ class ReadingOperatorSerializer(serializers.ModelSerializer):
 class ReadingOperatorCreateSerializer(serializers.ModelSerializer):
     """Serializer for creating ReadingOperator with password"""
     
-    password = serializers.CharField(write_only=True, min_length=6)
+    password = serializers.CharField(write_only=True)
     password_confirm = serializers.CharField(write_only=True)
     
     class Meta:
@@ -216,6 +217,9 @@ class ReadingOperatorCreateSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         if attrs['password'] != attrs['password_confirm']:
             raise serializers.ValidationError("Passwords don't match")
+        check_operator_password(
+            attrs['password'], username=attrs.get('username'), name=attrs.get('name'), surname=attrs.get('surname'),
+        )
         return attrs
     
     def create(self, validated_data):
@@ -233,12 +237,14 @@ class ReadingOperatorPasswordChangeSerializer(serializers.Serializer):
     """Serializer for changing password"""
     
     old_password = serializers.CharField(write_only=True)
-    new_password = serializers.CharField(write_only=True, min_length=6)
+    new_password = serializers.CharField(write_only=True)
     new_password_confirm = serializers.CharField(write_only=True)
     
     def validate(self, attrs):
         if attrs['new_password'] != attrs['new_password_confirm']:
             raise serializers.ValidationError("New passwords don't match")
+        # L'operari autenticat (context 'operator') per comparar la contrasenya amb les seves dades
+        check_operator_password(attrs['new_password'], field='new_password', operator=self.context.get('operator'))
         return attrs
 
 class AuthenticationSerializer(serializers.Serializer):

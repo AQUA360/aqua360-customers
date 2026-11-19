@@ -5,9 +5,8 @@ from django.db import transaction
 from django.db.models import F
 from coredata.models import ConfigProject
 from service.models import Meter, MeterStatus, SupplyPoint
-from service.utils.supply_point_service import supply_point_change_meter  # ajusta l'import real si cal
+from service.utils.supply_point_service import supply_point_change_meter
 from billing.models import EstimatedBag, Reading, EstimatedBagMovement
-from logger.models import LogSupplyPointChange
 
 
 METER_CHANGE_ORIGIN = 'Canvi de comptador'
@@ -143,7 +142,8 @@ def get_meter_assignments_elsewhere(meter, supply_point_id=None):
     return assignments
 
 
-def release_meter_from_other_supply_points(user, meter, target_supply_point):
+def release_meter_from_other_supply_points(user, meter, target_supply_point,
+                                           change_date=None, source='other', order=None):
     """
     Treu el comptador dels altres punts on era i deixa constància del canvi
     a l'historial de cadascun (no només al punt on s'assigna).
@@ -155,15 +155,11 @@ def release_meter_from_other_supply_points(user, meter, target_supply_point):
         return
     SupplyPoint.objects.filter(id__in=[sp.id for sp in others]).update(meter=None)
     for supply_point in others:
-        LogSupplyPointChange.objects.create(
-            supply_point=supply_point,
-            user=user,
-            action='meter',
-            field_changed='meter',
-            previous_value=meter.code,
-            current_value=None,
-            previous_related_id=meter.id,
-            current_related_id=None,
+        supply_point_change_meter(
+            user, supply_point.id, meter, None,
+            change_date=change_date,
+            source=source,
+            order=order,
             observation=f"Comptador retirat per assignar-lo al punt {target_supply_point.token}",
         )
 
@@ -195,9 +191,11 @@ class MeterChangeService:
     via ordre de treball, i el consumidor RabbitMQ/GMAO.
     """
 
-    def __init__(self, user, order_report=None):
+    def __init__(self, user, order_report=None, source='other', order=None):
         self.user = user
         self.order_report = order_report  # per deixar procedència a Reading, si el camp existeix
+        self.source = source  # SupplyPointMeterHistory.SOURCE_CHOICES
+        self.order = order
 
     @transaction.atomic
     def apply(self, supply_point_id, prev_meter_id, new_meter_id, origin,
@@ -231,7 +229,10 @@ class MeterChangeService:
             assignments = get_meter_assignments_elsewhere(new_meter, supply_point.id)
             if assignments:
                 raise MeterAssignedElsewhereError(assignments)
-        release_meter_from_other_supply_points(self.user, new_meter, supply_point)
+        release_meter_from_other_supply_points(
+            self.user, new_meter, supply_point,
+            change_date=change_date, source=self.source, order=self.order,
+        )
 
         supply_point.meter = new_meter
         supply_point.save()
@@ -249,7 +250,15 @@ class MeterChangeService:
 
         set_meter_change_dates(new_meter, released_meter, change_date)
 
-        supply_point_change_meter(self.user, supply_point.id, current_meter, new_meter)
+        supply_point_change_meter(
+            self.user, supply_point.id, current_meter, new_meter,
+            change_date=change_date,
+            # Mateix criteri que _create_meter_reading: lectura buida => 0.
+            old_reading=((previous_reading_data or {}).get('reading_value') or 0) if current_meter else None,
+            new_reading=(new_reading_data or {}).get('reading_value') or 0,
+            source=self.source,
+            order=self.order,
+        )
 
         if current_meter:
             self._create_meter_reading(
