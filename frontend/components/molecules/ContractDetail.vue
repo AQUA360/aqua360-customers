@@ -634,7 +634,7 @@ watch(() => props.data, (newValue) => {
                   </abbr>
                 </FieldDetail>
                 <FieldDetail class="col-span-2" v-if="localData.payment?.IBAN?.updated_at" :label="$t('common.updated')"
-                  :value="formatDate(localData.payment?.IBAN?.updated_at)" />
+                  :value="`${formatDate(localData.payment?.IBAN?.updated_at)}${localData.payment?.IBAN?.origin ? ` (${localData.payment.IBAN.origin})` : ''}`" />
               </div>
               <div v-if="localData.payment?.type?.token == 'DIRECT_DEBIT'" class="relative group">
                 <BankDetail :item="localData.payment?.IBAN" :is_detail="true"
