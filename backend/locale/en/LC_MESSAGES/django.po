@@ -4367,3 +4367,133 @@ msgstr "The password must contain at least one special character."
 #: auth/serializers.py
 msgid "Invalid permission data."
 msgstr "Invalid permission data."
+
+#: communication/utils/send_errors.py
+#, python-format
+msgid "The email could not be sent: %(detail)s"
+msgstr "The email could not be sent: %(detail)s"
+
+#: communication/utils/send_errors.py
+msgid "The email could not be sent. Unknown error from the mail server."
+msgstr "The email could not be sent. Unknown error from the mail server."
+
+#: communication/utils/send_errors.py
+msgid "The email could not be prepared. Check the message and the company's email configuration."
+msgstr "The email could not be prepared. Check the message and the company's email configuration."
+
+#: communication/utils/send_errors.py
+msgid "The email could not be sent: the communication has no company configuration."
+msgstr "The email could not be sent: the communication has no company configuration."
+
+#: communication/utils/send_errors.py
+msgid "The email could not be sent: the recipient has no email address."
+msgstr "The email could not be sent: the recipient has no email address."
+
+#: communication/utils/send_errors.py
+msgid "The email could not be sent: there is no sender address configured."
+msgstr "The email could not be sent: there is no sender address configured."
+
+#: communication/utils/send_errors.py
+msgid "the recipient's address is not valid."
+msgstr "the recipient's address is not valid."
+
+#: communication/utils/send_errors.py
+msgid "the mail server rejected the recipient's address (the mailbox does not exist or does not accept emails)."
+msgstr "the mail server rejected the recipient's address (the mailbox does not exist or does not accept emails)."
+
+#: communication/utils/send_errors.py
+msgid "the recipient's mailbox is full."
+msgstr "the recipient's mailbox is full."
+
+#: communication/utils/send_errors.py
+msgid "the email is larger than the mail server allows. Reduce the size or the number of attachments."
+msgstr "the email is larger than the mail server allows. Reduce the size or the number of attachments."
+
+#: communication/utils/send_errors.py
+msgid "the mail server has temporarily limited the number of emails sent. Try again later."
+msgstr "the mail server has temporarily limited the number of emails sent. Try again later."
+
+#: communication/utils/send_errors.py
+msgid "the mail server is temporarily unavailable. Try again later."
+msgstr "the mail server is temporarily unavailable. Try again later."
+
+#: communication/utils/send_errors.py
+msgid "the mail server rejected the sender's credentials. Check the email configuration."
+msgstr "the mail server rejected the sender's credentials. Check the email configuration."
+
+#: communication/utils/send_errors.py
+msgid "the email account is not allowed to send from the sender's address. Check the email configuration."
+msgstr "the email account is not allowed to send from the sender's address. Check the email configuration."
+
+#: communication/utils/send_errors.py
+msgid "the sender's mailbox does not exist or is not enabled to send emails."
+msgstr "the sender's mailbox does not exist or is not enabled to send emails."
+
+#: communication/utils/send_errors.py
+msgid "the sender's mailbox has exceeded its storage quota."
+msgstr "the sender's mailbox has exceeded its storage quota."
+
+#: communication/utils/send_errors.py
+msgid "the mail server does not accept the sender's address."
+msgstr "the mail server does not accept the sender's address."
+
+#: communication/utils/send_errors.py
+msgid "the mail server rejected the message because of its policy (for example, a spam filter)."
+msgstr "the mail server rejected the message because of its policy (for example, a spam filter)."
+
+#: communication/utils/send_errors.py
+msgid "could not connect to the mail server. Check the server configuration or try again later."
+msgstr "could not connect to the mail server. Check the server configuration or try again later."
+
+#: communication/utils/send_errors.py
+msgid "the mail server did not respond in time. Try again later."
+msgstr "the mail server did not respond in time. Try again later."
+
+#: communication/utils/send_errors.py
+msgid "the secure connection (SSL/TLS) with the mail server failed. Check the SSL/TLS configuration."
+msgstr "the secure connection (SSL/TLS) with the mail server failed. Check the SSL/TLS configuration."
+
+#: communication/utils/send_errors.py
+msgid "the email service is not configured correctly."
+msgstr "the email service is not configured correctly."
+
+#: communication/utils/send_errors.py
+msgid "The SMS could not be sent: the SMS service rejected the credentials. Check the SMS configuration."
+msgstr "The SMS could not be sent: the SMS service rejected the credentials. Check the SMS configuration."
+
+#: communication/utils/send_errors.py
+msgid "The SMS could not be sent: the SMS service has temporarily limited the number of messages. Try again later."
+msgstr "The SMS could not be sent: the SMS service has temporarily limited the number of messages. Try again later."
+
+#: communication/utils/send_errors.py
+msgid "The SMS could not be sent: the SMS service is temporarily unavailable. Try again later."
+msgstr "The SMS could not be sent: the SMS service is temporarily unavailable. Try again later."
+
+#: communication/utils/send_errors.py
+msgid "The SMS could not be sent: could not connect to the SMS service. Try again later."
+msgstr "The SMS could not be sent: could not connect to the SMS service. Try again later."
+
+#: communication/utils/send_errors.py
+msgid "The SMS could not be sent. Unknown error from the SMS service."
+msgstr "The SMS could not be sent. Unknown error from the SMS service."
+
+#: communication/utils/communication_service.py
+msgid "The SMS could not be sent: the communication has no SMS message."
+msgstr "The SMS could not be sent: the communication has no SMS message."
+
+#: integrations/outbound/broadcaster/client.py
+msgid "The SMS could not be sent: the SMS service is not configured."
+msgstr "The SMS could not be sent: the SMS service is not configured."
+
+#: integrations/outbound/broadcaster/client.py
+msgid "The SMS could not be sent: the SMS has no text."
+msgstr "The SMS could not be sent: the SMS has no text."
+
+#: integrations/outbound/broadcaster/client.py
+#, python-format
+msgid "The SMS could not be sent: the phone %(phone)s cannot receive SMS."
+msgstr "The SMS could not be sent: the phone %(phone)s cannot receive SMS."
+
+#: integrations/outbound/broadcaster/client.py
+msgid "The SMS could not be sent: there is no phone number."
+msgstr "The SMS could not be sent: there is no phone number."
