@@ -61,10 +61,34 @@ class BillingPdfParallelTests(TestCase):
             billing_tasks.generate_billing_pdfs(fake_task(concurrency=1), list(range(200)), {}, None, self.on_progress)
         apply_async.assert_not_called()
 
+    def test_les_subtasques_caben_als_processos_del_worker(self):
+        workers = billing_tasks._billing_pdf_workers
+        with mock.patch.object(billing_tasks, 'billing_pdf_parallel_setting', return_value=6):
+            # CELERY_WORKER_CONCURRENCY: la principal ocupa un procés
+            self.assertEqual(workers(fake_task(concurrency=4), 1000), 3)
+            self.assertEqual(workers(fake_task(concurrency=16), 1000), 6)
+            # Sense configurar, tants processos com CPU (com fa Celery)
+            with mock.patch('billing.tasks.os.cpu_count', return_value=3):
+                self.assertEqual(workers(fake_task(concurrency=None), 1000), 2)
+            # Poques factures: com a mínim 20 per subtasca
+            self.assertEqual(workers(fake_task(concurrency=16), 50), 2)
+
+    def test_el_nombre_de_subtasques_surt_del_config_project(self):
+        setting = billing_tasks.billing_pdf_parallel_setting
+        ConfigProject.objects.filter(token=billing_tasks.BILLING_PDF_PARALLEL_WORKERS_TOKEN).delete()
+        self.assertEqual(setting(), billing_tasks.BILLING_PDF_PARALLEL_WORKERS_DEFAULT)
+        config = ConfigProject.objects.create(token=billing_tasks.BILLING_PDF_PARALLEL_WORKERS_TOKEN, value='2')
+        self.assertEqual(setting(), 2)
+        for value, expected in (('1', 1), ('0', 1), ('100', billing_tasks.BILLING_PDF_MAX_SUBTASKS),
+                                ('', billing_tasks.BILLING_PDF_PARALLEL_WORKERS_DEFAULT),
+                                ('quatre', billing_tasks.BILLING_PDF_PARALLEL_WORKERS_DEFAULT)):
+            ConfigProject.objects.filter(id=config.id).update(value=value)
+            self.assertEqual(setting(), expected, value)
+
     def test_reparteix_les_factures_en_subtasques_amb_ids_fixos(self):
         invoice_ids = list(range(1, 101))
         FinishedResult.results = {f'T-pdf-{index}': {'generated': 25 - index} for index in range(4)}
-        with mock.patch.object(billing_tasks, 'BILLING_PDF_PARALLEL_WORKERS', 4), \
+        with mock.patch.object(billing_tasks, 'billing_pdf_parallel_setting', return_value=4), \
                 mock.patch.object(billing_tasks.generate_billing_pdfs_chunk, 'apply_async') as apply_async, \
                 mock.patch('celery.result.AsyncResult', FinishedResult), \
                 mock.patch(GENERATE_PDF) as generate:
@@ -72,7 +96,7 @@ class BillingPdfParallelTests(TestCase):
 
         generate.assert_not_called()
         task_ids = [call.kwargs['task_id'] for call in apply_async.call_args_list]
-        self.assertEqual(task_ids, billing_tasks.billing_pdf_subtask_ids('T'))
+        self.assertEqual(task_ids, billing_tasks.billing_pdf_subtask_ids('T')[:4])
         chunks = [call.kwargs['args'][0] for call in apply_async.call_args_list]
         self.assertEqual(sorted(sum(chunks, [])), invoice_ids)
         self.assertEqual({len(chunk) for chunk in chunks}, {25})
@@ -81,7 +105,7 @@ class BillingPdfParallelTests(TestCase):
 
     def test_si_no_es_pot_encuar_una_subtasca_la_fa_la_principal(self):
         FinishedResult.results = {}
-        with mock.patch.object(billing_tasks, 'BILLING_PDF_PARALLEL_WORKERS', 2), \
+        with mock.patch.object(billing_tasks, 'billing_pdf_parallel_setting', return_value=2), \
                 mock.patch.object(billing_tasks.generate_billing_pdfs_chunk, 'apply_async',
                                   side_effect=[None, Exception('broker caigut')]), \
                 mock.patch('celery.result.AsyncResult', FinishedResult), \
@@ -132,7 +156,7 @@ class BillingPdfChunkTests(TestCase):
                 return False
 
         BillingQueue.objects.filter(id=self.item.id).update(status='failed')
-        with mock.patch.object(billing_tasks, 'BILLING_PDF_PARALLEL_WORKERS', 2), \
+        with mock.patch.object(billing_tasks, 'billing_pdf_parallel_setting', return_value=2), \
                 mock.patch.object(billing_tasks.generate_billing_pdfs_chunk, 'apply_async'), \
                 mock.patch('celery.result.AsyncResult', Running), \
                 mock.patch('billing.tasks.time.sleep') as sleep:

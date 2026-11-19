@@ -2763,7 +2763,11 @@ def create_billings():
 # PDF de les facturacions en paral·lel: la confirmació (numeració, Verifactu) es fa en sèrie
 # i només els PDF es reparteixen entre subtasques. Cada PDF és d'una sola factura (fitxer i
 # versions per id de factura), així que les subtasques no es trepitgen.
-BILLING_PDF_PARALLEL_WORKERS = config('BILLING_PDF_PARALLEL_WORKERS', default=4, cast=int)
+# Subtasques en paral·lel: ConfigProject (es pot canviar sense reiniciar; 1 = en sèrie)
+BILLING_PDF_PARALLEL_WORKERS_TOKEN = 'billing_pdf_parallel_workers'
+BILLING_PDF_PARALLEL_WORKERS_DEFAULT = 4
+# Màxim de subtasques: el kill revoca sempre aquests ids, encara que el valor canviï mentre corre
+BILLING_PDF_MAX_SUBTASKS = 16
 # Per sota d'aquestes factures per subtasca no surt a compte repartir
 BILLING_PDF_MIN_INVOICES_PER_WORKER = 20
 BILLING_PDF_POLL_SECONDS = 5
@@ -2780,7 +2784,17 @@ def billing_pdf_subtask_ids(task_id):
   """
   if not task_id:
     return []
-  return [f"{task_id}-pdf-{index}" for index in range(max(BILLING_PDF_PARALLEL_WORKERS, 1))]
+  return [f"{task_id}-pdf-{index}" for index in range(BILLING_PDF_MAX_SUBTASKS)]
+
+
+def billing_pdf_parallel_setting():
+  """Subtasques de PDF configurades (entre 1 i BILLING_PDF_MAX_SUBTASKS); si el valor no és vàlid, el per defecte."""
+  value = ConfigProject.objects.filter(token=BILLING_PDF_PARALLEL_WORKERS_TOKEN).values_list('value', flat=True).first()
+  try:
+    workers = int(str(value).strip())
+  except (TypeError, ValueError):
+    workers = BILLING_PDF_PARALLEL_WORKERS_DEFAULT
+  return max(1, min(workers, BILLING_PDF_MAX_SUBTASKS))
 
 
 def _billing_pdf_workers(task, total):
@@ -2789,7 +2803,7 @@ def _billing_pdf_workers(task, total):
     return 1
   # La tasca principal ocupa un procés mentre espera: les subtasques han de cabre a la resta
   pool_size = task.app.conf.worker_concurrency or os.cpu_count() or 1
-  return max(1, min(BILLING_PDF_PARALLEL_WORKERS, pool_size - 1, total // BILLING_PDF_MIN_INVOICES_PER_WORKER))
+  return max(1, min(billing_pdf_parallel_setting(), pool_size - 1, total // BILLING_PDF_MIN_INVOICES_PER_WORKER))
 
 
 def _billing_queue_item_is_current(queue_item_id, task_id):
