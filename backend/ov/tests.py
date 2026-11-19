@@ -6699,9 +6699,15 @@ class FutureInvoiceVisibilityOVTests(TestCase):
         Invoice.objects.filter(pk=self.invoices["future"].pk).update(
             created_at=timezone.now() + timedelta(minutes=5)
         )
-        serializer = ContractSerializer()
-
-        self.assertNotEqual(
-            serializer.get_last_invoice_date(self.contract),
-            Invoice.objects.get(pk=self.invoices["future"].pk).created_at,
+        expected = (
+            Invoice.objects.filter(contract=self.contract)
+            .exclude(pk=self.invoices["future"].pk)
+            .order_by("-created_at")
+            .values_list("created_at", flat=True)
+            .first()
         )
+
+        last_invoice_date = ContractSerializer().get_last_invoice_date(self.contract)
+
+        self.assertIsNotNone(last_invoice_date)
+        self.assertEqual(last_invoice_date, expected)
