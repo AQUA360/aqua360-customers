@@ -159,6 +159,11 @@ class BillingConsumption(models.Model):
     tax_amount = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
     net_amount = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
     
+    # Barra del gràfic de consum del PDF (veure billing.utils.charts_service.invoice_chart_bar): data de
+    # l'última lectura activa de la factura i consum facturat. De moment el gràfic encara no les llegeix.
+    chart_date = models.DateField(null=True, blank=True)
+    chart_consumption = models.FloatField(null=True, blank=True)
+
     is_active = models.BooleanField(default=True)
 
     class Meta:

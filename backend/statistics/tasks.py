@@ -17,6 +17,9 @@ from service.models import SupplyPoint
 from statistics.utils.daily_document_service import execute_available_report, generate_daily_document
 from statistics.utils.billing_amount_average import seasonal_amounts
 from .models import ContractConsumption, BillingConsumption, DailyDocument, DailyDocumentStatus, DailyDocumentTemplate
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class ReportWarning(Exception):
@@ -161,6 +164,15 @@ def update_billing_consumption(invoice_id):
                 if is_anomaly_long_period or is_anomaly_short_period:
                     is_active_stat = False
 
+        # --- Barra del gràfic de consum (mateix càlcul que el PDF) ---
+        # Si falla, el consum es desa igualment sense la barra (el backfill la tornarà a provar)
+        from billing.utils.charts_service import invoice_chart_bar
+        try:
+            chart_date, chart_consumption = invoice_chart_bar(invoice)
+        except Exception:
+            logger.exception("No s'ha pogut calcular la barra del gràfic de la factura %s", invoice_id)
+            chart_date, chart_consumption = None, None
+
         # --- Crear o actualitzar el consum ---
         BillingConsumption.objects.update_or_create(
             invoice=invoice,
@@ -176,6 +188,8 @@ def update_billing_consumption(invoice_id):
                 'total_amount_avg': avg_amount,
                 'tax_amount': tax_amount,
                 'net_amount': net_amount,
+                'chart_date': chart_date,
+                'chart_consumption': chart_consumption,
                 'is_active': is_active_stat,
             }
         )
@@ -216,9 +230,41 @@ def backfill_billing_consumption():
             if i % 500 == 0:
                 print(f"Progress {i}/{total}")
 
-        return f"Backfilled billing consumption for {total} invoices"
+        chart_filled = fill_billing_consumption_chart()
+        return f"Backfilled billing consumption for {total} invoices ({chart_filled} chart bars)"
     except Exception as e:
         return f"Error backfilling billing consumption: {e}"
+
+BILLING_CONSUMPTION_CHART_BATCH_SIZE = 500
+
+
+def fill_billing_consumption_chart(batch_size=BILLING_CONSUMPTION_CHART_BATCH_SIZE):
+    """
+    Omple la barra del gràfic (`chart_date`, `chart_consumption`) dels consums que no en tenen,
+    amb les lectures precarregades per trossos. Les factures sense lectures no en tenen barra i es
+    tornen a mirar a cada execució (són poques i és una sola consulta per tros).
+    Retorna quantes n'ha omplert.
+    """
+    from billing.utils.charts_service import ChartHistory, invoice_chart_bar
+
+    pending_ids = list(
+        BillingConsumption.objects.filter(chart_date__isnull=True).order_by('id').values_list('id', flat=True)
+    )
+    filled = 0
+    for start in range(0, len(pending_ids), batch_size):
+        rows = list(
+            BillingConsumption.objects.filter(id__in=pending_ids[start:start + batch_size]).select_related('invoice')
+        )
+        history = ChartHistory([row.invoice for row in rows], bars_only=True)
+        to_update = []
+        for row in rows:
+            row.chart_date, row.chart_consumption = invoice_chart_bar(row.invoice, history)
+            if row.chart_date is not None:
+                to_update.append(row)
+        BillingConsumption.objects.bulk_update(to_update, ['chart_date', 'chart_consumption'])
+        filled += len(to_update)
+    return filled
+
 
 def prefill_invoice_periods():
     qs = Invoice.objects.filter(

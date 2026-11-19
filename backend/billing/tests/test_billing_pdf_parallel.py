@@ -172,3 +172,29 @@ class BillingPdfChunkTests(TestCase):
         revoke.assert_called_once_with(
             ['T', *billing_tasks.billing_pdf_subtask_ids('T')], terminate=True, signal='SIGKILL',
         )
+
+
+class ChartHistoryInPdfLoopTests(TestCase):
+    """Els PDF es generen amb l'historial del gràfic precarregat per trossos, només si algun missatge té gràfic."""
+
+    def seen_scopes(self, invoice_ids):
+        from billing.utils import charts_service
+        seen = []
+        for invoice_id in billing_tasks._with_chart_history(invoice_ids):
+            history = charts_service._chart_history.get()
+            seen.append((invoice_id, history.has(SimpleNamespace(id=invoice_id)) if history else None))
+        return seen
+
+    def test_sense_missatges_de_grafic_no_es_precarrega(self):
+        self.assertEqual(self.seen_scopes([1, 2]), [(1, None), (2, None)])
+
+    def test_amb_grafic_es_precarrega_per_trossos(self):
+        from billing.models import Message
+        Message.objects.create(message_type='GRAPHIC')
+        with mock.patch.object(billing_tasks, 'CHART_HISTORY_BATCH_SIZE', 2), \
+                mock.patch('billing.utils.charts_service.ChartHistory') as history_class:
+            history_class.side_effect = lambda invoices: SimpleNamespace(has=lambda invoice: True)
+            seen = self.seen_scopes([1, 2, 3])
+        self.assertEqual([invoice_id for invoice_id, _ in seen], [1, 2, 3])
+        self.assertTrue(all(has for _, has in seen))
+        self.assertEqual(history_class.call_count, 2)

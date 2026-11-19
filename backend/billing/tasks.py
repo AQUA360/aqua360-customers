@@ -2830,13 +2830,49 @@ def _generate_invoice_pdf(invoice_id, config_cache=None):
     close_old_connections()
 
 
+# Factures per tros amb l'historial del gràfic de consum precarregat
+CHART_HISTORY_BATCH_SIZE = 200
+
+
+def _with_chart_history(invoice_ids):
+  """
+  Recorre `invoice_ids` amb l'historial del gràfic de consum precarregat per trossos: el gràfic
+  fa poques consultes per tros en lloc de desenes per factura. Si cap plantilla té gràfic o la
+  precàrrega falla, es recorren sense (el gràfic consulta factura a factura, com abans).
+  """
+  import contextlib
+  from billing.models import Message
+  from billing.utils.charts_service import chart_history_scope
+
+  preload = Message.objects.filter(message_type='GRAPHIC').exists()
+  for start in range(0, len(invoice_ids), CHART_HISTORY_BATCH_SIZE):
+    batch = invoice_ids[start:start + CHART_HISTORY_BATCH_SIZE]
+    scope = contextlib.nullcontext()
+    if preload:
+      try:
+        scope = chart_history_scope(
+          Invoice.objects.filter(id__in=batch).select_related('contract', 'contract_termination__contract')
+        )
+        scope.__enter__()
+      except Exception:
+        logger.exception("No s'ha pogut precarregar l'historial del gràfic: es consulta factura a factura")
+        scope = contextlib.nullcontext()
+        scope.__enter__()
+    else:
+      scope.__enter__()
+    try:
+      yield from batch
+    finally:
+      scope.__exit__(None, None, None)
+
+
 def _generate_invoice_pdfs_in_process(invoice_ids, config_cache, on_progress, queue_item_id=None, done_offset=0):
   """
   Genera els PDF en aquest procés. Sense `queue_item_id` informa el total de generats a
   `on_progress`; amb, el compta a la cua atòmicament (hi ha subtasques comptant alhora).
   """
   generated = 0
-  for done, invoice_id in enumerate(invoice_ids, start=1):
+  for done, invoice_id in enumerate(_with_chart_history(invoice_ids), start=1):
     if _generate_invoice_pdf(invoice_id, config_cache):
       generated += 1
       if queue_item_id:
@@ -2852,7 +2888,7 @@ def generate_billing_pdfs_chunk(self, invoice_ids, config_cache=None, queue_item
   progress_recorder = ProgressRecorder(self)
   total = len(invoice_ids)
   generated = 0
-  for done, invoice_id in enumerate(invoice_ids, start=1):
+  for done, invoice_id in enumerate(_with_chart_history(invoice_ids), start=1):
     # La tasca principal pot haver estat aturada o reiniciada mentre aquesta era a la cua
     if queue_item_id and (done == 1 or done % 50 == 0) and not _billing_queue_item_is_current(queue_item_id, parent_task_id):
       return {'generated': generated, 'stopped': True}
