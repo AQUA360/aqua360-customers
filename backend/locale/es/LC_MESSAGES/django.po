@@ -6387,3 +6387,133 @@ msgstr "La contraseña debe contener como mínimo un carácter especial."
 #: auth/serializers.py
 msgid "Invalid permission data."
 msgstr "Los datos de permisos no son válidos."
+
+#: communication/utils/send_errors.py
+#, python-format
+msgid "The email could not be sent: %(detail)s"
+msgstr "No se ha podido enviar el correo: %(detail)s"
+
+#: communication/utils/send_errors.py
+msgid "The email could not be sent. Unknown error from the mail server."
+msgstr "No se ha podido enviar el correo. Error desconocido del servidor de correo."
+
+#: communication/utils/send_errors.py
+msgid "The email could not be prepared. Check the message and the company's email configuration."
+msgstr "No se ha podido preparar el correo. Revise el mensaje y la configuración de correo de la empresa."
+
+#: communication/utils/send_errors.py
+msgid "The email could not be sent: the communication has no company configuration."
+msgstr "No se ha podido enviar el correo: la comunicación no tiene ninguna configuración de empresa."
+
+#: communication/utils/send_errors.py
+msgid "The email could not be sent: the recipient has no email address."
+msgstr "No se ha podido enviar el correo: el destinatario no tiene ninguna dirección de correo."
+
+#: communication/utils/send_errors.py
+msgid "The email could not be sent: there is no sender address configured."
+msgstr "No se ha podido enviar el correo: no hay ninguna dirección de remitente configurada."
+
+#: communication/utils/send_errors.py
+msgid "the recipient's address is not valid."
+msgstr "la dirección del destinatario no es válida."
+
+#: communication/utils/send_errors.py
+msgid "the mail server rejected the recipient's address (the mailbox does not exist or does not accept emails)."
+msgstr "el servidor de correo ha rechazado la dirección del destinatario (el buzón no existe o no acepta correos)."
+
+#: communication/utils/send_errors.py
+msgid "the recipient's mailbox is full."
+msgstr "el buzón del destinatario está lleno."
+
+#: communication/utils/send_errors.py
+msgid "the email is larger than the mail server allows. Reduce the size or the number of attachments."
+msgstr "el correo supera el tamaño máximo que permite el servidor. Reduzca el tamaño o el número de adjuntos."
+
+#: communication/utils/send_errors.py
+msgid "the mail server has temporarily limited the number of emails sent. Try again later."
+msgstr "el servidor de correo ha limitado temporalmente los envíos. Vuelva a intentarlo más tarde."
+
+#: communication/utils/send_errors.py
+msgid "the mail server is temporarily unavailable. Try again later."
+msgstr "el servidor de correo no está disponible temporalmente. Vuelva a intentarlo más tarde."
+
+#: communication/utils/send_errors.py
+msgid "the mail server rejected the sender's credentials. Check the email configuration."
+msgstr "el servidor de correo ha rechazado las credenciales del remitente. Revise la configuración de correo."
+
+#: communication/utils/send_errors.py
+msgid "the email account is not allowed to send from the sender's address. Check the email configuration."
+msgstr "la cuenta de correo no tiene permiso para enviar desde la dirección del remitente. Revise la configuración de correo."
+
+#: communication/utils/send_errors.py
+msgid "the sender's mailbox does not exist or is not enabled to send emails."
+msgstr "el buzón del remitente no existe o no está habilitado para enviar correos."
+
+#: communication/utils/send_errors.py
+msgid "the sender's mailbox has exceeded its storage quota."
+msgstr "el buzón del remitente ha superado la cuota de almacenamiento."
+
+#: communication/utils/send_errors.py
+msgid "the mail server does not accept the sender's address."
+msgstr "el servidor de correo no acepta la dirección del remitente."
+
+#: communication/utils/send_errors.py
+msgid "the mail server rejected the message because of its policy (for example, a spam filter)."
+msgstr "el servidor de correo ha rechazado el mensaje por sus políticas (por ejemplo, un filtro de correo no deseado)."
+
+#: communication/utils/send_errors.py
+msgid "could not connect to the mail server. Check the server configuration or try again later."
+msgstr "no se ha podido conectar con el servidor de correo. Revise la configuración del servidor o vuelva a intentarlo más tarde."
+
+#: communication/utils/send_errors.py
+msgid "the mail server did not respond in time. Try again later."
+msgstr "el servidor de correo no ha respondido a tiempo. Vuelva a intentarlo más tarde."
+
+#: communication/utils/send_errors.py
+msgid "the secure connection (SSL/TLS) with the mail server failed. Check the SSL/TLS configuration."
+msgstr "ha fallado la conexión segura (SSL/TLS) con el servidor de correo. Revise la configuración SSL/TLS."
+
+#: communication/utils/send_errors.py
+msgid "the email service is not configured correctly."
+msgstr "el servicio de correo no está bien configurado."
+
+#: communication/utils/send_errors.py
+msgid "The SMS could not be sent: the SMS service rejected the credentials. Check the SMS configuration."
+msgstr "No se ha podido enviar el SMS: el servicio de SMS ha rechazado las credenciales. Revise la configuración de SMS."
+
+#: communication/utils/send_errors.py
+msgid "The SMS could not be sent: the SMS service has temporarily limited the number of messages. Try again later."
+msgstr "No se ha podido enviar el SMS: el servicio de SMS ha limitado temporalmente los envíos. Vuelva a intentarlo más tarde."
+
+#: communication/utils/send_errors.py
+msgid "The SMS could not be sent: the SMS service is temporarily unavailable. Try again later."
+msgstr "No se ha podido enviar el SMS: el servicio de SMS no está disponible temporalmente. Vuelva a intentarlo más tarde."
+
+#: communication/utils/send_errors.py
+msgid "The SMS could not be sent: could not connect to the SMS service. Try again later."
+msgstr "No se ha podido enviar el SMS: no se ha podido conectar con el servicio de SMS. Vuelva a intentarlo más tarde."
+
+#: communication/utils/send_errors.py
+msgid "The SMS could not be sent. Unknown error from the SMS service."
+msgstr "No se ha podido enviar el SMS. Error desconocido del servicio de SMS."
+
+#: communication/utils/communication_service.py
+msgid "The SMS could not be sent: the communication has no SMS message."
+msgstr "No se ha podido enviar el SMS: la comunicación no tiene ningún mensaje de SMS."
+
+#: integrations/outbound/broadcaster/client.py
+msgid "The SMS could not be sent: the SMS service is not configured."
+msgstr "No se ha podido enviar el SMS: el servicio de SMS no está configurado."
+
+#: integrations/outbound/broadcaster/client.py
+msgid "The SMS could not be sent: the SMS has no text."
+msgstr "No se ha podido enviar el SMS: el SMS no tiene texto."
+
+#: integrations/outbound/broadcaster/client.py
+#, python-format
+msgid "The SMS could not be sent: the phone %(phone)s cannot receive SMS."
+msgstr "No se ha podido enviar el SMS: el teléfono %(phone)s no puede recibir SMS."
+
+#: integrations/outbound/broadcaster/client.py
+msgid "The SMS could not be sent: there is no phone number."
+msgstr "No se ha podido enviar el SMS: no hay ningún teléfono."

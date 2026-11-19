@@ -1,5 +1,6 @@
 import requests
 from django.conf import settings
+from django.utils.translation import gettext as _
 
 from coredata.utils.phone_utils import to_broadcaster_format
 from integrations.models import IntegrationRequestLog
@@ -57,15 +58,21 @@ class BroadcasterClient:
         només el rep per context.
         """
         if not self.api_url or not self.api_token:
-            raise BroadcasterError("BROADCASTER_API_URL i BROADCASTER_API_TOKEN no estan configurats.")
+            raise BroadcasterError(
+                "BROADCASTER_API_URL i BROADCASTER_API_TOKEN no estan configurats.",
+                user_message=_("The SMS could not be sent: the SMS service is not configured."),
+            )
         if not text:
-            raise BroadcasterError("L'SMS no té text.")
+            raise BroadcasterError("L'SMS no té text.", user_message=_("The SMS could not be sent: the SMS has no text."))
 
         recipients = []
         for phone in phones:
             value = to_broadcaster_format(phone)
             if not value:
-                raise BroadcasterError(f"El telèfon {phone} no pot rebre SMS.")
+                raise BroadcasterError(
+                    f"El telèfon {phone} no pot rebre SMS.",
+                    user_message=_("The SMS could not be sent: the phone %(phone)s cannot receive SMS.") % {"phone": phone},
+                )
             # El mateix número escrit de maneres diferents només rep un SMS.
             if any(recipient["value"] == value for recipient in recipients):
                 continue
@@ -75,7 +82,10 @@ class BroadcasterClient:
                 "context": {MESSAGE_VARIABLE: text},
             })
         if not recipients:
-            raise BroadcasterError("No hi ha cap telèfon per enviar l'SMS.")
+            raise BroadcasterError(
+                "No hi ha cap telèfon per enviar l'SMS.",
+                user_message=_("The SMS could not be sent: there is no phone number."),
+            )
 
         payload = {
             "channel": settings.BROADCASTER_CHANNEL,
@@ -104,7 +114,7 @@ class BroadcasterClient:
                 status_code=response.status_code, error_message=error_message,
                 object_type=object_type, object_id=object_id,
             )
-            raise BroadcasterError(error_message)
+            raise BroadcasterError(error_message, status_code=response.status_code)
 
         self._log_request(
             status_code=response.status_code, success=True, object_type=object_type, object_id=object_id,
