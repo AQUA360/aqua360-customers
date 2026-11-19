@@ -1,194 +1,75 @@
 <script setup>
-import { ref, watch } from 'vue';
-import { useRouter } from 'vue-router';
-import { useI18n } from 'vue-i18n';
+import { ref, watch, computed } from 'vue';
 import H1Region from '~/components/atoms/H1Region.vue';
-import ClaimRequestDetail from '../molecules/ClaimRequestDetail.vue';
-import InvoiceRegion from './InvoiceRegion.vue';
-import OptionsDropdown from '~/components/molecules/OptionsDropdown.vue';
-import DropdownOption from '~/components/atoms/DropdownOption.vue';
-import ChangeStatus from '../molecules/ChangeStatus.vue';
-import ExploitationRegion from '../organisms/ExploitationRegion.vue';
-import ContractRegion from './ContractRegion.vue';
-import ContractRequestRegion from './ContractRequestRegion.vue';
-import SupplyPointRegion from './SupplyPointRegion.vue';
-import PersonRegion from './PersonRegion.vue';
-import ContractMiniDetail from '../molecules/ContractMiniDetail.vue';
-import ClaimRequestContractChange from '../atoms/ClaimRequestContractChange.vue';
-import ClaimStepRegion from './ClaimStepRegion.vue';
-
-
-const { t } = useI18n();
+import { formatDate } from '~/utils/date';
+import { formatMoneyWithCurrency } from '~/utils/money';
 
 const props = defineProps({
-  id: Number, // ID de l'element
-  isSubRegion: false,
-  isSubRegionOpen: Boolean
+  id: Number, // ID de la gestió d'impagats
+  contractId: Number, // Opcional: contracte des del qual s'obre (mostra les seves factures a la gestió)
+  isSubRegion: {
+    type: Boolean,
+    default: false
+  },
 });
 
-const emit = defineEmits(['show-subregion', 'changed']);
-const router = useRouter();
 const { $ClaimRequestApiService, $ConfigProjectApiService } = useNuxtApp();
 const pending = ref(true);
 const error = ref(null);
 const data = ref(null);
-const SubRegion = ref(props.isSubRegionOpen);
-const activeTab = ref('contracts');
+const contractData = ref(null);
+const paymentStatusPaidToken = ref(null);
 
-const showRegionDetailComponent = ref(null);
-const regionDetailId = ref(null);
-
-const token_pending = ref(null)
-const token_accepted = ref(null)
-const token_cancelled = ref(null)
-const token_step_vulnerable = ref(null)
-
+// Identificador de la càrrega vigent: si es canvia de gestió mentre una càrrega
+// encara és en curs, la resposta antiga es descarta i no substitueix la nova.
+let currentLoadId = 0;
 
 const getData = async () => {
+  const loadId = ++currentLoadId;
   pending.value = true;
   error.value = null;
 
   try {
-    token_pending.value = await $ConfigProjectApiService.get('claim_request_status_pending_token');
-    token_accepted.value = await $ConfigProjectApiService.get('claim_request_status_accepted_token');
-    token_cancelled.value = await $ConfigProjectApiService.get('claim_request_status_cancelled_token');
-    token_step_vulnerable.value = await $ConfigProjectApiService.get('claim_step_vulnerability_request_token');
-    const result = await $ClaimRequestApiService.getDetail(props.id);
-    data.value = result;
+    const [detail, contracts, paidToken] = await Promise.all([
+      $ClaimRequestApiService.getDetail(props.id),
+      props.contractId ? $ClaimRequestApiService.getContracts(props.id, null, null, props.contractId) : null,
+      props.contractId ? $ConfigProjectApiService.get('payment_status_paid_token') : null,
+    ]);
+    if (loadId !== currentLoadId) return;
+    data.value = detail;
+    contractData.value = contracts?.results?.[0] || null;
+    paymentStatusPaidToken.value = paidToken;
   } catch (err) {
+    if (loadId !== currentLoadId) return;
     error.value = err;
   } finally {
-    pending.value = false;
+    if (loadId === currentLoadId) pending.value = false;
   }
 }
 
-watch(() => props.id, () => {
-  getData();
-  closeSubRegion();
-});
+watch(() => [props.id, props.contractId], getData, { immediate: true });
 
-watch(() => props.isSubRegionOpen, (newValue) => {
-  SubRegion.value = newValue;
-});
+// Ordres de tall / retirada i baixes de la gestió que són d'aquest contracte
+const contractCutOrders = computed(() =>
+  contractData.value ? (data.value?.cut_suply_orders || []).filter(o => o.contract_token === contractData.value.token) : []
+);
+const contractRemoveOrders = computed(() =>
+  contractData.value ? (data.value?.remove_meter_orders || []).filter(o => o.contract_token === contractData.value.token) : []
+);
+const contractTerminations = computed(() =>
+  contractData.value ? (data.value?.contract_termination_requests || []).filter(r => r.contract?.id === contractData.value.id) : []
+);
 
-getData();
+const isClaimPaymentPaid = (claimPayment) =>
+  Boolean(paymentStatusPaidToken.value && claimPayment?.payment?.status?.token === paymentStatusPaidToken.value);
 
-const onClickCheck = async () => {
-  //TODO: CAN THE MANAGEMENT BE MODIFIED?
+const openClaimRequest = () => {
+  return navigateTo(`/billing/claim-managements/edit/${props.id}`);
 }
-
-const goNextClaimStep = async () => {
-  let response = await $ClaimRequestApiService.updateClaimRequestNextStep(data.value.id)
-  refresh()
-}
-
-const refresh = async () => {
-  getData()
-  emit('changed')
-}
-
-const acceptClaim = async () => {
-  let save_data = {
-    id: props.id,
-    status_token: token_accepted.value
-  }
-
-  let response = await $ClaimRequestApiService.save(save_data)
-  refresh()
-}
-
-const denyClaim = async () => {
-  let save_data = {
-    id: props.id,
-    status_token: token_cancelled.value
-  }
-
-  let response = await $ClaimRequestApiService.save(save_data)
-  refresh()
-}
-
-const downloadClaimExcel = async () => {
-  try {
-    let response = await $ClaimRequestApiService.getClaimExcelFile(props.id);
-    const utf8BOM = "\uFEFF";
-    const csvData = utf8BOM + response;
-
-    const blob = new Blob([csvData], { type: "text/csv;charset=utf-8" });
-    const url = window.URL.createObjectURL(blob);
-
-    const a = document.createElement("a");
-    a.href = url;
-
-    let filename = `${data.value.token}.csv`;
-    a.download = filename;
-
-    document.body.appendChild(a);
-    a.click();
-
-    document.body.removeChild(a);
-    window.URL.revokeObjectURL(url);
-  } catch (err) {
-    console.error(err);
-  }
-};
-
-
-const downloadClaimLetters = async () => {
-  try {
-    let response = await $ClaimRequestApiService.downloadClaimDocument(props.id);
-    const blob = new Blob([response], { type: 'application/pdf' });
-
-    const url = window.URL.createObjectURL(blob);
-    //get todays date in string with the format YYYYMMDD without '-' or '_'
-    
-    const date = new Date();
-    const today = date.getFullYear().toString() + 
-                      String(date.getMonth() + 1).padStart(2, '0') + 
-                      String(date.getDate()).padStart(2, '0');
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${data.value.step.document_type.token}${today}.pdf`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-
-    window.URL.revokeObjectURL(url);
-  } catch (err) {
-    console.error(err);
-  }
-}
-
-const updateSubRegion = function () {
-  getData();
-  closeSubRegion();
-  emit('changed')
-}
-
-const closeSubRegion = function () {
-  SubRegion.value = false;
-  showRegionDetailComponent.value = null;
-  emit('show-subregion', false);
-}
-const showSubRegion = function () {
-  SubRegion.value = true;
-  emit('show-subregion', true);
-}
-
-const showDetail = function (component, id) {
-  showRegionDetailComponent.value = component;
-  regionDetailId.value = id;
-  showSubRegion();
-}
-
-const setActiveTab = (tab) => {
-  activeTab.value = tab;
-}
-
-
 </script>
 
 <template>
-  <div class="region__content">
+  <div class="region__content pr-4">
     <div v-if="pending">
       <p>{{ $t('common.loading') }}...</p>
     </div>
@@ -197,86 +78,175 @@ const setActiveTab = (tab) => {
       <p><button @click="getData" class="underline text-sky-500 hover:no-underline">{{ $t('common.load_again')
           }}</button></p>
     </div>
-    <div v-else class="transition-all duration-500 ease" :class="{ 'mr-[48vw]': SubRegion }">
-      <div class="flex justify-between relative">
-        <H1Region class="mb-3">
-          {{ $t('billing_block.non_payment') }}
+    <div v-else-if="data" id="item_data" :data-rel="id" class="min-w-0">
+      <div class="flex justify-between items-start gap-2 mb-3">
+        <H1Region class="min-w-0">
+          {{ $t('claim_block.claim_payments') }}: {{ data.token }}
         </H1Region>
-      </div>
-
-      <div v-if="data" id="item_data" :data-rel=id>
-        <ClaimRequestDetail @show-detail="showDetail" @change="updateSubRegion()" :id="props.id" :data="data"
-          :isSubRegion="isSubRegion" />
-        <AtomsTabs>
-
-          <li class="me-2">
-            <a href="#tab_contracts" @click.prevent="setActiveTab('contracts')"
-              :class="{ 'text-sky-600 border-sky-600': activeTab === 'contracts', 'hover:text-gray-600 hover:border-gray-300': activeTab !== 'contracts' }">
-              <Icon name="fa6-solid:file-contract" class="display-inline mr-2" />
-              {{ $t("common.contracts") }}
-            </a>
-          </li>
-
-          <li class="me-2">
-            <a href="#tab_contract_change" @click.prevent="setActiveTab('contract_change')"
-              :class="{ 'text-sky-600 border-sky-600': activeTab === 'contract_change', 'hover:text-gray-600 hover:border-gray-300': activeTab !== 'contract_change' }">
-              <Icon name="fa6-regular:square-minus" class="display-inline mr-2" />
-              {{ $t("common.changes") }}
-            </a>
-          </li>
-
-        </AtomsTabs>
-        <div id="contract_tabpanels">
-          <section v-show="activeTab === 'contracts'" role="tabpanel" id="tab_contracts"
-            class="bg-white antialiased py-3 h-[50vh] overflow-y-auto border-b rounded">
-            <div v-if="data.contracts.length > 0" class="">
-              <ContractMiniDetail :item="data.contracts" @show-detail="showDetail" />
-            </div>
-            <hr v-if="data.contract_requests.length > 0" class="mt-10 opacity-0" />
-            <div v-if="data.contract_requests.length > 0">
-              <span class="text-slate-500 font-semibold">
-                {{ t('contract_requests') }}
-              </span>
-              <ContractMiniDetail :item="data.contract_requests" @show-detail="showDetail" :is_request="true" />
-            </div>
-            <div v-if="data.contracts.length == 0 && data.contract_requests.length == 0">
-              <span class="text-gray-700 mt-1 font-medium italic text-sm bg-yellow-100 rounded-md px-2 py-1">
-                {{ t('common.no_data_found') }}
-              </span>
-            </div>
-          </section>
-
-          <section v-show="activeTab === 'contract_change'" role="tabpanel" id="tab_contract_change"
-            class="bg-white antialiased py-3">
-            <ClaimRequestContractChange :id="data.id" :object="data" />
-          </section>
-        </div>
-      </div><!-- end if data -->
-    </div><!-- end if pending -->
-
-    <div v-if="SubRegion == true" role="region" id="subregion"
-      class="h-full border-l border-gray-100 transition-all duration-500 ease py-2 text-base bg-white fixed top-0 right-0 w-[48vw] z-50"
-      :class="{ 'translate-x-0': SubRegion, 'translate-x-full': !SubRegion }">
-      <div id="region_nav" class="mb-3 px-3">
-        <button @click="closeSubRegion()" class="px-2 py-1 text-sky-500 hover:bg-slate-200 active:bg-slate-300">
-          <Icon name="fa6-solid:angles-right" class="text-slate-500" />
+        <button @click="openClaimRequest" class="button-primary !px-2.5 !py-1 text-xs shrink-0">
+          <Icon name="fa6-solid:arrow-up-right-from-square" />
+          <span class="ml-1">{{ $t('common.show_detail') }}</span>
         </button>
       </div>
-      <div class="px-10">
-        <!-- SUBREGIONS AQUI -->
-        <ExploitationRegion v-if="showRegionDetailComponent === 'ExploitationRegion'" :id="regionDetailId"
-          :isSubRegion="true" />
-        <ContractRegion v-if="showRegionDetailComponent === 'ContractRegion'" :id="regionDetailId"
-          :isSubRegion="true" />
-        <ContractRequestRegion v-if="showRegionDetailComponent === 'ContractRequestRegion'" :id="regionDetailId"
-          :isSubRegion="true" />
-        <SupplyPointRegion v-if="showRegionDetailComponent === 'SupplyPointRegion'" :id="regionDetailId"
-          :isSubRegion="true" />
-        <PersonRegion v-if="showRegionDetailComponent === 'PersonRegion'" :id="regionDetailId" :isSubRegion="true" />
-        <InvoiceRegion v-if="showRegionDetailComponent === 'InvoiceRegion'" :id="regionDetailId" :isSubRegion="true" />
-        <ClaimStepRegion v-if="showRegionDetailComponent === 'ClaimStepRegion'" :id="regionDetailId"
-          :isSubRegion="true" />
+
+      <!-- Capçalera -->
+      <dl class="claim-header mb-4">
+        <dt>{{ $t('common.status') }}</dt>
+        <dd><AtomsColorBadge :value="data.status_name" :color="data.status_color" /></dd>
+        <dt>{{ $t('billing_block.step') }}</dt>
+        <dd>{{ data.current_step_name || '-' }}</dd>
+        <dt>{{ $t('billing_block.due_step') }}</dt>
+        <dd>{{ data.current_step_due_date ? formatDate(data.current_step_due_date) : '-' }}</dd>
+        <template v-if="data.description">
+          <dt>{{ $t('common.description') }}</dt>
+          <dd>{{ data.description }}</dd>
+        </template>
+      </dl>
+
+      <!-- Blocs de resum (mateixos comptadors que a la pàgina de la gestió) -->
+      <div class="flex flex-wrap gap-3">
+        <div class="flex flex-col border border-gray-200 rounded">
+          <div class="flex items-center bg-white px-2">
+            {{ $t('billing_block.pending_payments') }}:
+            <span class="px-2 py-1 font-bold">{{ data.pending_payments_count }}</span>
+          </div>
+          <div class="flex items-center bg-white px-2">
+            {{ $t('reports_block.paid_payments') }}:
+            <span class="px-2 py-1 font-bold">{{ data.paid_payments_count }}</span>
+          </div>
+          <div class="flex items-center bg-white px-2">
+            {{ $t('common.amount') }}:
+            <span class="px-2 py-1 font-bold">{{ formatMoneyWithCurrency(data.amount) }}</span>
+          </div>
+        </div>
+
+        <div class="flex flex-col border border-gray-200 rounded">
+          <div class="flex items-center bg-white px-2">
+            {{ $t('contract_block.affected_contracts') }}:
+            <span class="px-2 py-1 font-bold">{{ data.total_contracts - data.excluded_payments_count }}</span>
+          </div>
+          <div class="flex items-center bg-white px-2">
+            {{ $t('contract_block.excluded_contracts') }}:
+            <span class="px-2 py-1 font-bold">{{ data.excluded_payments_count }}</span>
+          </div>
+          <div v-if="data.contract_termination_requests?.length" class="flex items-center bg-white px-2">
+            {{ $t('common.contract_terminations') }}:
+            <span class="px-2 py-1 font-bold">{{ data.contract_termination_requests.length }}</span>
+          </div>
+        </div>
+
+        <div v-if="data.vulnerable_requests_count > 0" class="flex flex-col border border-gray-200 rounded">
+          <div class="flex items-center bg-white px-2">
+            {{ $t('common.vulnerable_reqs') }}:
+            <span class="px-2 py-1 font-bold">{{ data.vulnerable_requests_count }}</span>
+          </div>
+          <div class="flex items-center bg-white px-2">
+            {{ $t('common.accepted_requests') }}:
+            <span class="px-2 py-1 font-bold">{{ data.vulnerable_accepted_requests_count }}</span>
+          </div>
+          <div class="flex items-center bg-white px-2">
+            {{ $t('common.pending_requests') }}:
+            <span class="px-2 py-1 font-bold">{{ data.vulnerable_pending_requests_count }}</span>
+          </div>
+        </div>
+
+        <div class="flex flex-col border border-gray-200 rounded">
+          <div class="flex items-center bg-white px-2">
+            {{ $t('order_block.cut_orders') }}:
+            <span class="px-2 py-1 font-bold">{{ data.cut_suply_orders?.length || 0 }}</span>
+          </div>
+          <div class="flex items-center bg-white px-2">
+            {{ $t('order_block.remove_orders') }}:
+            <span class="px-2 py-1 font-bold">{{ data.remove_meter_orders?.length || 0 }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Factures d'aquest contracte dins la gestió -->
+      <div v-if="contractData" class="mt-6">
+        <div class="flex flex-wrap items-center gap-2 mb-2">
+          <span class="text-slate-500 font-bold">{{ $t('contract') }} {{ contractData.token }}</span>
+          <span class="text-sm text-slate-500">
+            · {{ contractData.pending_payments_count }} {{ (contractData.pending_payments_count === 1 ? $t('billing_block.payment') : $t('billing_block.payments')).toLowerCase() }}
+            · <span class="font-bold text-slate-700">{{ formatMoneyWithCurrency(contractData.pending_payments_amount) }}</span>
+          </span>
+          <span v-if="contractData.is_excluded"
+            class="text-xs font-medium px-2 py-0.5 rounded bg-red-100 text-red-700">
+            {{ $t('billing_block.excluded') }}
+          </span>
+          <span v-if="contractData.claim_payments?.some(cp => cp.is_vulnerable)"
+            class="text-xs font-medium px-2 py-0.5 rounded bg-amber-100 text-amber-700">
+            {{ $t('contract_block.vulnerable') }}
+          </span>
+        </div>
+
+        <table class="min-w-full divide-y divide-gray-200 border border-gray-200 rounded">
+          <thead class="bg-gray-50">
+            <tr>
+              <th class="px-3 py-1 text-left text-xs font-medium text-gray-500 uppercase">{{ $t('invoice') }}</th>
+              <th class="px-3 py-1 text-left text-xs font-medium text-gray-500 uppercase">{{ $t('common.due_date') }}</th>
+              <th class="px-3 py-1 text-right text-xs font-medium text-gray-500 uppercase">{{ $t('common.amount') }}</th>
+              <th class="px-3 py-1 text-left text-xs font-medium text-gray-500 uppercase">{{ $t('common.status') }}</th>
+            </tr>
+          </thead>
+          <tbody class="bg-white divide-y divide-gray-200">
+            <tr v-for="claimPayment in contractData.claim_payments" :key="claimPayment.id" class="text-sm" :class="{
+              'bg-emerald-50': isClaimPaymentPaid(claimPayment),
+              'text-gray-400 line-through': claimPayment.is_excluded,
+            }">
+              <td class="px-3 py-1 whitespace-nowrap">{{ claimPayment.payment?.invoice_serie_final || '-' }}</td>
+              <td class="px-3 py-1 whitespace-nowrap">
+                {{ claimPayment.payment?.due_date ? formatDate(claimPayment.payment.due_date) : '-' }}
+              </td>
+              <td class="px-3 py-1 whitespace-nowrap text-right">
+                {{ formatMoneyWithCurrency(claimPayment.payment?.amount ?? 0) }}
+              </td>
+              <td class="px-3 py-1 whitespace-nowrap">
+                <AtomsColorBadge :color="claimPayment.payment?.status?.color || 'gray'"
+                  :value="claimPayment.payment?.status?.name || '-'" />
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <!-- Ordres i baixes d'aquest contracte generades per la gestió -->
+        <dl v-if="contractCutOrders.length || contractRemoveOrders.length || contractTerminations.length"
+          class="claim-header mt-3 text-sm">
+          <template v-if="contractCutOrders.length">
+            <dt>{{ $t('order_block.cut_orders') }}</dt>
+            <dd class="font-medium">{{ contractCutOrders.map(o => o.token).join(', ') }}</dd>
+          </template>
+          <template v-if="contractRemoveOrders.length">
+            <dt>{{ $t('order_block.remove_orders') }}</dt>
+            <dd class="font-medium">{{ contractRemoveOrders.map(o => o.token).join(', ') }}</dd>
+          </template>
+          <template v-if="contractTerminations.length">
+            <dt>{{ $t('common.contract_terminations') }}</dt>
+            <dd class="flex flex-wrap items-center gap-2">
+              <span v-for="termination in contractTerminations" :key="termination.id"
+                class="inline-flex items-center gap-1">
+                <span class="font-medium">{{ termination.token }}</span>
+                <AtomsColorBadge v-if="termination.status" :value="termination.status.name"
+                  :color="termination.status.color" />
+              </span>
+            </dd>
+          </template>
+        </dl>
       </div>
     </div>
-  </div><!-- end region__content -->
+  </div>
 </template>
+
+<style scoped>
+.claim-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 1.5rem;
+  row-gap: 0.25rem;
+  align-items: center;
+}
+
+.claim-header dt {
+  color: rgb(71 85 105);
+}
+</style>

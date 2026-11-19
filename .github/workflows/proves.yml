@@ -81,6 +81,11 @@ jobs:
               sudo resolvectl flush-caches
               resol_miralls || echo "::warning::Tampoc es resolen amb DNS públics"
             fi
+            # El runner porta el repositori de Microsoft, que no fem servir i que de
+            # vegades respon 429; amb --error-on=any faria fallar tota l'actualització.
+            for font in $(grep -rlE 'packages\.microsoft\.com' /etc/apt/sources.list.d/ 2>/dev/null); do
+              sudo mv "$font" "$font.desactivat"
+            done
             if ! sudo apt-get "${apt_opts[@]}" update --error-on=any; then
               echo "::error::No es pot actualitzar l'índex d'apt: els miralls d'Ubuntu no responen"
               return 1

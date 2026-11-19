@@ -74,6 +74,11 @@ from datetime import date, datetime, timedelta
 from django.utils import timezone
 from django.utils import translation
 from django.utils.translation import gettext as _
+from billing.utils.pending_termination_service import (
+  contract_ids_with_open_termination,
+  get_pending_termination_warning,
+  pending_termination_warning_for,
+)
 from billing.utils.billing_process_errors import (
   QUEUE_TASK_FAILED_MESSAGE, QUEUE_TASK_START_FAILED_MESSAGE, BillingProcessError, build_contract_error, classify_billing_error, dedupe_contract_readings,
   no_invoice_generated_error, remove_billing_process_errors, upsert_billing_process_error,
@@ -2435,6 +2440,9 @@ def _process_billing_batch(self, billing_id, queue_item_id=None):
     invoice_warning_high_amount_token = ConfigProject.objects.get(token='invoice_warning_high_amount').value
     invoice_warning_high_amount = InvoiceWarning.objects.get(token=invoice_warning_high_amount_token)
 
+    pending_termination_warning = get_pending_termination_warning()
+    pending_termination_contract_ids = contract_ids_with_open_termination(contract_ids)
+
     contracts = Contract.objects.filter(id__in=contract_ids).select_related(
         'general_invoice', 'holder', 'address_billing__address__city', 
         'address_billing__address__province', 'address_billing__address__country'
@@ -2494,6 +2502,9 @@ def _process_billing_batch(self, billing_id, queue_item_id=None):
             elif invoice.total_final:
               if avg_total_cache.is_high_amount(invoice.total_final, contract.id, invoice.billing_period_year, invoice.billing_period_month):
                 warning = invoice_warning_high_amount
+            # Baixa iniciada (canvi de titular...): té prioritat, potser la factura és de la nova alta.
+            if contract.id in pending_termination_contract_ids:
+              warning = pending_termination_warning or warning
 
             if warning:
               invoice.warning = warning
@@ -3118,6 +3129,12 @@ def process_invoice_documents(self, billing_id, invoice_ids, context, issue_date
   reading_batch_billed_token = config_cache.get('reading_batch_billed_token')
   reading_batch_billed = ReadingBatchStatus.objects.get(token=reading_batch_billed_token)
   
+  # Avís al sistema extern (webhook): les factures confirmades en aquesta execució,
+  # agrupades en paquets (no un avís per factura)
+  if confirmed_invoice_ids:
+    from integrations.outbound.webhooks.events import emit_billing_issued
+    emit_billing_issued(billing, confirmed_invoice_ids)
+
   billing.status = processed_status
   billing.send_at = send_at_aware
   billing.billing_batches.update(
@@ -4398,6 +4415,7 @@ def process_selected_contracts_task(billing_id, contract_ids):
                 elif invoice.total_final and invoice_warning_high_amount:
                     if is_high_amount_for_period(invoice.total_final, [contract], invoice.billing_period_year, invoice.billing_period_month, exclude_invoice_id=invoice.id):
                         warning = invoice_warning_high_amount
+                warning = pending_termination_warning_for(contract) or warning
 
                 if warning:
                     invoice.warning = warning

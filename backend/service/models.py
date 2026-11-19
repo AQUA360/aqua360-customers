@@ -1058,6 +1058,47 @@ class SupplyPoint(models.Model):
             return "SupplyPoint {}".format(self.id)
 
 
+class SupplyPointMeterHistory(models.Model):
+    """
+    Historial de canvis de comptador d'un punt de subministrament: una fila
+    per canvi, amb el comptador retirat (old_meter) i l'instal·lat (new_meter).
+    old_meter buit = primera assignació; new_meter buit = retirada sense substitut.
+    """
+    SOURCE_CHOICES = [
+        ('ui', 'Interfície'),
+        ('order', 'Ordre de treball'),
+        ('bulk', 'Canvi massiu'),
+        ('import', 'Importació'),
+        ('contract', 'Alta de contracte'),
+        ('backfill', 'Reconstrucció històrica'),
+        ('other', 'Altres'),
+    ]
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    supply_point = models.ForeignKey(SupplyPoint, on_delete=models.CASCADE, related_name='meter_history')
+    old_meter = models.ForeignKey(Meter, on_delete=models.PROTECT, null=True, blank=True, related_name='meter_history_as_old')
+    new_meter = models.ForeignKey(Meter, on_delete=models.PROTECT, null=True, blank=True, related_name='meter_history_as_new')
+    change_date = models.DateField(null=True, blank=True)
+    old_reading = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    new_reading = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    source = models.CharField(max_length=20, choices=SOURCE_CHOICES, default='other')
+    order = models.ForeignKey('order.Order', on_delete=models.SET_NULL, null=True, blank=True, related_name='meter_history')
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    observation = models.TextField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Supply point meter history"
+        verbose_name_plural = "Supply point meter history"
+        ordering = ['supply_point', '-change_date', '-created_at']
+        indexes = [
+            models.Index(fields=['supply_point', '-change_date'], name='sp_meter_hist_sp_date_idx'),
+        ]
+
+    def __str__(self):
+        return f"{self.supply_point}: {self.old_meter} → {self.new_meter} ({self.change_date})"
+
+
 class SupplyCutStatus(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True, null=True, blank=True)

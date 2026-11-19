@@ -10,6 +10,8 @@ from django.core.mail import get_connection
 from django.core.mail import EmailMessage
 from django.core.management.base import BaseCommand, CommandError
 
+from communication.utils.send_errors import patch_httperror_add_note
+
 
 def _mask(value: str, keep: int = 4) -> str:
     if not value:
@@ -31,26 +33,6 @@ def _decode_jwt_payload(token: str) -> dict:
     except (ValueError, json.JSONDecodeError):
         return {}
     return data if isinstance(data, dict) else {}
-
-
-def _patch_httperror_add_note() -> None:
-    """django-msgraphbackend 1.0.x fa err.add_note(); a Python 3.10 HTTPError
-    delega l'atribut a HTTPResponse i amaga l'error real de Graph."""
-    existing = getattr(urllib.error.HTTPError, "add_note", None)
-    if existing is not None and getattr(existing, "__msgraph_compat__", False):
-        return
-    if getattr(Exception, "add_note", None) is not None:
-        return
-
-    def add_note(self, note):
-        notes = getattr(self, "__notes__", None)
-        if notes is None:
-            self.__notes__ = []
-            notes = self.__notes__
-        notes.append(note)
-
-    add_note.__msgraph_compat__ = True
-    urllib.error.HTTPError.add_note = add_note
 
 
 def _graph_error_details(exc: BaseException) -> str:
@@ -219,7 +201,7 @@ class Command(BaseCommand):
                     "(requereix User.Read.All per resoldre l'id)"
                 )
 
-            _patch_httperror_add_note()
+            patch_httperror_add_note()
             graph_connection = get_connection(backend=backend, fail_silently=False)
             graph_connection.open()
             token = getattr(getattr(graph_connection, "_token", None), "access_token", "")

@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue';
 
 import ButtonSeleccio from '~/components/atoms/ButtonSeleccio.vue';
+import { openAuthenticatedFileUrl } from '~/utils/open-authenticated-file';
 import PersonSearch from '~/components/organisms/PersonSearch.vue';
 import CompanySearch from '~/components/organisms/CompanySearch.vue';
 import ConnectionRequestDocumentsData from '~/components/molecules/ConnectionRequestDocumentsData.vue';
@@ -415,7 +416,8 @@ watch(() => props.request, (newVal) => {
             <span v-if="buildingTypeName" class="block">{{ $t(formKey('building_type')) }}: {{ buildingTypeName }}</span>
           </span>
           <span v-if="request?.blueprint"><br />
-            <a :href="request.blueprint" class="text-sky-500 underline" target="_blank">
+            <!-- /media/ exigeix el token: un enllaç directe no l'envia -->
+            <a :href="request.blueprint" class="text-sky-500 underline" @click.prevent="openAuthenticatedFileUrl(request.blueprint).catch(() => {})">
               <Icon name="fa6-regular:file" class="" /> &nbsp;{{ $t('service_block.blueprint') }}
             </a>
           </span>

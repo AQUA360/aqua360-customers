@@ -339,13 +339,16 @@ export default defineNuxtPlugin(nuxtApp => {
       }
     }
 
-  const getContracts = async (id, is_juridic = null, step_id = null) => {
+  const getContracts = async (id, is_juridic = null, step_id = null, contract_id = null) => {
     let apiUrl = `${apiHost}/claimrequest/claim-request/${id}/contracts/`;
     if (is_juridic !== null) {
       apiUrl += `?is_juridic=${is_juridic}`;
     }
     if (step_id) {
       apiUrl += `${apiUrl.includes('?') ? '&' : '?'}step=${step_id}`;
+    }
+    if (contract_id) {
+      apiUrl += `${apiUrl.includes('?') ? '&' : '?'}contract=${contract_id}`;
     }
     try {
       const response = await $apiManager.fetch(apiUrl, 'GET')

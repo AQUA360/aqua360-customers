@@ -1,9 +1,11 @@
 from rest_framework import permissions
 from rest_framework import exceptions
 
+from auth.permissions import DjangoModelViewPermissions
+from auth.roles import is_canonical_superuser
 from billing.permissions import InvoicePermission
 from claimrequest.permissions import ClaimRequestPermission
-from contract.permissions import ContractPermission
+from contract.permissions import ContractPermission, RelatedModuleReadMixin
 from service.permissions import SupplyPointPermission
 
 # Els valors de ConfigProject governen el comportament de tota la instal·lació: els pot
@@ -26,14 +28,31 @@ class ConfigProjectPermission(permissions.BasePermission):
             return True
         return can_edit_config_project(request.user)
 
+class MainPermissionPermission(permissions.BasePermission):
+    """Catàleg de permisos per rol (MainPermission): el llegeixen les pantalles de
+    grups de qualsevol usuari autenticat, però només el pot modificar el
+    superusuari canònic, com la gestió d'usuaris i grups."""
+
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
+        if request.method in permissions.SAFE_METHODS:
+            return True
+        return is_canonical_superuser(request.user)
+
 class PersonPermission(permissions.BasePermission):
     
     def has_permission(self, request, view):
         if not request.user or not request.user.is_authenticated:
             raise exceptions.MethodNotAllowed(request.method)
         
+        # OPTIONS (metadades) per a qualsevol usuari autenticat, com DjangoModelPermissions
+        if request.method == 'OPTIONS':
+            return True
+
         method_permissions = {
             'GET': 'view_person',
+            'HEAD': 'view_person',
             'POST': 'add_person',
             'PUT': 'change_person',
             'PATCH': 'change_person',
@@ -45,6 +64,10 @@ class PersonPermission(permissions.BasePermission):
             raise exceptions.MethodNotAllowed(request.method)
         
         return request.user.has_perm(f'coredata.{required_permission}')
+
+class PersonReadPermission(RelatedModuleReadMixin, PersonPermission):
+    """PersonPermission, i lectura per als usuaris d'un mòdul relacionat."""
+
 
 class AddressPermission(permissions.BasePermission):
     
@@ -83,3 +106,45 @@ class AddressPermission(permissions.BasePermission):
             claim_request_permission = False
         
         return person_permission or contract_permission or supply_point_permission or invoice_permission or claim_request_permission
+
+# Carrers i tipus de via: els fan servir els selectors d'adreça de moltes pantalles
+# (persones, contractes, punts de subministrament, comptadors, escomeses, finques, rutes,
+# talls, ordres, comunicacions, reclamacions...). Els rols no donen `view_street` (no és
+# a cap MainPermission), així que qui pot llegir algun d'aquests mòduls pot llegir els
+# carrers; modificar-los demana el permís del model.
+ADDRESS_READ_PERMS = (
+    'coredata.view_street',
+    'coredata.change_street',
+    'coredata.view_person',
+    'contract.view_contract',
+    'contract.view_contractrequest',
+    'contract.view_piggybank',
+    'service.view_supplypoint',
+    'service.view_meter',
+    'service.view_connection',
+    'service.view_connectionrequest',
+    'service.view_property',
+    'service.view_route',
+    'service.view_supplycut',
+    'billing.view_invoice',
+    'billing.view_reading',
+    'claimrequest.view_claimrequest',
+    'order.view_order',
+    'communication.view_communication',
+    'fraud.view_fraud',
+)
+
+
+class StreetPermission(DjangoModelViewPermissions):
+    """Lectura amb el permís del model o d'un mòdul que fa servir adreces; escriptura
+    amb add/change/delete del model. `resolve_ids` és un POST que només consulta."""
+
+    read_fallback_perms = ADDRESS_READ_PERMS
+    read_only_actions = ('resolve_ids',)
+
+
+class HolidayPermission(DjangoModelViewPermissions):
+    """Festius: els llegeix la configuració d'incidències (càlcul de terminis en dies
+    hàbils); modificar-los demana el permís del model."""
+
+    read_fallback_perms = ('notification.view_incident',)

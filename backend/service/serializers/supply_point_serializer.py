@@ -786,7 +786,7 @@ class SupplyPointSerializer(serializers.ModelSerializer):
             meter = Meter.objects.get(id=meter_id) if meter_id else None
             validated_data['meter'] = meter
             if previous_meter != meter:
-                supply_point_change_meter(user, instance.id, previous_meter, meter)
+                supply_point_change_meter(user, instance.id, previous_meter, meter, source='ui')
         
         ## change connection
         if 'connection_id' in validated_data:
