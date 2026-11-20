@@ -106,7 +106,7 @@
             "token": "terminated_contract",
             "name": "Contracte de baixa",
             "color": "#ef4444",
-            "description": "El contracte està de baixa: la factura s'ha exclòs de la facturació. Torneu-la a incloure només si s'ha de facturar.",
+            "description": "El contracte està de baixa i l'usuari l'ha triat per facturar en confirmar la facturació.",
             "position": 8,
             "is_default": false
         }
