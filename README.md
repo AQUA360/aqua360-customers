@@ -33,8 +33,8 @@ Any variable in `.env` (e.g. `EMAIL_*`, `MSGRAPH_*`, `DOMAIN_MEDIA`, `CSRF_TRUST
 Before starting Compose, on both a fresh server and an existing installation, prepare the bind mounts from the project directory. Run these commands as root (or with `sudo`); the backend runs as UID/GID `1001:1001`. The recursive ownership change also covers files and subdirectories created by older containers running as root.
 
 ```bash
-sudo mkdir -p docker-data/media docker-data/static
-sudo chown -R 1001 docker-data/media docker-data/static
+sudo mkdir -p docker-data/media docker-data/static docker-data/sync-control
+sudo chown -R 1001 docker-data/media docker-data/static docker-data/sync-control
 ```
 
 The first time, or after changes to Dockerfiles or dependencies:
@@ -133,8 +133,8 @@ docker compose down -v
 
 ```bash
 git pull
-sudo mkdir -p docker-data/media docker-data/static
-sudo chown -R 1001 docker-data/media docker-data/static
+sudo mkdir -p docker-data/media docker-data/static docker-data/sync-control
+sudo chown -R 1001 docker-data/media docker-data/static docker-data/sync-control
 docker compose build frontend backend celery-worker celery-beat gmao-consumer
 docker compose up -d backend
 docker compose exec backend python manage.py migrate --noinput
@@ -151,8 +151,8 @@ To run a version without building anything on the server, set it in `.env` and:
 ```bash
 # .env: CUSTOMERS_VERSION=v1.135.00
 docker compose pull
-sudo mkdir -p docker-data/media docker-data/static
-sudo chown -R 1001 docker-data/media docker-data/static
+sudo mkdir -p docker-data/media docker-data/static docker-data/sync-control
+sudo chown -R 1001 docker-data/media docker-data/static docker-data/sync-control
 docker compose up -d
 ```
 
@@ -170,7 +170,7 @@ Servers are deployed with the `playbooks/AquaCustomersDocker` playbook of the `a
 | `03-nginx-docker-cloudflare` | Cloudflare Origin certificates and Nginx sites proxying to the Docker ports |
 | `04-backup-db` | `backup_db.sh` (`pg_dump` inside the `db` container) and backup cron |
 | `05-copy-backup-to-test` | Daily copy of the latest backup to the test server |
-| `06-restore` | `restore.sh` and cleanup of old databases (3-day retention) |
+| `06-restore` | `restore.sh` and cleanup of old databases (3-day retention). On the test server it also creates `docker-data/sync-control/`: admins can turn the nightly sync off from the TEST/STAGING badge, and `restore.sh` then skips the restore |
 | `07-readonly-db-user` | Read-only PostgreSQL user |
 
 On servers the host ports are not the defaults (`POSTGRES_PORT=5433`, `REDIS_PORT=6380`, `BACKEND_PORT=8001`, `FRONTEND_PORT=3001`) and can be changed per client in the inventory (`docker_*_port`) so several exploitations can share a server. The `docker-compose.yml` in this repository is the same one the playbook deploys.
