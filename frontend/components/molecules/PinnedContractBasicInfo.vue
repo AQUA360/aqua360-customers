@@ -207,7 +207,7 @@ const showDetail = (component, id) => {
                             </abbr>
                         </FieldDetail>
                         <FieldDetail v-if="contract.payment?.IBAN?.updated_at" :label="$t('common.updated')"
-                            :value="formatDate(contract.payment?.IBAN?.updated_at)" />
+                            :value="`${formatDate(contract.payment?.IBAN?.updated_at)}${contract.payment?.IBAN?.origin ? ` (${contract.payment.IBAN.origin})` : ''}`" />
                     </div>
                     <div v-if="contract.payment?.type?.token == 'DIRECT_DEBIT'" class="relative group">
                         <MoleculesBankDetail :item="contract.payment?.IBAN" :is_detail="true"

@@ -2556,6 +2556,7 @@ def _create_procedure_payment(holder, payment_type, bank_fields):
             dni=bank_fields["iban_holder_dni"] or None,
             is_default=True,
             is_active=True,
+            origin=PersonBank.ORIGIN_OV,
         )
     general_payment = GeneralPayment.objects.create(
         token=check_token_exists(generate_token(GeneralPayment), GeneralPayment),
