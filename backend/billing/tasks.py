@@ -76,6 +76,7 @@ from django.utils.translation import gettext as _
 from billing.utils.pending_termination_service import (
   contract_ids_with_open_termination,
   get_pending_termination_warning,
+  get_terminated_contract_warning,
   pending_termination_warning_for,
 )
 from billing.utils.billing_process_errors import (
@@ -2441,9 +2442,10 @@ def _process_billing_batch(self, billing_id, queue_item_id=None):
 
     pending_termination_warning = get_pending_termination_warning()
     pending_termination_contract_ids = contract_ids_with_open_termination(contract_ids)
+    terminated_contract_warning = get_terminated_contract_warning()
 
     contracts = Contract.objects.filter(id__in=contract_ids).select_related(
-        'general_invoice', 'holder', 'address_billing__address__city', 
+        'general_invoice', 'holder', 'status', 'address_billing__address__city', 
         'address_billing__address__province', 'address_billing__address__country'
     )
     
@@ -2504,10 +2506,19 @@ def _process_billing_batch(self, billing_id, queue_item_id=None):
             # Baixa iniciada (canvi de titular...): té prioritat, potser la factura és de la nova alta.
             if contract.id in pending_termination_contract_ids:
               warning = pending_termination_warning or warning
+            update_fields = []
+            # Contracte de baixa: la factura neix exclosa i només s'emet si l'usuari
+            # la torna a incloure expressament.
+            if contract.status_id and contract.status.token == contract_terminated_token:
+              warning = terminated_contract_warning or warning
+              invoice.is_excluded = True
+              update_fields.append('is_excluded')
 
             if warning:
               invoice.warning = warning
-              invoice.save(update_fields=['warning'])
+              update_fields.append('warning')
+            if update_fields:
+              invoice.save(update_fields=update_fields)
           invoices.append(invoice)
         except Exception as exc:
           logger.exception("No s'ha pogut facturar el contracte %s", contract.id)

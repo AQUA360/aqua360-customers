@@ -13,6 +13,7 @@ from django.db.models import Q
 from coredata.models import ConfigProject
 
 PENDING_TERMINATION_WARNING_CONFIG = 'invoice_warning_pending_termination'
+TERMINATED_CONTRACT_WARNING_CONFIG = 'invoice_warning_terminated_contract'
 
 
 class PendingTerminationTransferError(Exception):
@@ -71,6 +72,15 @@ def get_successor_contract(contract, termination=None):
 def get_pending_termination_warning():
     from billing.models import InvoiceWarning
     token = _config_value(PENDING_TERMINATION_WARNING_CONFIG)
+    if not token:
+        return None
+    return InvoiceWarning.objects.filter(token=token).first()
+
+
+def get_terminated_contract_warning():
+    """Avís de les factures de contractes de baixa (la facturació les deixa excloses)."""
+    from billing.models import InvoiceWarning
+    token = _config_value(TERMINATED_CONTRACT_WARNING_CONFIG)
     if not token:
         return None
     return InvoiceWarning.objects.filter(token=token).first()

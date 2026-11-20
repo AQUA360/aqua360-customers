@@ -96,5 +96,19 @@
             "position": 7,
             "is_default": false
         }
+    },
+    {
+        "model": "billing.invoicewarning",
+        "pk": 8,
+        "fields": {
+            "created_at": "2026-11-20T00:00:00.000Z",
+            "updated_at": "2026-11-20T00:00:00.000Z",
+            "token": "terminated_contract",
+            "name": "Contrato de baja",
+            "color": "#ef4444",
+            "description": "El contrato está de baja: la factura se ha excluido de la facturación. Volved a incluirla solo si se debe facturar.",
+            "position": 8,
+            "is_default": false
+        }
     }
 ]
