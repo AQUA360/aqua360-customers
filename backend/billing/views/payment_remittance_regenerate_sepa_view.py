@@ -5,6 +5,7 @@ from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
 
 from billing.models import PaymentRemittance, PaymentRemittanceStatus
+from billing.utils.remittance_bank_check import get_company_banks_issues
 from billing.utils.payment_remittance_lock_service import is_remittance_sent, sent_remittance_error_message
 from coredata.models import ConfigProject
 
@@ -51,6 +52,17 @@ class PaymentRemittanceRegenerateSepaView(APIView):
             return JsonResponse(
                 {"error": "El PaymentRemittance no té cap company_bank associat."},
                 status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Només a les transferències de retorn: el compte d'origen és obligatori.
+        bank_issues = (
+            get_company_banks_issues([payment_remittance.company_bank])
+            if payment_remittance.is_return else []
+        )
+        if bank_issues:
+            return JsonResponse(
+                {"error": bank_issues[0]["message"], "bank_issues": bank_issues},
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         send_date = request.data.get("send_date", None)

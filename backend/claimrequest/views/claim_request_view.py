@@ -2,6 +2,7 @@ import csv
 import datetime
 import io
 
+from django.conf import settings
 from django.forms.utils import ValidationError
 from rest_framework import viewsets, status, views
 from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
@@ -10,6 +11,7 @@ from rest_framework.filters import OrderingFilter, SearchFilter
 from django.db.models import Count, Max, Sum, F, Q
 from rest_framework.decorators import action
 from django.utils.translation import gettext as _
+from django.utils.translation import override
 from rest_framework.response import Response
 from rest_framework import serializers
 from rest_framework.views import APIView
@@ -48,11 +50,17 @@ class ClaimRequestViewSet(viewsets.ModelViewSet):
     
     if self.action in ['list', 'retrieve']:
         # Anotem el total de pagaments i contractes, i la suma dels amounts
-        queryset = queryset.annotate(
-            total_payments=Count('payments', distinct=True),
-            total_contracts=Count('payments__contract', distinct=True),
-            amount=Sum('payments__payment__amount', filter=Q(payments__is_excluded=False))
-        ).select_related(
+        annotations = {
+            'total_payments': Count('payments', distinct=True),
+            'total_contracts': Count('payments__contract', distinct=True),
+            'amount': Sum('payments__payment__amount', filter=Q(payments__is_excluded=False)),
+        }
+        if self.action == 'retrieve':
+            # Factures amb el mateix criteri que l'import: només dels pagaments no exclosos
+            annotations['total_invoices'] = Count(
+                'payments__payment__invoice', distinct=True, filter=Q(payments__is_excluded=False)
+            )
+        queryset = queryset.annotate(**annotations).select_related(
             'status',
             'current_step'
         ).prefetch_related(
@@ -91,8 +99,11 @@ class ClaimRequestViewSet(viewsets.ModelViewSet):
         decoded_file = file.read().decode('utf-8-sig')
         reader = csv.DictReader(io.StringIO(decoded_file), delimiter=';')
         contract_tokens = []
+        # Headers are written under settings.LANGUAGE_CODE (see excel generate view)
+        with override(settings.LANGUAGE_CODE):
+            contract_header = _("Contracte")
         for row in reader:
-            contract = row.get(_("Contracte"))
+            contract = row.get(contract_header)
             if contract is not None:
                 contract_tokens.append(contract)
         contracts = Contract.objects.filter(
@@ -183,7 +194,7 @@ class ClaimRequestViewSet(viewsets.ModelViewSet):
     pk = request.query_params.get('id')
     if pk:
         from django.contrib.auth.models import Group
-        user_permissions = PermissionManager.get_model_permissions(request.user, 'auth', 'group')
+        user_permissions = PermissionManager.get_model_permissions(request.user, 'group', 'auth')
         if not user_permissions['can_view'] or not user_permissions['can_change'] or not request.user.is_superuser:
             return Response( None, status=status.HTTP_403_FORBIDDEN )
         group = Group.objects.filter(id=pk).first()
@@ -214,7 +225,8 @@ class ClaimRequestContractsViewSet(viewsets.ViewSet):
             # Obtenim el paràmetre is_juridic del query string
             is_juridic = request.query_params.get('is_juridic')
             step_id = request.query_params.get('step', None)
-            
+            contract_id = request.query_params.get('contract', None)
+
             # Obtenim els contractes únics dels pagaments de la reclamació
             contracts_query = Contract.objects.filter(
                 claim_requests__claim_request=claim_request
@@ -224,7 +236,16 @@ class ClaimRequestContractsViewSet(viewsets.ViewSet):
             if is_juridic is not None:
                 is_juridic_bool = is_juridic.lower() == 'true'
                 contracts_query = contracts_query.filter(holder__is_juridic=is_juridic_bool)
-            
+
+            # Filtre opcional per un sol contracte (p. ex. des de la fitxa del contracte)
+            if contract_id:
+                if not str(contract_id).isdigit():
+                    return Response(
+                        {"error": "El paràmetre contract ha de ser numèric"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                contracts_query = contracts_query.filter(id=int(contract_id))
+
             contracts = list(contracts_query)
             
             serializer = ContractWithClaimPaymentsSerializer(

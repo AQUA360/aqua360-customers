@@ -73,7 +73,7 @@ from .views.invoice_contract_generate_view import InvoiceContractGenerateView
 from .views.invoice_connection_generate_view import InvoiceConnectionGenerateView
 from .views.manage_new_budget_line_view import ManageNewBudgetLineView
 from .views.generate_invoice_budget_view import GenerateInvoiceBudgetView
-from .views.sepa_payment_document_generate_view import SEPAPaymentDocumentGenerateViewSet, SEPAPaymentInvoicesViewSet, SEPAPaymentAnomaliesViewSet, SEPAPaymentFilesPreviewViewSet
+from .views.sepa_payment_document_generate_view import SEPAPaymentDocumentGenerateViewSet, SEPAPaymentInvoicesViewSet, SEPAPaymentAnomaliesViewSet, SEPAPaymentFilesPreviewViewSet, SEPAConceptPreviewViewSet, SEPAConceptConfigViewSet
 from .views.payment_remittance_regenerate_sepa_view import PaymentRemittanceRegenerateSepaView
 from .views.epayment_document_generate_view import EPaymentDocumentGenerateViewSet
 from .views.detailed_billing_document_generate_view import DetailedBillingDocumentGenerateView
@@ -84,6 +84,7 @@ from .views.billing_invoices_view import BillingInvoicesViewSet, BillingInvoices
 from .views.invoice_mark_reviewed_range_view import InvoiceMarkReviewedRangeView
 from .views.invoice_reviewed_range_preview_view import InvoiceReviewedRangePreviewView
 from .views.billing_batch_regenerate_view import BillingBatchRegenerateView
+from .views.billing_terminated_contracts_view import BillingTerminatedContractsView
 from .views.billing_regenerate_pdfs_view import BillingRegeneratePDFsView, BillingRegeneratePDFsStatusView
 from .views.wincen_export_view import WinCenExportView, WinCenExportStatusView
 from .views.billing_preinvoices_summary_view import BillingPreInvoicesSummaryViewSet
@@ -220,6 +221,8 @@ urlpatterns = [
     path('sepa-document-generate/', SEPAPaymentDocumentGenerateViewSet.as_view(http_method_names=['put']), name='sepa-document-generate'),
     path('sepa-document-generate/invoices/', SEPAPaymentInvoicesViewSet.as_view(http_method_names=['put', 'post']), name='sepa-document-generate-invoices'),
     path('sepa-document-generate/anomalies/', SEPAPaymentAnomaliesViewSet.as_view(http_method_names=['put']), name='sepa-document-generate-anomalies'),
+    path('sepa-concept-config/', SEPAConceptConfigViewSet.as_view(http_method_names=['get', 'put']), name='sepa-concept-config'),
+    path('sepa-concept-preview/', SEPAConceptPreviewViewSet.as_view(http_method_names=['put']), name='sepa-concept-preview'),
     path('sepa-document-generate/files/', SEPAPaymentFilesPreviewViewSet.as_view(http_method_names=['put']), name='sepa-document-generate-files'),
     path('payment-remittance/<int:id>/sepa-document-generate/', PaymentRemittanceRegenerateSepaView.as_view(http_method_names=['post']), name='payment-remittance-regenerate-sepa'),
     path('sepa/download/<int:id>/', SepaPDFDownloadViewSet.as_view(), name='download-sepa-pdf'),
@@ -239,6 +242,7 @@ urlpatterns = [
     path('billing/<int:id>/invoices/export', BillingInvoicesExportView.as_view(http_method_names=['post']), name='billing-invoices-export'),
     path('billing/<int:id>/invoices/summary', BillingInvoicesSummaryViewSet.as_view(http_method_names=['get']), name='billing-invoices-summary'),
     path('billing/<int:id>/recalculate', BillingBatchRegenerateView.as_view(http_method_names=['post']), name='billing-invoices-recalculate'),
+    path('billing/<int:id>/terminated-contracts', BillingTerminatedContractsView.as_view(http_method_names=['get']), name='billing-terminated-contracts'),
     path('billing/<int:id>/regenerate-pdfs', BillingRegeneratePDFsView.as_view(http_method_names=['post']), name='billing-regenerate-pdfs'),
     path('billing/regenerate-pdfs/status/<str:task_id>/', BillingRegeneratePDFsStatusView.as_view(http_method_names=['get']), name='billing-regenerate-pdfs-status'),
     path('billing/<int:id>/wincen-export', WinCenExportView.as_view(http_method_names=['post']), name='billing-wincen-export'),

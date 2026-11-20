@@ -16,17 +16,26 @@ cd /path/al/projecte/aqua360-customers
 
 ### 2. Environment Variables (`.env`)
 
-`docker-compose.yml` loads the `.env` file (`env_file`) in the `backend`, `celery-worker`, `celery-beat`, `gmao-consumer` and `frontend` services, so it **must exist** at the project root:
+`docker-compose.yml` loads the `.env` file (`env_file`) in the `backend`, `celery-worker`, `celery-beat` and `gmao-consumer` services, so it **must exist** at the project root:
 
 ```bash
 cp env.docker.example .env
 ```
 
+Replace `SECRET_KEY` with a long random key (you can generate one with `python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"`): it is required and `docker compose` will not start without it; with `DEBUG=False` the backend will not start with the example key either. `DEBUG` defaults to `False`; set `DEBUG=True` only for development.
+
 Edit `.env` if needed. For example, if port **5432** is already used by a system PostgreSQL instance, set `POSTGRES_PORT=5433` (only the port on the host machine).
 
-Any variable in `.env` (e.g. `EMAIL_*`, `MSGRAPH_*`, `DOMAIN_MEDIA`, `CSRF_TRUSTED_ORIGINS`) reaches the containers. The DB and Redis connection variables (`DATABASE_*`, `CELERY_BROKER_URL`) are set by the compose file itself, and the rest have defaults in `docker-compose.yml`. `ENV` and `LANGUAGE` apply to the frontend build and runtime.
+Any variable in `.env` (e.g. `EMAIL_*`, `MSGRAPH_*`, `DOMAIN_MEDIA`, `CSRF_TRUSTED_ORIGINS`) reaches the containers. The DB and Redis connection variables (`DATABASE_*`, `CELERY_BROKER_URL`) are set by the compose file itself, and the rest have defaults in `docker-compose.yml`. `ENV` and `LANGUAGE` apply to the frontend build and runtime. The `frontend` service does not load the whole `.env` (it must not receive the backend secrets): it only gets the variables listed in its `environment` block in `docker-compose.yml`, and any new variable it reads at startup must be added there.
 
 ### 3. Build and Start All Services
+
+Before starting Compose, on both a fresh server and an existing installation, prepare the bind mounts from the project directory. Run these commands as root (or with `sudo`); the backend runs as UID/GID `1001:1001`. The recursive ownership change also covers files and subdirectories created by older containers running as root.
+
+```bash
+sudo mkdir -p docker-data/media docker-data/static docker-data/sync-control
+sudo chown -R 1001 docker-data/media docker-data/static docker-data/sync-control
+```
 
 The first time, or after changes to Dockerfiles or dependencies:
 
@@ -124,6 +133,8 @@ docker compose down -v
 
 ```bash
 git pull
+sudo mkdir -p docker-data/media docker-data/static docker-data/sync-control
+sudo chown -R 1001 docker-data/media docker-data/static docker-data/sync-control
 docker compose build frontend backend celery-worker celery-beat gmao-consumer
 docker compose up -d backend
 docker compose exec backend python manage.py migrate --noinput
@@ -140,6 +151,8 @@ To run a version without building anything on the server, set it in `.env` and:
 ```bash
 # .env: CUSTOMERS_VERSION=v1.135.00
 docker compose pull
+sudo mkdir -p docker-data/media docker-data/static docker-data/sync-control
+sudo chown -R 1001 docker-data/media docker-data/static docker-data/sync-control
 docker compose up -d
 ```
 
@@ -157,7 +170,7 @@ Servers are deployed with the `playbooks/AquaCustomersDocker` playbook of the `a
 | `03-nginx-docker-cloudflare` | Cloudflare Origin certificates and Nginx sites proxying to the Docker ports |
 | `04-backup-db` | `backup_db.sh` (`pg_dump` inside the `db` container) and backup cron |
 | `05-copy-backup-to-test` | Daily copy of the latest backup to the test server |
-| `06-restore` | `restore.sh` and cleanup of old databases (3-day retention) |
+| `06-restore` | `restore.sh` and cleanup of old databases (3-day retention). On the test server it also creates `docker-data/sync-control/`: admins can turn the nightly sync off from the TEST/STAGING badge, and `restore.sh` then skips the restore |
 | `07-readonly-db-user` | Read-only PostgreSQL user |
 
 On servers the host ports are not the defaults (`POSTGRES_PORT=5433`, `REDIS_PORT=6380`, `BACKEND_PORT=8001`, `FRONTEND_PORT=3001`) and can be changed per client in the inventory (`docker_*_port`) so several exploitations can share a server. The `docker-compose.yml` in this repository is the same one the playbook deploys.

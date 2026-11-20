@@ -20,6 +20,8 @@ from billing.signals import create_payment_invoice
 from billing.utils.payment_service import get_payment_SEPA_data
 from billing.utils.aca_company_service import use_multiple_companies
 from django.db.models import Sum
+# nosemgrep: python.lang.security.use-defused-xml.use-defused-xml
+# Generation only (Element/SubElement/tostring); no untrusted XML is parsed here.
 import xml.etree.ElementTree as ET
 from django.core.files.base import ContentFile
 from billing.views.invoice_pdf_view import InvoiceReportPDFDownloadViewSet, generate_report_invoice_pdf

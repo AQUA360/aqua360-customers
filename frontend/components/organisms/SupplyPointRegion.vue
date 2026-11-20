@@ -29,6 +29,7 @@ import AddFraud from '../molecules/AddFraud.vue';
 import FraudRegion from './FraudRegion.vue';
 import SupplyCutRegion from './SupplyCutRegion.vue';
 import SupplyMeterChange from '../molecules/SupplyMeterChange.vue';
+import SupplyPointMeterHistory from '../molecules/SupplyPointMeterHistory.vue';
 import AppLoading from '~/components/atoms/AppLoading.vue';
 import InvoiceRegion from './InvoiceRegion.vue';
 
@@ -56,6 +57,8 @@ const SubRegion = ref(props.isSubRegionOpen);
 const activeTab = ref('observations');
 const observationNumber = ref(0)
 const logNumber = ref(0)
+const meterChangeNumber = ref(0)
+const meterHistoryRef = ref(null)
 const fraudNumber = ref(0)
 const supplyCutNumber = ref(0)
 const objectPermissions = ref(null);
@@ -129,6 +132,8 @@ const getData = async (load = true) => {
     selectedAddress.value = result.address;
     current_address.value = result.address ? result.address?.address_complete : '-';
     void loadContractCreatedDates();
+    // Un canvi de comptador recarrega la fitxa: refresquem també el seu historial.
+    meterHistoryRef.value?.refresh();
   } catch (err) {
     error.value = err;
   } finally {
@@ -335,6 +340,10 @@ const updateLogCount = (num) => {
   logNumber.value = num;
 }
 
+const updateMeterChangeCount = (num) => {
+  meterChangeNumber.value = num;
+}
+
 onMounted(async () => {
   await getPermissions();
   if (!objectPermissions.value?.can_view) {
@@ -489,6 +498,13 @@ const showMap = () => {
             </a>
           </li>
           <li class="me-2">
+            <a href="#tab_meter_changes" @click.prevent="setActiveTab('meter_changes')"
+              :class="{ 'text-sky-600 border-sky-600': activeTab === 'meter_changes', 'hover:text-gray-600 hover:border-gray-300': activeTab !== 'meter_changes' }">
+              <Icon name="fa6-solid:arrow-right-arrow-left" class="display-inline mr-2" /> {{
+                $t('service_block.meter_changes') }} ({{ meterChangeNumber }})
+            </a>
+          </li>
+          <li class="me-2">
             <a href="#tab_log" @click.prevent="setActiveTab('log')"
               :class="{ 'text-sky-600 border-sky-600': activeTab === 'log', 'hover:text-gray-600 hover:border-gray-300': activeTab !== 'log' }">
               <Icon name="fa6-solid:list" class="display-inline mr-2" /> {{ $t('common.history') }} ({{ logNumber }})
@@ -506,6 +522,11 @@ const showMap = () => {
             <MoleculesLogChangeList v-if="data" entity="supply-point-change" parent_entity="supplypoint" :id="props.id"
               @update:count="updateLogCount" :service="$LoggerChangeApiService">
             </MoleculesLogChangeList>
+          </section>
+          <section v-show="activeTab === 'meter_changes'" role="tabpanel" id="tab_meter_changes"
+            class="bg-white antialiased">
+            <SupplyPointMeterHistory v-if="data" ref="meterHistoryRef" :id="props.id" :isSubRegion="isSubRegion"
+              @show-detail="showDetail" @update:count="updateMeterChangeCount" />
           </section>
 
           <section v-show="activeTab === 'frauds'" role="tabpanel" id="tab_frauds" class="bg-white antialiased">

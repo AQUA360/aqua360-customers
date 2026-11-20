@@ -12,6 +12,8 @@ from django.db.models.functions import Abs, Coalesce
 from django.http import HttpResponse, JsonResponse
 from django.utils.translation import gettext as _
 import openpyxl
+# nosemgrep: python.lang.security.use-defused-xml.use-defused-xml
+# Generation only (Element/SubElement/tostring); no untrusted XML is parsed here.
 import xml.etree.ElementTree as ET
 from io import BytesIO
 from openpyxl.styles import Alignment, PatternFill
@@ -2005,30 +2007,26 @@ def generate_mini_register_billing_summary(request, black_fill, white_bold_font,
     print("invoices: ", invoices.count())
 
     # --- Resum superior (TOTAL M3 i desglossament per tipus d'ús) ---
-    import unicodedata
-
-    def _normalize_use_type(name):
-        name = unicodedata.normalize('NFKD', name or "").encode('ascii', 'ignore').decode('ascii')
-        return name.strip().upper()
-
-    use_type_m3_totals = defaultdict(float)
-    for r in use_type_agg:
-        ut = r["ut_name"] or _("(Sense tipus)")
-        use_type_m3_totals[_normalize_use_type(ut)] += float(r["total_m3"] or 0)
+    # Es classifica per l'ús ACA desat a la factura (used_aca), no pel nom del tipus d'ús:
+    # els noms dels tipus d'ús són propis de cada instal·lació i no coincideixen amb les categories.
+    use_aca_m3_totals = {
+        r["used_aca"]: float(r["total_m3"] or 0)
+        for r in invoices_for_sums.values("used_aca").annotate(total_m3=Sum(signed_consumption)).order_by()
+    }
 
     total_m3_grand = sum(float(exp["total_m3"] or 0) for exp in invoices_grouped_by_exploitation)
 
     top_summary_categories = [
-        (_("DOMESTIC"), "DOMESTIC"),
-        (_("INDUSTRIAL"), "INDUSTRIAL"),
-        (_("MUNICIPAL"), "MUNICIPAL"),
-        (_("AGRICOLA"), "AGRICOLA"),
+        (_("DOMESTIC"), "D"),
+        (_("INDUSTRIAL"), "I"),
+        (_("MUNICIPAL"), "A"),
+        (_("AGRICOLA"), "G"),
     ]
 
     row = add_row(sheet, row, [_("TOTAL M3"), f"{round(total_m3_grand, 4)}M3"], fill=black_fill, font=white_bold_font)
     categorized_m3 = 0.0
-    for label, ut_key in top_summary_categories:
-        value = use_type_m3_totals.get(ut_key, 0.0)
+    for label, use_aca in top_summary_categories:
+        value = use_aca_m3_totals.get(use_aca, 0.0)
         categorized_m3 += value
         row = add_row(sheet, row, [label, f"{round(value, 4)}M3"])
     row = add_row(sheet, row, [_("ALTRES"), f"{round(total_m3_grand - categorized_m3, 4)}M3"])

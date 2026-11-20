@@ -1,10 +1,10 @@
 import logging
 from django.core.management.base import BaseCommand
 from django.db.models import Q
-from contract.models import Contract
+from contract.models import Contract, ContractUseType
 from contract.utils.use_aca_service import run_fill_contract_use_aca
 from coredata.models import ConfigProject
-from watchdog.aca_config import is_aca_org, split_config_tokens
+from watchdog.aca_config import ACA_AGRICULTURAL_USE_TYPE_CONFIG_TOKEN, get_config_value, is_aca_org, split_config_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +72,10 @@ def fill_contract_use_aca(update_all_contracts=False, dry_run=False, single_cont
     token_product_aca_parts = split_config_tokens(
         ConfigProject.objects.get(token="token_product_aca").value
     )
+    # Usos agrícoles: no tenen tarifa de cànon, però el FACTDETA en declara el volum consumit (tipus G)
+    agricultural_use_type_ids = set(ContractUseType.objects.filter(
+        token__in=split_config_tokens(get_config_value(ACA_AGRICULTURAL_USE_TYPE_CONFIG_TOKEN)),
+    ).values_list('id', flat=True))
     # Diccionari de mapeig de tokens a valors use_aca. Els tokens buits es descarten:
     # un "" coincideix amb qualsevol tarifa (`"" in token`) i marcava tots els contractes.
     token_to_use_aca = {
@@ -112,8 +116,8 @@ def fill_contract_use_aca(update_all_contracts=False, dry_run=False, single_cont
             # Obtenir tots els ContractPriceRate del contracte
             contract_price_rates = contract.price_rates.all()
             
-            # Si no té cap tarifa
-            if not contract_price_rates.exists():
+            # Si no té cap tarifa (els agrícoles continuen: tenen ús ACA «G» sense tarifa de cànon)
+            if not contract_price_rates.exists() and contract.use_type_id not in agricultural_use_type_ids:
                 skipped_reasons['no_price_rates'] += 1
                 if len(skipped_examples['no_price_rates']) < 5:
                     skipped_examples['no_price_rates'].append(contract.token)
@@ -152,6 +156,11 @@ def fill_contract_use_aca(update_all_contracts=False, dry_run=False, single_cont
             if any(var.type.token in contract_use_aca_dir_variable_token for var in contract.variables.all()):
                 use_aca_value = "M"
             
+            # Sense tarifa CANON i amb un tipus d'ús agrícola
+            if not canon_price_rate_found and contract.use_type_id in agricultural_use_type_ids:
+                use_aca_value = 'G'
+                canon_price_rate_found = True
+
             # Si no té cap tarifa CANON
             if not canon_price_rate_found:
                 skipped_reasons['no_canon_price_rate'] += 1

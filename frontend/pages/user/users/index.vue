@@ -6,10 +6,10 @@ import { useI18n } from 'vue-i18n';
 import { useToast } from 'vue-toastification';
 import H1 from '~/components/atoms/H1.vue';
 import UserRegion from '~/components/organisms/UserRegion.vue';
-import TableHeader from '~/components/atoms/TableHeader.vue';
 import Pagination from '~/components/molecules/Pagination.vue';
 import DataTable from '~/components/organisms/DataTable.vue';
 import { usePermissions } from '~/middleware/permission';
+import { getUserRole } from '~/utils/roles';
 
 const toast = useToast();
 const { permissions, loading } = usePermissions();
@@ -73,12 +73,19 @@ const getData = async (searchQuery = '', page = 1) => {
   }
 }
 
+const roleLabel = (row) => {
+  const role = getUserRole(row);
+  if (role === 'superuser') return t('common.superuser');
+  if (role === 'admin') return t('common.admin');
+  return row.group_name || '-';
+};
+
 // XLSX export — columns mirror the visible table columns (in display order).
 const exportColumns = computed(() => [
   { header: t('user'), value: (row) => row.username },
   { header: t('common.name'), value: (row) => [row.first_name, row.last_name].filter(Boolean).join(' ') },
   { header: t('common.email_long'), value: (row) => row.email || '' },
-  { header: t('group'), value: (row) => row.group_name || (row.is_superuser ? t('common.admin') : '') },
+  { header: t('group'), value: (row) => { const label = roleLabel(row); return label === '-' ? '' : label; } },
 ]);
 
 // Hybrid export: single page → client-side; multiple pages → server (all-pages, filter-aware).
@@ -130,6 +137,17 @@ const handleSubRegionEvent = (event) => {
   isSubRegionOpen.value = event;
 }
 
+const rowClass = (item) => ({
+  'bg-yellow-50': item.id === selectedItemId.value,
+});
+
+const tableColumns = computed(() => [
+  { key: 'username', label: t('user'), width: 200, min: 120, grow: 1, priority: 1, removable: false },
+  { key: 'name', label: t('common.name'), width: 200, min: 120, grow: 1, priority: 1 },
+  { key: 'email', label: t('common.email_long'), width: 240, min: 140, grow: 1, priority: 2 },
+  { key: 'group', label: t('group'), width: 160, min: 100, grow: 1, priority: 2 },
+]);
+
 watch(searchInput, () => {
   pagination.value.page = 1;
   handleSearch();
@@ -160,39 +178,30 @@ watch(searchInput, () => {
     </form>
 
     <DataTable
-      grid-template="1fr,1fr,1fr,1fr"
+      v-if="permissions?.permissions?.view_user"
+      table-key="users"
+      :columns="tableColumns"
+      :items="items"
+      :row-class="rowClass"
       :pending="pending"
       :error="error"
       :is-empty="items.length === 0"
       @retry="getData">
-      <template #header>
-        <TableHeader :label="t('user')" :sortable="false" />
-        <TableHeader :label="t('common.name')" :sortable="false" />
-        <TableHeader :label="t('common.email_long')" :sortable="false" />
-        <TableHeader :label="t('group')" :sortable="false" />
+      <template #cell-username="{ item }">
+        <button class="group flex justify-between w-full items-center text-sky-500 text-nowrap text-left"
+          @click="showDetail(item.id);">
+          <abbr :title="item.username" class="no-underline">{{ item.username }}</abbr>
+          <Icon name="fa6-solid:eye"
+            class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
+        </button>
       </template>
-
-      <template #default="{ gridStyle }">
-        <template v-if="permissions?.permissions?.view_user">
-          <div v-for="item in items" :key="item.id"
-            class="gap-3 text-base border-b items-center bg-white"
-            :style="gridStyle"
-            :class="{ 'bg-yellow-50': item.id === selectedItemId }">
-            <span class="p-0">
-              <button class="group flex justify-between w-full items-center p-1 text-sky-500"
-                @click="showDetail(item.id);">
-                <abbr :title="item.username" class="no-underline">{{ item.username }}</abbr>
-                <Icon name="fa6-solid:eye"
-                  class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
-              </button>
-            </span>
-            <span v-if="item.first_name || item.last_name " class="p-1">{{ item.first_name }} {{ item.last_name }}</span>
-            <span v-else class="p-1">-</span>
-            <span class="p-1">{{ item.email? item.email : '-' }}</span>
-            <span v-if="item.group_name" class="p-1">{{ item.group_name }}</span>
-            <span v-else class="p-1">{{ item.is_superuser ? t('common.admin') : '-' }}</span>
-          </div>
-        </template>
+      <template #cell-name="{ item }">
+        <span v-if="item.first_name || item.last_name ">{{ item.first_name }} {{ item.last_name }}</span>
+        <span v-else>-</span>
+      </template>
+      <template #cell-email="{ item }">{{ item.email? item.email : '-' }}</template>
+      <template #cell-group="{ item }">
+        <span>{{ roleLabel(item) }}</span>
       </template>
     </DataTable>
 

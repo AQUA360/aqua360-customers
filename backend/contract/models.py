@@ -509,6 +509,9 @@ class Contract(models.Model):
     general_invoice = models.ForeignKey(GeneralInvoice, on_delete=models.SET_NULL, null=True, blank=True, related_name='contracts')
     registration_date = models.DateField(null=True, blank=True)
     termination_date = models.DateField(null=True, blank=True)
+    # Data d'alta a l'oficina virtual; buida si no hi està registrat. La posa al dia
+    # la sincronització amb l'OV (integrations/outbound/ov) i els canvis queden a ContractLog.
+    virtual_office_date = models.DateField(null=True, blank=True)
 
     company = models.ForeignKey(Company, on_delete=models.SET_NULL, null=True, blank=True, related_name='contracts')
 

@@ -5,6 +5,7 @@ from rest_framework.decorators import action
 from django.db.models import Q, Count, Subquery, OuterRef, Exists
 
 from auth.permissions import PermissionManager
+from contract.permissions import ContractReadPermission, can_read_from_related_module
 from billing.models import Reading, Invoice
 from coredata.models import ConfigProject
 from coredata.utils.fire_usage_utils import get_fire_usage_tokens
@@ -318,7 +319,7 @@ def _get_duplicate_readings_items(search, exploitation_id, only_after_billing=Fa
 
 
 class ConsumptionManagementViewSet(viewsets.ViewSet):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ContractReadPermission]
 
     def list(self, request):
         search = request.query_params.get('search', '').strip()
@@ -371,12 +372,19 @@ class ConsumptionManagementViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['get'], url_path='permissions')
     def permissions(self, request):
         perms = PermissionManager.get_model_permissions(request.user, 'contract', 'contract')
+        # Mateix criteri que ContractReadPermission (també llegeixen els mòduls relacionats)
+        can_view = perms['can_view'] or can_read_from_related_module(request.user)
         return Response({
-            'can_view': perms['can_view'],
+            'can_view': can_view,
             'can_add': False,
             'can_change': perms['can_change'],
             'can_delete': False,
             'permissions': {
-                'view_consumptionmanagement': perms['can_view'],
+                'view_consumptionmanagement': can_view,
             },
         })
+
+    def get_permissions(self):
+        if self.action == 'permissions':
+            return [IsAuthenticated()]
+        return super().get_permissions()

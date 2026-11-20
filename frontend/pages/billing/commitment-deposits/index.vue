@@ -8,7 +8,6 @@ import { formatMoneyWithCurrency } from '~/utils/money';
 import { useToast } from 'vue-toastification';
 import Pagination from '~/components/molecules/Pagination.vue';
 import H1 from '~/components/atoms/H1.vue';
-import TableHeader from '~/components/atoms/TableHeader.vue';
 import CommitmentDepositRegion from '~/components/organisms/CommitmentDepositRegion.vue';
 import DataTable from '~/components/organisms/DataTable.vue';
 
@@ -192,6 +191,22 @@ const handleSubRegionEvent = (event) => {
 watch(() => route.query, () => {
   checkRouteQuery()
 }, { immediate: true })
+const rowClass = (item) => ({
+  'bg-yellow-50': item.id === selectedItemId.value,
+});
+
+const tableColumns = computed(() => [
+  { key: 'created_at', label: t('common.date'), sortKey: 'created_at', width: 100, min: 80, priority: 3 },
+  { key: 'token', label: t('common.identification'), sortKey: 'token', width: 150, min: 105, priority: 1, removable: false },
+  { key: 'contract', label: t('contract'), sortKey: 'contract.token', width: 150, min: 90, priority: 2 },
+  { key: 'holder', label: t('contract_block.holder'), sortKey: 'contract.holder_name', width: 150, grow: 1, min: 100, priority: 1 },
+  { key: 'status', label: t('common.status'), sortKey: 'status', width: 150, min: 90, priority: 1 },
+  { key: 'total_invoices', label: t('invoices'), width: 100, min: 70, priority: 3 },
+  { key: 'remaining', label: t('common.remaining'), sortKey: 'remaining', width: 100, min: 80, priority: 2 },
+  { key: 'remaining_to_share', label: t('common.accumulated'), sortKey: 'remaining_to_share', width: 100, min: 80, priority: 2 },
+  { key: 'due_date', label: t('common.limit'), sortKey: 'due_date', width: 100, min: 80, priority: 2 },
+]);
+
 </script>
 
 <template>
@@ -216,6 +231,8 @@ watch(() => route.query, () => {
           autocomplete="off" />
       </span>
 
+      <div v-if="filter_status.length" class="h-8 w-px bg-gray-300"></div>
+
       <span class="flex gap-3" v-if="filter_status.length">
         <label v-for="status in filter_status" :key="status.id"
           class="text-slate-800 text-base flex items-center gap-1">
@@ -232,66 +249,46 @@ watch(() => route.query, () => {
       </span>
     </form>
     <DataTable
-      grid-template="100px,150px,150px,150px,150px,100px,100px,100px,100px"
+      table-key="commitment-deposits"
+      :columns="tableColumns"
+      :items="items"
+      :row-class="rowClass"
+      :current-sort-by="sortBy"
+      :sort-desc="sortDesc"
       :pending="pending"
       :error="error"
       :is-empty="items.length === 0"
+      @sort="handleSort"
       @retry="getData">
-      <template #header>
-        <TableHeader :label="$t('common.date')" sortKey="created_at" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.identification')" sortKey="token" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('contract')" sortKey="contract.token" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('contract_block.holder')" sortKey="contract.holder_name" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.status')" sortKey="status" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('invoices')" :sortable="false" />
-        <TableHeader :label="$t('common.remaining')" sortKey="remaining" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.accumulated')" sortKey="remaining_to_share" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.limit')" sortKey="due_date" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
+      <template #cell-created_at="{ item }">{{ formatDate(item.created_at) }}</template>
+
+      <template #cell-token="{ item }">
+        <button class="group flex justify-between w-full items-center text-sky-500 text-nowrap text-left"
+          @click="showDetail(item.id);">
+          <abbr :title="item.id" class="no-underline">{{ item.token }}</abbr>
+          <Icon name="fa6-solid:eye"
+            class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
+        </button>
       </template>
 
-      <template #default="{ gridStyle }">
-        <div v-for="item in items" :key="item.id"
-          class="gap-3 text-base border-b items-center bg-white"
-          :style="gridStyle"
-          :class="{ 'bg-yellow-50': item.id === selectedItemId }">
-          <span>
-            {{ formatDate(item.created_at) }}
-          </span>
-          <span>
-            <button class="group flex justify-between w-full items-center p-1 text-sky-500 text-nowrap text-left"
-              @click="showDetail(item.id);">
-              <abbr :title="item.id" class="no-underline">{{ item.token }}</abbr>
-              <Icon name="fa6-solid:eye"
-                class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
-            </button>
-          </span>
-          <span>
-            {{ item.contract?.token }}
-          </span>
-          <span>
-            <abbr v-if="item.contract?.holder" :title="item?.customer_token_final">{{ item.customer_final }}</abbr>
-          </span>
-          <span class="p-1">
-            <AtomsColorBadge :value="item.status_name" :color="item.status_color" />
-          </span>
-          <span class="p-0">{{ item.total_invoices }}</span>
-          <span class="p-0">{{ formatMoneyWithCurrency(item.remaining) }}</span>
-          <span class="p-0">
-            {{ item.remaining > 0 || item.remaining_to_share > 0 ? formatMoneyWithCurrency(item.remaining_to_share) : '-'}}
-          </span>
-          <span>
-            {{ item.due_date ? formatDate(item.due_date):'-' }}
-          </span>
-        </div><!-- end for items -->
+      <template #cell-contract="{ item }">{{ item.contract?.token }}</template>
+
+      <template #cell-holder="{ item }">
+        <abbr v-if="item.contract?.holder" :title="item?.customer_token_final">{{ item.customer_final }}</abbr>
       </template>
+
+      <template #cell-status="{ item }">
+        <AtomsColorBadge :value="item.status_name" :color="item.status_color" />
+      </template>
+
+      <template #cell-total_invoices="{ item }">{{ item.total_invoices }}</template>
+      <template #cell-remaining="{ item }">{{ formatMoneyWithCurrency(item.remaining) }}</template>
+
+      <template #cell-remaining_to_share="{ item }">
+        {{ item.remaining > 0 || item.remaining_to_share > 0 ? formatMoneyWithCurrency(item.remaining_to_share) : '-'}}
+      </template>
+
+      <template #cell-due_date="{ item }">{{ item.due_date ? formatDate(item.due_date):'-' }}</template>
     </DataTable>
     <div id="list__footer">
       <Pagination v-if="items.length > 0" :pagination="pagination" @update:page="handlePageChange" />

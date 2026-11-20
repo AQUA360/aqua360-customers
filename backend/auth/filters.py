@@ -34,7 +34,8 @@ class UserFilter(filters.FilterSet):
     
     def filter_hide_admin(self, queryset, name, value):
         if value:
-            return queryset.filter(is_superuser=False)
+            # Amaga superuser i admin (comptes elevats sense grup de negoci)
+            return queryset.filter(is_superuser=False, is_staff=False)
         return queryset
 
 

@@ -104,13 +104,17 @@ def get_accounting_lines(accounting_pricings, invoices, movements, endowment_inv
     #   separate_by_origin: invoices still share that pricing, but the
     #     generated line is split by invoice origin and the origin name
     #     is appended to the title
-    # 'lineitems': HANDLES INVOICE LINES DEPEDING ON RELATIONS IN ACCOUNTING PRICING
+    # 'lineitems': HANDLES INVOICE LINES DEPENDING ON RELATIONS IN ACCOUNTING PRICING
+    #   Specific pricings match by product + interval / line-item type /
+    #   price rate (most specific wins). covers_undeclared is last resource
+    #   for any line not claimed by a specific pricing (REST / catch-all),
+    #   even with empty product relations. Scoped by exploitation.
     # 'payment': HANDLES PAYMENT MOVEMENTS AS A WHOLE
     #   match by payment_type, national/foreign IBAN, incoming/outgoing,
     #   invoice_category and, for a BANK_PAYMENT-only pricing, payment_origin.
     #   Empty payment_origin handles box office and post office. A single
     #   origin is more specific. A BANK_PAYMENT movement with no origin
-    #   counts as box office. is_default is last resource.
+    #   counts as box office. is_default or covers_undeclared is last resource.
     #   When is_default, lines are split by payment type and the payment
     #   type name is appended to the title (same idea as invoice origin).
     #   grouped_lines sums by movement_date (and payment_type when
@@ -247,6 +251,7 @@ def get_accounting_lines(accounting_pricings, invoices, movements, endowment_inv
                     movement_date=entry.get('movement_date'),
                     declare_as=entry.get('declare_as') or 'have',
                     register_key=entry.get('register_key'),
+                    concept_override=_bucket_concept_override(entry),
                 )
                 if debt_line:
                     payment_debt_lines.extend(_expand_with_additional_lines(
@@ -254,16 +259,16 @@ def get_accounting_lines(accounting_pricings, invoices, movements, endowment_inv
                         [debt_line],
                     ))
         elif category == 'lineitem':
-            new_line = _get_lineitem_category_line(
+            new_lines = _get_lineitem_category_lines(
                 accounting_pricing,
                 lineitem_amounts.get(accounting_pricing.id),
                 iva_accounting,
                 main_accounting,
             )
-            if new_line:
+            if new_lines:
                 lineitem_lines.extend(_expand_with_additional_lines(
                     accounting_pricing,
-                    [new_line],
+                    new_lines,
                 ))
         elif category == 'payment':
             payment_lines.extend(_expand_with_additional_lines(
@@ -285,6 +290,7 @@ def get_accounting_lines(accounting_pricings, invoices, movements, endowment_inv
                     movement_date=entry.get('movement_date'),
                     declare_as=entry.get('declare_as') or 'have',
                     register_key=entry.get('register_key'),
+                    concept_override=_bucket_concept_override(entry),
                 )
                 if debt_line:
                     payment_debt_lines.extend(_expand_with_additional_lines(
@@ -321,6 +327,7 @@ def get_accounting_lines(accounting_pricings, invoices, movements, endowment_inv
                 movement_date=entry.get('movement_date'),
                 declare_as=entry.get('declare_as') or 'have',
                 register_key=entry.get('register_key'),
+                concept_override=_bucket_concept_override(entry),
             )
             if counter_line:
                 payment_debt_lines.extend(_expand_with_additional_lines(
@@ -343,6 +350,7 @@ def get_accounting_lines(accounting_pricings, invoices, movements, endowment_inv
                 movement_date=entry.get('movement_date'),
                 declare_as=entry.get('declare_as') or 'have',
                 register_key=entry.get('register_key'),
+                concept_override=_bucket_concept_override(entry),
             )
             if counter_line:
                 payment_debt_lines.extend(_expand_with_additional_lines(
@@ -378,6 +386,7 @@ def get_accounting_lines(accounting_pricings, invoices, movements, endowment_inv
                 movement_date=entry.get('movement_date'),
                 declare_as=entry.get('declare_as') or 'have',
                 register_key=entry.get('register_key'),
+                concept_override=_bucket_concept_override(entry),
             )
             if debt_line:
                 payment_debt_lines.extend(_expand_with_additional_lines(
@@ -446,7 +455,7 @@ def _empty_invoice_bucket():
     }
 
 
-def _invoice_spec(accounting_pricing):
+def _invoice_spec(accounting_pricing, main_accounting=None):
     """Origins and contract types together are more specific than either one.
 
     A pricing with neither filter is the base line: invoices that match no
@@ -458,6 +467,19 @@ def _invoice_spec(accounting_pricing):
     accounting_type = concept.type if concept else None
     add_subtotals = bool(accounting_type and accounting_type.add_subtotals)
     add_taxes = bool(accounting_type and accounting_type.add_taxes)
+    own_rules = _normalize_concept_token_rules(
+        getattr(accounting_pricing, 'concept_token_rules', None)
+    )
+    main_rules = []
+    if (
+        main_accounting
+        and main_accounting.id != accounting_pricing.id
+        and not (add_taxes and add_subtotals)
+    ):
+        # IVA (and similar) lines inherit the clients-account split so counterpart stays paired.
+        main_rules = _normalize_concept_token_rules(
+            getattr(main_accounting, 'concept_token_rules', None)
+        )
     return {
         'id': accounting_pricing.id,
         'level': int(bool(origin_ids)) + int(bool(contract_type_ids)),
@@ -481,6 +503,8 @@ def _invoice_spec(accounting_pricing):
         'separate_by_origin': bool(
             accounting_pricing.separate_by_origin and accounting_pricing.grouped_lines
         ),
+        'concept_token_rules': own_rules,
+        'main_concept_token_rules': main_rules,
     }
 
 
@@ -537,6 +561,9 @@ def _load_invoice_rows(invoices):
             'use_type_id',
             'subtotal_final',
             'total_final',
+            'customer_token_final',
+            'payer_token_final',
+            'payment_type_token_final',
         ).distinct()
     )
 
@@ -573,12 +600,25 @@ def _add_invoice_to_bucket(bucket, row, tax_amounts, sign):
 
 
 def _invoice_group_key(spec, row):
-    if spec.get('separate_by_origin'):
-        return row.get('origin_id')
-    return None
+    origin_part = row.get('origin_id') if spec.get('separate_by_origin') else None
+    rule = _matched_concept_rule(spec, row)
+    rule_part = None
+    if rule:
+        rule_part = (
+            rule.get('position'),
+            rule.get('concept_token'),
+            bool(rule.get('apply_to_return')),
+            rule.get('source'),
+        )
+    if origin_part is None and rule_part is None:
+        return None
+    if rule_part is None:
+        # Plain origin id keeps origin_names lookup backward compatible.
+        return origin_part
+    return (origin_part, rule_part)
 
 
-def _ensure_invoice_group(groups, group_key, origin_name=None, undeclare_settings=None):
+def _ensure_invoice_group(groups, group_key, origin_name=None, undeclare_settings=None, concept_override=None):
     bucket = groups.get(group_key)
     if bucket is None:
         bucket = _empty_invoice_bucket()
@@ -586,6 +626,12 @@ def _ensure_invoice_group(groups, group_key, origin_name=None, undeclare_setting
         if undeclare_settings:
             bucket['undeclare_declare_as'] = undeclare_settings.get('declare_as')
             bucket['undeclare_sign'] = undeclare_settings.get('sign')
+        if concept_override:
+            bucket['concept_token_override'] = concept_override.get('concept_token')
+            bucket['concept_token_override_apply_to_return'] = bool(
+                concept_override.get('apply_to_return')
+            )
+            bucket['concept_token_override_source'] = concept_override.get('source') or 'own'
         groups[group_key] = bucket
     return bucket
 
@@ -594,8 +640,15 @@ def _declare_invoice(buckets, specs, row, tax_amounts, sign, origin_names):
     matched = _matching_specs(specs, row)
     for spec in matched:
         group_key = _invoice_group_key(spec, row)
-        origin_name = origin_names.get(group_key) if spec.get('separate_by_origin') else None
-        bucket = _ensure_invoice_group(buckets[spec['id']], group_key, origin_name)
+        origin_id = _origin_id_from_invoice_group_key(group_key) if spec.get('separate_by_origin') else None
+        origin_name = origin_names.get(origin_id) if spec.get('separate_by_origin') else None
+        override = _matched_concept_rule(spec, row)
+        bucket = _ensure_invoice_group(
+            buckets[spec['id']],
+            group_key,
+            origin_name,
+            concept_override=override,
+        )
         _add_invoice_to_bucket(bucket, row, tax_amounts, sign)
     return matched
 
@@ -642,12 +695,19 @@ def _undeclare_invoice(buckets, specs, row, tax_amounts, origin_names, undeclare
             settings.get('declare_as'),
             settings.get('sign'),
         )
-        origin_name = origin_names.get(base_key) if spec.get('separate_by_origin') else None
+        origin_id = (
+            _origin_id_from_invoice_group_key(base_key)
+            if spec.get('separate_by_origin')
+            else None
+        )
+        origin_name = origin_names.get(origin_id) if spec.get('separate_by_origin') else None
+        override = _matched_concept_rule(spec, row)
         bucket = _ensure_invoice_group(
             buckets[spec['id']],
             group_key,
             origin_name,
             undeclare_settings=settings,
+            concept_override=override,
         )
         _add_invoice_to_bucket(bucket, row, tax_amounts, -1)
     return matched
@@ -665,13 +725,15 @@ def _group_invoice_amounts(accounting_pricings, normal_invoices, endowment_invoi
     with undeclare_previous does the same against endowment, or against normal
     when no endowment pricing matches.
     """
+    mains_by_exploitation = _main_accounting_by_exploitation(accounting_pricings)
     specs_by_category = defaultdict(list)
     pricing_ids = []
     for accounting_pricing in accounting_pricings:
         concept = accounting_pricing.accounting_concept
         if not concept or not concept.is_active or concept.category != 'invoice':
             continue
-        spec = _invoice_spec(accounting_pricing)
+        main_accounting = mains_by_exploitation.get(accounting_pricing.exploitation_id)
+        spec = _invoice_spec(accounting_pricing, main_accounting=main_accounting)
         pricing_ids.append(spec['id'])
         specs_by_category[spec['category']].append(spec)
 
@@ -690,6 +752,13 @@ def _group_invoice_amounts(accounting_pricings, normal_invoices, endowment_invoi
     normal_rows = _load_invoice_rows(normal_invoices)
     endowment_rows = _load_invoice_rows(endowment_invoices)
     irrecoverable_rows = _load_invoice_rows(irrecoverable_invoices)
+
+    for row in normal_rows:
+        row['invoice_category'] = _INVOICE_CATEGORY_NORMAL
+    for row in endowment_rows:
+        row['invoice_category'] = _INVOICE_CATEGORY_ENDOWMENT
+    for row in irrecoverable_rows:
+        row['invoice_category'] = _INVOICE_CATEGORY_IRRECOVERABLE
 
     invoice_ids = {row['id'] for row in normal_rows}
     invoice_ids.update(row['id'] for row in endowment_rows)
@@ -746,6 +815,155 @@ def _optional_text(value):
     return str(value).strip()
 
 
+_CONCEPT_RULE_FIELDS = frozenset({
+    'customer_token_final',
+    'payer_token_final',
+    'payment_type_token_final',
+    'origin_id',
+    'use_type_id',
+    'invoice_category',
+})
+_CONCEPT_RULE_OPS_STRING = frozenset({'eq', 'ne', 'startswith', 'contains'})
+_CONCEPT_RULE_OPS_ID = frozenset({'eq', 'ne'})
+_CONCEPT_RULE_ID_FIELDS = frozenset({'origin_id', 'use_type_id'})
+
+
+def _normalize_concept_token_rules(raw):
+    """Sanitize concept-token override rules; first match wins by position."""
+    if not isinstance(raw, list):
+        return []
+    rules = []
+    for index, item in enumerate(raw):
+        if not isinstance(item, dict):
+            continue
+        field = _optional_text(item.get('field'))
+        concept_token = _optional_text(item.get('concept_token'))
+        if field not in _CONCEPT_RULE_FIELDS or not concept_token:
+            continue
+        op = _optional_text(item.get('op')) or 'eq'
+        if field in _CONCEPT_RULE_ID_FIELDS or field == 'invoice_category':
+            if op not in _CONCEPT_RULE_OPS_ID:
+                op = 'eq'
+        elif op not in _CONCEPT_RULE_OPS_STRING:
+            op = 'eq'
+        value = item.get('value')
+        if value is None:
+            value = ''
+        try:
+            position = int(item.get('position')) if item.get('position') is not None else index
+        except (TypeError, ValueError):
+            position = index
+        rules.append({
+            'field': field,
+            'op': op,
+            'value': value,
+            'concept_token': concept_token,
+            'apply_to_return': bool(item.get('apply_to_return')),
+            'position': position,
+        })
+    rules.sort(key=lambda rule: rule['position'])
+    for index, rule in enumerate(rules):
+        rule['position'] = index
+    return rules
+
+
+def _concept_rule_matches(rule, row):
+    field = rule.get('field')
+    op = rule.get('op') or 'eq'
+    expected = rule.get('value')
+    actual = (row or {}).get(field)
+    if field in _CONCEPT_RULE_ID_FIELDS:
+        try:
+            actual = int(actual) if actual is not None and actual != '' else None
+            expected = int(expected) if expected is not None and expected != '' else None
+        except (TypeError, ValueError):
+            return False
+        if op == 'eq':
+            return actual == expected
+        if op == 'ne':
+            return actual != expected
+        return False
+    actual_s = '' if actual is None else str(actual)
+    expected_s = '' if expected is None else str(expected)
+    if field == 'invoice_category':
+        actual_s = _normalize_invoice_category(actual_s)
+        expected_s = _normalize_invoice_category(expected_s)
+    if op == 'eq':
+        return actual_s == expected_s
+    if op == 'ne':
+        return actual_s != expected_s
+    if op == 'startswith':
+        return actual_s.startswith(expected_s)
+    if op == 'contains':
+        return expected_s in actual_s
+    return False
+
+
+def _match_concept_token_rule(rules, row):
+    for rule in _normalize_concept_token_rules(rules):
+        if _concept_rule_matches(rule, row):
+            return rule
+    return None
+
+
+def _matched_concept_rule(spec, row):
+    """Own rules first; else main_accounting rules (IVA counterpart split)."""
+    own = _match_concept_token_rule(spec.get('concept_token_rules') or [], row)
+    if own:
+        return {**own, 'source': 'own'}
+    main = _match_concept_token_rule(spec.get('main_concept_token_rules') or [], row)
+    if main:
+        return {**main, 'source': 'main'}
+    return None
+
+
+def _bucket_concept_override(bucket):
+    token = _optional_text((bucket or {}).get('concept_token_override'))
+    if not token:
+        return None
+    return {
+        'concept_token': token,
+        'apply_to_return': bool((bucket or {}).get('concept_token_override_apply_to_return')),
+        'source': (bucket or {}).get('concept_token_override_source') or 'own',
+    }
+
+
+def _origin_id_from_invoice_group_key(group_key):
+    if group_key is None:
+        return None
+    if (
+        isinstance(group_key, tuple)
+        and len(group_key) == 2
+        and isinstance(group_key[1], tuple)
+    ):
+        return group_key[0]
+    return group_key
+
+
+def _main_accounting_by_exploitation(accounting_pricings=None):
+    """Default clients (add_taxes + add_subtotals) pricing per exploitation."""
+    qs = AccountingPricing.objects.filter(
+        is_active=True,
+        is_default=True,
+        accounting_concept__category='invoice',
+        accounting_concept__type__add_taxes=True,
+        accounting_concept__type__add_subtotals=True,
+    )
+    if accounting_pricings is not None:
+        exploitation_ids = {
+            pricing.exploitation_id
+            for pricing in accounting_pricings
+            if getattr(pricing, 'exploitation_id', None)
+        }
+        if exploitation_ids:
+            qs = qs.filter(exploitation_id__in=exploitation_ids)
+    qs = qs.select_related('accounting_concept', 'accounting_concept__type')
+    by_exploitation = {}
+    for pricing in qs:
+        by_exploitation.setdefault(pricing.exploitation_id, pricing)
+    return by_exploitation
+
+
 _TOKEN_RETURN_CATEGORY_FIELDS = {
     'invoice': 'token_return_invoice',
     'payment': 'token_return_payment',
@@ -763,17 +981,48 @@ def _resolve_token_return(accounting_pricing, return_category=None):
     return _optional_text(getattr(accounting_pricing, 'token_return', None))
 
 
-def _line_concept_token(accounting_pricing, total, undeclared=False, return_category=None):
+def _line_concept_token(
+    accounting_pricing,
+    total,
+    undeclared=False,
+    return_category=None,
+    concept_override=None,
+):
     """Negative lines and undeclarations use token_return instead of the concept token.
 
     return_category selects token_return_<category> when set, else token_return.
+    concept_override (own source only) may replace the resolved concept token;
+    apply_to_return controls whether returns/undeclares are overridden too.
     """
     concept = accounting_pricing.accounting_concept
     concept_token = concept.token if concept else ''
     token_return = _resolve_token_return(accounting_pricing, return_category)
-    if token_return and (undeclared or _as_float(total) < 0):
-        return token_return
-    return concept_token
+    is_return_path = bool(undeclared) or _as_float(total) < 0
+    if token_return and is_return_path:
+        resolved = token_return
+    else:
+        resolved = concept_token
+
+    if not concept_override:
+        return resolved
+    override_token = _optional_text(concept_override.get('concept_token'))
+    if not override_token:
+        return resolved
+    # 'main' overrides only affect counterpart accounts, not this line's concept.
+    if (concept_override.get('source') or 'own') != 'own':
+        return resolved
+    if is_return_path and not concept_override.get('apply_to_return'):
+        return resolved
+    return override_token
+
+
+def _pad_account_code(concept_token, pricing_token):
+    concept_token = _optional_text(concept_token)
+    pricing_token = _optional_text(pricing_token)
+    pad = 12 - len(concept_token) - len(pricing_token)
+    if pad < 0:
+        pad = 0
+    return f"{concept_token}{'0' * pad}{pricing_token}"
 
 
 def _additional_line_concept_token(additional_line, total):
@@ -1082,14 +1331,18 @@ def _payment_line_name(base_name, payment_type_name=None):
 def _sorted_invoice_groups(groups):
     if not groups:
         return [(None, _empty_invoice_bucket())]
-    ordered = sorted(
-        groups.items(),
-        key=lambda item: (
-            (item[1].get('origin_name') or '').lower(),
-            item[0] is None,
-            item[0] or 0,
-        ),
-    )
+
+    def _sort_key(item):
+        group_key, bucket = item
+        override = _optional_text(bucket.get('concept_token_override'))
+        return (
+            (bucket.get('origin_name') or '').lower(),
+            group_key is None,
+            override,
+            str(group_key),
+        )
+
+    ordered = sorted(groups.items(), key=_sort_key)
     return [
         (bucket.get('origin_name') or None, bucket)
         for _group_key, bucket in ordered
@@ -1153,12 +1406,14 @@ def _get_invoice_category_line(
         total = _sum_iva_values(iva_values, 'tax')
 
     is_return = bool(undeclared) or _as_float(total) < 0 or _as_float(subtotal) < 0
+    override = _bucket_concept_override(bucket)
     line = {
         'accounting_concept': _line_concept_token(
             accounting_pricing,
             total,
             undeclared=undeclared,
             return_category=return_category,
+            concept_override=override,
         ),
         'accounting_pricing': accounting_pricing.token,
         'accounting_pricing_name': _invoice_line_name(
@@ -1180,6 +1435,15 @@ def _get_invoice_category_line(
         'main_accounting': main_accounting,
         'cost_center_code': None,
     }
+    # IVA lines inherit main clients-account override for the IR02 counterpart slot.
+    if main_accounting and override and override.get('source') == 'main':
+        line['main_concept_token_override'] = _line_concept_token(
+            main_accounting,
+            total,
+            undeclared=undeclared,
+            return_category=return_category,
+            concept_override={**override, 'source': 'own'},
+        )
     if undeclared and bucket.get('undeclare_declare_as') in (_DECLARE_DEBT, _DECLARE_HAVE):
         line['undeclare_override_declare_as'] = bucket['undeclare_declare_as']
         line['undeclare_override_sign'] = _normalize_sign(
@@ -1215,8 +1479,10 @@ def _decimal_amount(value):
 def _lineitem_spec(accounting_pricing):
     """Most specific relation present on the pricing decides its level.
 
-    Product is always required. A child relation does not need its parent:
-    a line-item type can be set without the price rate it belongs to.
+    Non-catch-all pricings require at least one product. A child relation does
+    not need its parent: a line-item type can be set without the price rate
+    it belongs to. covers_undeclared pricings may have empty products and act
+    as REST for lines not claimed by any specific pricing.
     """
     price_interval_ids = {interval.id for interval in accounting_pricing.price_intervals.all()}
     price_variable_ids = {variable.id for variable in accounting_pricing.price_variables.all()}
@@ -1235,12 +1501,18 @@ def _lineitem_spec(accounting_pricing):
     return {
         'id': accounting_pricing.id,
         'level': level,
+        'covers_undeclared': bool(
+            getattr(accounting_pricing, 'covers_undeclared', False)
+        ),
         'exploitation_id': accounting_pricing.exploitation_id,
         'product_ids': {product.id for product in accounting_pricing.products.all()},
         'price_rate_ids': price_rate_ids,
         'line_item_type_ids': line_item_type_ids,
         'price_interval_ids': price_interval_ids,
         'price_variable_ids': price_variable_ids,
+        'concept_token_rules': _normalize_concept_token_rules(
+            getattr(accounting_pricing, 'concept_token_rules', None)
+        ),
     }
 
 
@@ -1271,6 +1543,28 @@ def _line_item_matches_spec(spec, line_item):
     return True
 
 
+def _matching_lineitem_undeclared_spec(undeclared_specs, line_item):
+    """Pick the best covers_undeclared lineitem pricing for an unmatched line.
+
+    Prefer an exploitation-scoped catch-all that matches the invoice, then
+    a global one. Stable tie-break by id.
+    """
+    if not undeclared_specs:
+        return None
+    invoice = line_item.invoice
+    exploitation_id = getattr(invoice, 'exploitation_id', None) if invoice else None
+    candidates = []
+    for spec in undeclared_specs:
+        spec_exploitation = spec.get('exploitation_id')
+        if spec_exploitation and spec_exploitation != exploitation_id:
+            continue
+        candidates.append(spec)
+    if not candidates:
+        return None
+    candidates.sort(key=lambda spec: (spec.get('exploitation_id') is None, spec['id']))
+    return candidates[0]
+
+
 def _empty_lineitem_bucket():
     return {
         'price': Decimal('0'),
@@ -1279,20 +1573,61 @@ def _empty_lineitem_bucket():
     }
 
 
+def _add_lineitem_to_bucket(buckets, spec, line_item, row_ctx):
+    """Accumulate one line item into the given pricing's concept-token group."""
+    rule = _match_concept_token_rule(spec.get('concept_token_rules') or [], row_ctx)
+    group_key = None
+    override = None
+    if rule:
+        group_key = (
+            rule.get('position'),
+            rule.get('concept_token'),
+            bool(rule.get('apply_to_return')),
+        )
+        override = {**rule, 'source': 'own'}
+    groups = buckets[spec['id']]
+    bucket = groups.get(group_key)
+    if bucket is None:
+        bucket = _empty_lineitem_bucket()
+        if override:
+            bucket['concept_token_override'] = override.get('concept_token')
+            bucket['concept_token_override_apply_to_return'] = bool(
+                override.get('apply_to_return')
+            )
+            bucket['concept_token_override_source'] = 'own'
+        groups[group_key] = bucket
+    price = _rounded_money(line_item.price)
+    bucket['price'] += price
+    bucket['total'] += _rounded_money(line_item.total)
+    percent_key = _iva_percent_key(line_item.tax_percent)
+    _add_iva_amount(
+        bucket['iva_bases'],
+        percent_key,
+        base=line_item.price,
+        tax=line_item.tax_price,
+    )
+
+
 def _group_lineitem_amounts(accounting_pricings, invoices):
     """Assign each invoice line to one line-item accounting pricing.
 
     Walk from children up to the product. Intervals and variables claim
     their lines first, then line-item types, then price rates. Whatever
-    is left stays on the product pricing.
+    is left on a product stays on the product pricing. Lines not claimed
+    by any specific pricing fall through to covers_undeclared (REST).
     """
     by_product = defaultdict(list)
+    undeclared_specs = []
     pricing_ids = []
     for accounting_pricing in accounting_pricings:
         concept = accounting_pricing.accounting_concept
         if not concept or not concept.is_active or concept.category != 'lineitem':
             continue
         spec = _lineitem_spec(accounting_pricing)
+        if spec['covers_undeclared']:
+            pricing_ids.append(spec['id'])
+            undeclared_specs.append(spec)
+            continue
         if not spec['product_ids']:
             continue
         pricing_ids.append(spec['id'])
@@ -1301,33 +1636,51 @@ def _group_lineitem_amounts(accounting_pricings, invoices):
 
     for specs in by_product.values():
         specs.sort(key=lambda spec: (-spec['level'], spec['id']))
+    undeclared_specs.sort(key=lambda spec: (spec.get('exploitation_id') is None, spec['id']))
 
-    buckets = {pricing_id: _empty_lineitem_bucket() for pricing_id in pricing_ids}
-    if not by_product:
+    # Groups keyed like invoices so concept-token rules can split amounts.
+    buckets = {pricing_id: {} for pricing_id in pricing_ids}
+    if not by_product and not undeclared_specs:
         return buckets
 
+    line_item_filter = {
+        'invoice__in': invoices,
+        'is_active': True,
+    }
+    if by_product and not undeclared_specs:
+        line_item_filter['product_id__in'] = list(by_product.keys())
+
     line_items = InvoiceLineItem.objects.filter(
-        invoice__in=invoices,
-        is_active=True,
-        product_id__in=list(by_product.keys()),
+        **line_item_filter,
     ).select_related('line_item_type', 'invoice')
 
     for line_item in line_items.iterator(chunk_size=2000):
+        invoice = line_item.invoice
+        row_ctx = {
+            'customer_token_final': getattr(invoice, 'customer_token_final', None) if invoice else None,
+            'payer_token_final': getattr(invoice, 'payer_token_final', None) if invoice else None,
+            'payment_type_token_final': (
+                getattr(invoice, 'payment_type_token_final', None) if invoice else None
+            ),
+            'origin_id': getattr(invoice, 'origin_id', None) if invoice else None,
+            'use_type_id': None,
+            'invoice_category': (
+                _normalize_invoice_category(getattr(invoice, 'invoice_category', None))
+                if invoice else _INVOICE_CATEGORY_NORMAL
+            ),
+        }
+        matched = False
         for spec in by_product.get(line_item.product_id, ()):
             if not _line_item_matches_spec(spec, line_item):
                 continue
-            bucket = buckets[spec['id']]
-            price = _rounded_money(line_item.price)
-            bucket['price'] += price
-            bucket['total'] += _rounded_money(line_item.total)
-            percent_key = _iva_percent_key(line_item.tax_percent)
-            _add_iva_amount(
-                bucket['iva_bases'],
-                percent_key,
-                base=line_item.price,
-                tax=line_item.tax_price,
-            )
+            _add_lineitem_to_bucket(buckets, spec, line_item, row_ctx)
+            matched = True
             break
+        if matched:
+            continue
+        undeclared_spec = _matching_lineitem_undeclared_spec(undeclared_specs, line_item)
+        if undeclared_spec:
+            _add_lineitem_to_bucket(buckets, undeclared_spec, line_item, row_ctx)
 
     return buckets
 
@@ -1376,11 +1729,13 @@ def _get_lineitem_category_line(accounting_pricing, bucket, iva_accounting = Non
         return None
 
     is_return = _as_float(total) < 0 or _as_float(subtotal) < 0
+    override = _bucket_concept_override(bucket)
     return {
         'accounting_concept': _line_concept_token(
             accounting_pricing,
             total,
             return_category='lineitem',
+            concept_override=override,
         ),
         'accounting_pricing': accounting_pricing.token,
         'accounting_pricing_name': _line_title(
@@ -1399,6 +1754,35 @@ def _get_lineitem_category_line(accounting_pricing, bucket, iva_accounting = Non
         'main_accounting': main_accounting,
         'cost_center_code': accounting_pricing.accounting_cost_center.token if accounting_pricing.accounting_cost_center else None,
     }
+
+
+def _get_lineitem_category_lines(accounting_pricing, groups, iva_accounting=None, main_accounting=None):
+    """Emit one line per concept-token rule group (or a single default group)."""
+    if not groups:
+        line = _get_lineitem_category_line(
+            accounting_pricing,
+            _empty_lineitem_bucket(),
+            iva_accounting,
+            main_accounting,
+        )
+        return [line] if line else []
+    lines = []
+    for _group_key, bucket in sorted(
+        groups.items(),
+        key=lambda item: (
+            _optional_text((item[1] or {}).get('concept_token_override')),
+            str(item[0]),
+        ),
+    ):
+        line = _get_lineitem_category_line(
+            accounting_pricing,
+            bucket,
+            iva_accounting,
+            main_accounting,
+        )
+        if line:
+            lines.append(line)
+    return lines
 
 
 _BANK_PAYMENT_TOKEN = 'BANK_PAYMENT'
@@ -1470,6 +1854,9 @@ def _payment_spec(accounting_pricing):
         'id': accounting_pricing.id,
         'level': level,
         'is_default': bool(accounting_pricing.is_default),
+        'covers_undeclared': bool(
+            getattr(accounting_pricing, 'covers_undeclared', False)
+        ),
         'exploitation_id': accounting_pricing.exploitation_id,
         'payment_type_ids': payment_type_ids,
         'payment_origin': payment_origin,
@@ -1492,6 +1879,9 @@ def _payment_spec(accounting_pricing):
             accounting_pricing.counterpart_accounting_pricing_id
             if getattr(accounting_pricing, 'counterpart_accounting_pricing_id', None)
             else None
+        ),
+        'concept_token_rules': _normalize_concept_token_rules(
+            getattr(accounting_pricing, 'concept_token_rules', None)
         ),
     }
 
@@ -1676,7 +2066,7 @@ def _payment_matches_spec(spec, row):
 
 
 def _matching_payment_spec_for_category(specs_by_category, row, category):
-    """Most specific non-default pricing wins; is_default is last resource."""
+    """Most specific non-catch-all pricing wins; is_default/covers_undeclared last."""
     # Match as if the movement belonged to this invoice_category so fallback
     # from endowment/irrecoverable to normal can reuse the same filters.
     match_row = row
@@ -1829,6 +2219,15 @@ def _load_payment_rows(movements):
             'origin_id': origin_id,
             'use_type_id': use_type_id,
             'invoice_category': invoice_category,
+            'customer_token_final': (
+                getattr(invoice, 'customer_token_final', None) if invoice is not None else None
+            ),
+            'payer_token_final': (
+                getattr(invoice, 'payer_token_final', None) if invoice is not None else None
+            ),
+            'payment_type_token_final': (
+                getattr(invoice, 'payment_type_token_final', None) if invoice is not None else None
+            ),
             'is_piggy_status': is_piggy_status,
         }
         row['is_piggybank'] = _is_piggybank_payment(row, config)
@@ -1906,10 +2305,12 @@ def _merge_invoice_amount_groups(target, source):
     for pricing_id, groups in source.items():
         target_groups = target.setdefault(pricing_id, {})
         for group_key, bucket in (groups or {}).items():
+            override = _bucket_concept_override(bucket)
             dest = _ensure_invoice_group(
                 target_groups,
                 group_key,
                 origin_name=bucket.get('origin_name'),
+                concept_override=override,
             )
             dest['subtotal'] += _decimal_amount(bucket.get('subtotal'))
             dest['total'] += _decimal_amount(bucket.get('total'))
@@ -1928,11 +2329,18 @@ def _add_payment_amount_to_invoice_groups(groups_by_pricing, specs, row, amount,
         if mains_only and not spec['has_taxes_and_subtotals']:
             continue
         group_key = _invoice_group_key(spec, row)
-        origin_name = origin_names.get(group_key) if spec.get('separate_by_origin') else None
+        origin_id = (
+            _origin_id_from_invoice_group_key(group_key)
+            if spec.get('separate_by_origin')
+            else None
+        )
+        origin_name = origin_names.get(origin_id) if spec.get('separate_by_origin') else None
+        override = _matched_concept_rule(spec, row)
         bucket = _ensure_invoice_group(
             groups_by_pricing.setdefault(spec['id'], {}),
             group_key,
             origin_name,
+            concept_override=override,
         )
         bucket['subtotal'] += signed
         bucket['total'] += signed
@@ -2027,9 +2435,14 @@ def _apply_payment_category_fallback_undeclare(
     return True
 
 
+def _payment_is_catch_all(spec):
+    """is_default (legacy) or covers_undeclared (REST) payment catch-all."""
+    return bool(spec.get('is_default') or spec.get('covers_undeclared'))
+
+
 def _payment_type_detail(spec, row):
-    """Default payment lines split by type and append the type name."""
-    if not spec.get('is_default'):
+    """Catch-all payment lines split by type and append the type name."""
+    if not _payment_is_catch_all(spec):
         return None, None
     payment_type_name = _optional_text(row.get('payment_type_name'))
     if not payment_type_name:
@@ -2057,6 +2470,7 @@ def _payment_register_key(
     payment_type_name,
     origin_key,
     movement_declare_as,
+    concept_rule_key=None,
 ):
     """Stable id shared by a payment line and its counterpart/counter lines."""
     return (
@@ -2067,6 +2481,17 @@ def _payment_register_key(
         payment_type_name or '',
         origin_key,
         movement_declare_as,
+        concept_rule_key,
+    )
+
+
+def _concept_rule_key_from_rule(rule):
+    if not rule:
+        return None
+    return (
+        rule.get('position'),
+        rule.get('concept_token'),
+        bool(rule.get('apply_to_return')),
     )
 
 
@@ -2170,6 +2595,20 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
         if counterpart_pricing_id and not row.get('is_piggybank'):
             invoice_id = counterpart_pricing_id
 
+        payment_concept_rule = _match_concept_token_rule(
+            spec.get('concept_token_rules') or [],
+            row,
+        )
+        payment_concept_rule_key = _concept_rule_key_from_rule(payment_concept_rule)
+        invoice_concept_rule_key = None
+        if invoice_id is not None and invoice_specs:
+            invoice_concept_rule_key = _concept_rule_key_from_rule(
+                _match_concept_token_rule(
+                    invoice_specs[0].get('concept_token_rules') or [],
+                    row,
+                )
+            )
+
         if not spec['grouped_lines']:
             register_key = _payment_register_key(
                 spec['id'],
@@ -2178,6 +2617,7 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
                 payment_type_name,
                 None,
                 movement_declare_as,
+                payment_concept_rule_key or invoice_concept_rule_key,
             )
             bucket_entry = {
                 'movement_date': row['movement_date'],
@@ -2187,6 +2627,12 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
             }
             if movement_declare_as in (_DECLARE_DEBT, _DECLARE_HAVE):
                 bucket_entry['declare_as'] = movement_declare_as
+            if payment_concept_rule_key:
+                bucket_entry['concept_token_override'] = payment_concept_rule_key[1]
+                bucket_entry['concept_token_override_apply_to_return'] = bool(
+                    payment_concept_rule_key[2]
+                )
+                bucket_entry['concept_token_override_source'] = 'own'
             buckets[spec['id']].append(bucket_entry)
             if invoice_id is not None:
                 debt_totals[(
@@ -2199,6 +2645,7 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
                     None,
                     'have',
                     movement_declare_as,
+                    invoice_concept_rule_key,
                 )] += amount
             elif (
                 row.get('is_piggybank')
@@ -2216,11 +2663,12 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
                     counter_declare_as,
                     spec['id'],
                     movement_declare_as,
+                    None,
                 )] += amount
             continue
 
         separate_by_type = (
-            bool(spec['is_default'])
+            _payment_is_catch_all(spec)
             or (spec['separate_by_type'] and len(spec['payment_type_ids']) > 1)
         )
         type_key = row['payment_type_id'] if separate_by_type else None
@@ -2232,6 +2680,7 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
             origin_key,
             origin_name,
             movement_declare_as,
+            payment_concept_rule_key,
         )
         grouped_totals[spec['id']][group_key] += amount
         if invoice_id is not None:
@@ -2245,6 +2694,7 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
                 origin_name,
                 'have',
                 movement_declare_as,
+                invoice_concept_rule_key,
             )] += amount
         elif (
             row.get('is_piggybank')
@@ -2262,6 +2712,7 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
                 counter_declare_as,
                 spec['id'],
                 movement_declare_as,
+                None,
             )] += amount
 
     for pricing_id, groups in grouped_totals.items():
@@ -2272,6 +2723,7 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
             _origin_key,
             origin_name,
             declare_as,
+            concept_rule_key,
         ), total in groups.items():
             detail_name = _payment_detail_name(payment_type_name, origin_name)
             bucket_entry = {
@@ -2285,10 +2737,15 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
                     payment_type_name,
                     _origin_key,
                     declare_as,
+                    concept_rule_key,
                 ),
             }
             if declare_as in (_DECLARE_DEBT, _DECLARE_HAVE):
                 bucket_entry['declare_as'] = declare_as
+            if concept_rule_key:
+                bucket_entry['concept_token_override'] = concept_rule_key[1]
+                bucket_entry['concept_token_override_apply_to_return'] = bool(concept_rule_key[2])
+                bucket_entry['concept_token_override_source'] = 'own'
             buckets[pricing_id].append(bucket_entry)
 
     debt_entries = defaultdict(list)
@@ -2302,12 +2759,13 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
         origin_name,
         declare_as,
         movement_declare_as,
+        concept_rule_key,
     ), total in debt_totals.items():
         spec = specs_by_id[payment_id]
         title_base = (
             spec.get('return_name') if total < 0 else spec.get('name')
         ) or ''
-        debt_entries[invoice_id].append({
+        entry = {
             'total': total,
             'movement_date': movement_date,
             'line_name': _payment_line_name(
@@ -2323,8 +2781,14 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
                 payment_type_name,
                 _origin_key,
                 movement_declare_as,
+                concept_rule_key,
             ),
-        })
+        }
+        if concept_rule_key:
+            entry['concept_token_override'] = concept_rule_key[1]
+            entry['concept_token_override_apply_to_return'] = bool(concept_rule_key[2])
+            entry['concept_token_override_source'] = 'own'
+        debt_entries[invoice_id].append(entry)
     for entries in debt_entries.values():
         entries.sort(key=lambda entry: (
             (entry['line_name'] or '').lower(),
@@ -2344,12 +2808,13 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
         declare_as,
         payment_id,
         movement_declare_as,
+        concept_rule_key,
     ), total in counter_totals.items():
         spec = specs_by_id.get(payment_id) or {}
         title_base = (
             spec.get('return_name') if total < 0 else spec.get('name')
         ) or ''
-        counter_entries[counter_pricing_id].append({
+        entry = {
             'total': total,
             'movement_date': movement_date,
             'line_name': _payment_line_name(
@@ -2365,8 +2830,14 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
                 payment_type_name,
                 _origin_key,
                 movement_declare_as,
+                concept_rule_key,
             ),
-        })
+        }
+        if concept_rule_key:
+            entry['concept_token_override'] = concept_rule_key[1]
+            entry['concept_token_override_apply_to_return'] = bool(concept_rule_key[2])
+            entry['concept_token_override_source'] = 'own'
+        counter_entries[counter_pricing_id].append(entry)
     for entries in counter_entries.values():
         entries.sort(key=lambda entry: (
             (entry['line_name'] or '').lower(),
@@ -2381,9 +2852,9 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
 def _group_payment_amounts(accounting_pricings, movements):
     """Assign each payment movement to one payment accounting pricing.
 
-    Non-default pricings are matched by payment type, IBAN nationality,
+    Non-catch-all pricings are matched by payment type, IBAN nationality,
     incoming/outgoing, invoice_category and, when BANK_PAYMENT is the only
-    type, payment origin. is_default is only used when
+    type, payment origin. is_default or covers_undeclared is only used when
     nothing else matches. Endowment/irrecoverable movements without a
     matching payment category fall back to normal payment pricing and
     undeclare the paid amount on the related invoice pricing.
@@ -2395,19 +2866,21 @@ def _group_payment_amounts(accounting_pricings, movements):
     specs_by_category = defaultdict(lambda: {'specific': [], 'default': []})
     specs_by_id = {}
     invoice_specs_by_category = defaultdict(list)
+    mains_by_exploitation = _main_accounting_by_exploitation(accounting_pricings)
     for accounting_pricing in accounting_pricings:
         concept = accounting_pricing.accounting_concept
         if not concept or not concept.is_active:
             continue
         if concept.category == 'invoice':
-            spec = _invoice_spec(accounting_pricing)
+            main_accounting = mains_by_exploitation.get(accounting_pricing.exploitation_id)
+            spec = _invoice_spec(accounting_pricing, main_accounting=main_accounting)
             invoice_specs_by_category[spec['category']].append(spec)
             continue
         if concept.category != 'payment':
             continue
         spec = _payment_spec(accounting_pricing)
         specs_by_id[spec['id']] = spec
-        bucket_key = 'default' if spec['is_default'] else 'specific'
+        bucket_key = 'default' if _payment_is_catch_all(spec) else 'specific'
         specs_by_category[spec['category']][bucket_key].append(spec)
 
     return _accumulate_payment_rows(
@@ -2445,11 +2918,13 @@ def _get_payment_category_lines(accounting_pricing, bucket_entries, iva_accounti
         elif add_taxes:
             total = total_amount
 
+        override = _bucket_concept_override(entry)
         line = {
             'accounting_concept': _line_concept_token(
                 accounting_pricing,
                 total,
                 return_category='payment',
+                concept_override=override,
             ),
             'accounting_pricing': accounting_pricing.token,
             'accounting_pricing_name': _line_title(
@@ -2488,6 +2963,7 @@ def _get_payment_debt_line(
     movement_date=None,
     declare_as='have',
     register_key=None,
+    concept_override=None,
 ):
     """Counterpart line for a payment (invoice have, or piggy-bank counter)."""
     if total is None:
@@ -2503,6 +2979,7 @@ def _get_payment_debt_line(
             accounting_pricing,
             total_amount,
             return_category='payment',
+            concept_override=concept_override,
         ),
         'accounting_pricing': accounting_pricing.token,
         'accounting_pricing_name': line_name if line_name else _line_title(accounting_pricing),
@@ -2530,8 +3007,14 @@ def _get_payment_debt_line(
 def generate_general_accounting(request):
     content_file = BytesIO()
     max_characters = 2126
-    request_date = request.data.get('start_date')
-    date = datetime.strptime(request_date, "%Y-%m-%d")
+    request_start = request.data.get('start_date')
+    request_end = request.data.get('end_date') or request_start
+    start_date = datetime.strptime(str(request_start)[:10], "%Y-%m-%d").date()
+    end_date = datetime.strptime(str(request_end)[:10], "%Y-%m-%d").date()
+    if end_date < start_date:
+        start_date, end_date = end_date, start_date
+    # File header / register numbering use the period end (generation day).
+    date = end_date
     last_document = None
 
     date_str = date.strftime("%Y%m%d")
@@ -2552,16 +3035,23 @@ def generate_general_accounting(request):
     )
     
     invoices = Invoice.objects.filter(
-        issue_date=date, 
+        issue_date__range=(start_date, end_date),
         type_final=invoice_type_invoice_token,
         is_active=True).exclude(
             status__token=invoice_status_pending_token
             ).distinct()
     # print("total invoices: ", invoices.count())
-    endowment_invoices = Invoice.objects.filter(endowment_date=date, is_active=True).distinct()
-    irrecoverable_invoices = Invoice.objects.filter(irrecoverable_date=date, is_active=True).distinct()
+    endowment_invoices = Invoice.objects.filter(
+        endowment_date__range=(start_date, end_date),
+        is_active=True,
+    ).distinct()
+    irrecoverable_invoices = Invoice.objects.filter(
+        irrecoverable_date__range=(start_date, end_date),
+        is_active=True,
+    ).distinct()
     movements = PaymentMovement.objects.filter(
-        timestamp__date=date).exclude(
+        timestamp__date__range=(start_date, end_date),
+    ).exclude(
         previous_status__token = commitment_status_token
         ).exclude(
             payment_type__token = 'BALANCE'
@@ -2600,8 +3090,29 @@ def generate_general_accounting(request):
         iva_values = line.get('iva')
         
         empty_num_value = 0.00
-        iva_account_code = f"{line.get('iva_accounting').accounting_concept.token}{'0' * (12 - len(line.get('iva_accounting').accounting_concept.token) - len(line.get('iva_accounting').token))}{line.get('iva_accounting').token}" if line.get('iva_accounting') else ''
-        main_account_code = f"{line.get('main_accounting').accounting_concept.token}{'0' * (12 - len(line.get('main_accounting').accounting_concept.token) - len(line.get('main_accounting').token))}{line.get('main_accounting').token}" if line.get('main_accounting') else ''
+        iva_account_code = (
+            _pad_account_code(
+                line.get('iva_accounting').accounting_concept.token,
+                line.get('iva_accounting').token,
+            )
+            if line.get('iva_accounting')
+            else ''
+        )
+        if line.get('main_accounting'):
+            main_concept = (
+                _optional_text(line.get('main_concept_token_override'))
+                or line.get('main_accounting').accounting_concept.token
+            )
+            main_account_code = _pad_account_code(
+                main_concept,
+                line.get('main_accounting').token,
+            )
+        else:
+            main_account_code = ''
+        accounting_account = _pad_account_code(
+            line.get('accounting_concept'),
+            line.get('accounting_pricing'),
+        )
         movement_date_str = (line.get('movement_date')).strftime("%Y%m%d") if 'movement_date' in line and line.get('movement_date') else date_str
         len_center_code = 3
         center_code = f"{repeat_to_at_least_length('0', len_center_code - (len(line.get('cost_center_code'))))}{line.get('cost_center_code')}" if line.get('cost_center_code') else None
@@ -2653,7 +3164,6 @@ def generate_general_accounting(request):
             # print(line_content)
             raise Exception(f"Line {line_content} has {len(line_content)} characters instead of 98")
         
-        accounting_account = f"{line.get('accounting_concept')}{'0' * (12 - len(line.get('accounting_concept')) - len(line.get('accounting_pricing')))}{line.get('accounting_pricing')}"
         accounting_account_len = 12 - len(accounting_account)
         line_content += repeat_to_at_least_length(' ', accounting_account_len)
         line_content += accounting_account
@@ -2875,10 +3385,13 @@ def bulk_save_accounting_pricing(data, user):
                 token = item.get('token')
                 name = item.get('name')
                 is_default = item.get('is_default', False)
+                covers_undeclared = bool(item.get('covers_undeclared', False))
                 is_active = item.get('is_active', True)
                 exploitation_id = item.get('exploitation')
                 company_id = item.get('company', None)
                 category = item.get('category')
+                if category not in ('lineitem', 'payment'):
+                    covers_undeclared = False
                 accounting_concept_id = item.get('accounting_concept')
                 cost_center_id = item.get('cost_center', None)
                 group_values = item.get('group_values', True)
@@ -2931,6 +3444,9 @@ def bulk_save_accounting_pricing(data, user):
                 token_return_lineitem = _optional_text(item.get('token_return_lineitem')) or None
                 declared_as = _optional_text(item.get('declared_as')) or None
                 declared_as_return = _optional_text(item.get('declared_as_return')) or None
+                concept_token_rules = _normalize_concept_token_rules(
+                    item.get('concept_token_rules')
+                )
                 declare_as = _normalize_declare_as(item.get('declare_as'), fallback=_DECLARE_DEBT)
                 declare_sign = _normalize_sign(item.get('declare_sign'), fallback=_SIGN_POSITIVE)
                 return_declare_as = _normalize_declare_as(
@@ -2996,6 +3512,7 @@ def bulk_save_accounting_pricing(data, user):
                         if declared_as:
                             accounting_pricing_saved.declared_as = declared_as
                         accounting_pricing_saved.declared_as_return = declared_as_return
+                        accounting_pricing_saved.concept_token_rules = concept_token_rules
                         accounting_pricing_saved.declare_as = declare_as
                         accounting_pricing_saved.declare_sign = declare_sign
                         accounting_pricing_saved.return_declare_as = return_declare_as
@@ -3010,6 +3527,7 @@ def bulk_save_accounting_pricing(data, user):
                         accounting_pricing_saved.restore_previous_on_payment = restore_previous_on_payment
                         accounting_pricing_saved.undeclare_declare_as = undeclare_declare_as
                         accounting_pricing_saved.undeclare_sign = undeclare_sign
+                        accounting_pricing_saved.covers_undeclared = covers_undeclared
                         accounting_pricing_saved.counterpart_accounting_pricing = (
                             counterpart_pricing
                             if counterpart_pricing and counterpart_pricing.id != accounting_pricing_saved.id
@@ -3044,6 +3562,7 @@ def bulk_save_accounting_pricing(data, user):
                             name=name,
                             declared_as=declared_as,
                             declared_as_return=declared_as_return,
+                            concept_token_rules=concept_token_rules,
                             declare_as=declare_as,
                             declare_sign=declare_sign,
                             return_declare_as=return_declare_as,
@@ -3059,6 +3578,7 @@ def bulk_save_accounting_pricing(data, user):
                             company=company,
                             exploitation=exploitation,
                             is_default=is_default,
+                            covers_undeclared=covers_undeclared,
                             is_active=is_active,
                             created_by=user,
                             last_updated_by=user,
@@ -3088,6 +3608,7 @@ def bulk_save_accounting_pricing(data, user):
                     accounting_pricing_saved.name = name
                     accounting_pricing_saved.declared_as = declared_as
                     accounting_pricing_saved.declared_as_return = declared_as_return
+                    accounting_pricing_saved.concept_token_rules = concept_token_rules
                     accounting_pricing_saved.declare_as = declare_as
                     accounting_pricing_saved.declare_sign = declare_sign
                     accounting_pricing_saved.return_declare_as = return_declare_as
@@ -3102,6 +3623,7 @@ def bulk_save_accounting_pricing(data, user):
                     accounting_pricing_saved.company = company
                     accounting_pricing_saved.exploitation = exploitation
                     accounting_pricing_saved.is_default = is_default
+                    accounting_pricing_saved.covers_undeclared = covers_undeclared
                     accounting_pricing_saved.is_active = is_active
                     accounting_pricing_saved.last_updated_by = user
                     accounting_pricing_saved.accounting_cost_center = cost_center

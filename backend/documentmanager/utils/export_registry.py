@@ -241,6 +241,7 @@ def _user_config():
     from rest_framework.permissions import IsAuthenticated
     from django.contrib.auth.models import User
     from auth.filters import UserFilter
+    from auth.roles import ROLE_ADMIN, ROLE_SUPERUSER, get_user_role
     from documentmanager.utils.export_permissions import export_permission_class
 
     # NO exposar mai `password` ni cap altre camp sensible.
@@ -250,7 +251,11 @@ def _user_config():
         "last_name": (_("Cognoms"), lambda u: u.last_name or ""),
         "email": (_("Email"), lambda u: u.email or ""),
         "is_active": (_("Actiu"), lambda u: "Sí" if u.is_active else "No"),
-        "is_superuser": (_("Superusuari"), lambda u: "Sí" if u.is_superuser else "No"),
+        "role": (_("Rol"), lambda u: (
+            _("Superusuari") if get_user_role(u) == ROLE_SUPERUSER
+            else _("Administrador") if get_user_role(u) == ROLE_ADMIN
+            else _("Segons el grup")
+        )),
         "groups": (_("Grups"), lambda u: ", ".join(u.groups.values_list('name', flat=True))),
         "date_joined": (_("Data alta"), lambda u: u.date_joined.strftime("%Y-%m-%d") if u.date_joined else ""),
         "last_login": (_("Últim accés"), lambda u: u.last_login.strftime("%Y-%m-%d %H:%M:%S") if u.last_login else ""),
@@ -649,7 +654,7 @@ def _verifactu_invoice_config():
     return ExportConfig(
         queryset=lambda: VerifactuNotification.objects.all().select_related("batch"),
         filterset_class=VerifactuNotificationFilter,
-        permission_classes=[IsAuthenticated, export_permission_class('verifactu', 'verifactunotification')],
+        permission_classes=[IsAuthenticated, export_permission_class('billing', 'invoice')],
         available_columns=available_columns,
         default_columns=list(available_columns.keys()),
         document_entity="VERIFACTU_NOTIFICATION",

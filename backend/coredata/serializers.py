@@ -954,6 +954,7 @@ class PersonBankSaveSerializer(serializers.ModelSerializer):
     class Meta:
         model = PersonBank
         fields = '__all__'
+        read_only_fields = ('origin',)
     
     def to_internal_value(self, data):
         mutable_data = data.copy()
@@ -967,6 +968,7 @@ class PersonBankSaveSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         fill_holder_dni(validated_data)
+        validated_data['origin'] = PersonBank.ORIGIN_MANUAL
         return super().create(validated_data)
 
     def update(self, instance, validated_data):
@@ -1041,6 +1043,7 @@ class PersonBankMinimalSerializer(serializers.ModelSerializer):
     class Meta:
         model = PersonBank
         fields = '__all__'
+        read_only_fields = ('origin',)
 
     def to_internal_value(self, data):
         mutable_data = data.copy()
@@ -1253,6 +1256,7 @@ class PersonSerializer(serializers.ModelSerializer):
             for b in banks_data:
                 b['person'] = person
                 fill_holder_dni(b)
+                b['origin'] = PersonBank.ORIGIN_MANUAL
                 bank_person = PersonBank.objects.create(**b)
                 person.banks.add(bank_person)
         
@@ -1407,6 +1411,7 @@ class PersonSerializer(serializers.ModelSerializer):
                     else:
                         b.pop('id_save', None)
                         fill_holder_dni(b)
+                        b['origin'] = PersonBank.ORIGIN_MANUAL
                         bank_person = PersonBank.objects.create(**b)
                     instance.banks.add(bank_person)
             
@@ -1620,6 +1625,7 @@ class PersonBankSerializer(serializers.ModelSerializer):
     class Meta:
         model = PersonBank
         fields = '__all__'
+        read_only_fields = ('origin',)
     
     def update(self, instance, validated_data):
         if validated_data.get('is_default'):
@@ -1660,7 +1666,10 @@ class MainPermissionSerializer(serializers.ModelSerializer):
     affected_data = serializers.SerializerMethodField()
     class Meta:
         model = MainPermission
-        fields = ['id', 'name', 'view_key', 'change_key', 'affected_data', 'is_default', 'all_recommended']
+        fields = [
+            'id', 'name', 'view_key', 'change_key', 'affected_data',
+            'is_default', 'all_recommended', 'change_requires_superuser',
+        ]
     
     def get_affected_data(self, instance):
         affected_models = instance.affected_models.split(',')

@@ -50,6 +50,19 @@ def count_contract_invoices(contract):
     return len(unique_invoices)
 
 
+def count_contract_debt_management(contract):
+    """Nombre d'elements de la pestanya de gestió del deute del contracte: sol·licituds de
+    vulnerabilitat, compromisos de pagament i gestions d'impagats (amb els mateixos filtres
+    que fan servir les llistes de la pestanya). Compartit amb el serializer del contracte fixat."""
+    vulnerability_requests = contract.vulnerability_requests.count()
+    commitment_deposits = contract.commitment_deposits.count()
+    # `contract.claim_requests` són els pagaments del contracte dins de les gestions
+    claim_requests = contract.claim_requests.filter(
+        claim_request__isnull=False
+    ).values('claim_request').distinct().count()
+    return vulnerability_requests + commitment_deposits + claim_requests
+
+
 def serialize_contract_show_price_rates(contract):
     """Tarifes del contracte tal com les mostra la pestanya de tarifes (agrupades per punt
     de subministrament). Compartit amb el serializer del contracte fixat perquè les dues
@@ -204,6 +217,7 @@ class ContractSerializer(serializers.ModelSerializer):
     general_invoices_count = serializers.SerializerMethodField()
     members_change_count = serializers.SerializerMethodField()
     orders_count = serializers.SerializerMethodField()
+    debt_management_count = serializers.SerializerMethodField()
     pending_billing = serializers.SerializerMethodField()
     housing_units = serializers.SerializerMethodField()
     
@@ -223,6 +237,8 @@ class ContractSerializer(serializers.ModelSerializer):
     class Meta:
         model = Contract
         fields = '__all__'
+        # La posa la sincronització amb l'oficina virtual, no es pot editar.
+        read_only_fields = ['virtual_office_date']
     
     def get_exploitation(self, obj):
         if obj.contract_request_type and obj.contract_request_type.exploitation:
@@ -432,6 +448,9 @@ class ContractSerializer(serializers.ModelSerializer):
     
     def get_orders_count(self, obj):
         return obj.orders.count()
+
+    def get_debt_management_count(self, obj):
+        return count_contract_debt_management(obj)
     
     def validate_total_persons(self, value):
         """Les persones a l'habitatge no poden ser 0 ni negatives: amb 0 la
@@ -742,7 +761,15 @@ class ContractSerializer(serializers.ModelSerializer):
                 payment_serializer = GeneralPaymentSerializer(data=payment_data, context=self.context)
             payment_serializer.is_valid(raise_exception=True)
             instance.payment = payment_serializer.save()
-        instance.save()
+        # La data d'alta a l'OV només la toca la sincronització: es pren el valor actual
+        # (perquè l'historial no vegi un canvi fals) i no s'escriu, perquè si la
+        # sincronització la desa mentre s'edita el contracte no es perdi.
+        instance.virtual_office_date = Contract.objects.filter(pk=instance.pk).values_list(
+            'virtual_office_date', flat=True).first()
+        instance.save(update_fields=[
+            field.name for field in Contract._meta.concrete_fields
+            if not field.primary_key and field.name != 'virtual_office_date'
+        ])
         
         if price_rates_ids is not None:
             fill_contract_use_aca(single_contract_id=instance.id)
@@ -817,6 +844,7 @@ class ContractMinimalListSerializer(serializers.ModelSerializer):
             'contacts',
             'debt_amount',
             'termination_date',
+            'virtual_office_date',
             'is_pinned',
             'is_checked',
             'person_role',

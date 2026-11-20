@@ -18,6 +18,7 @@ import { usePermissions } from '~/middleware/permission';
 import OrderRegion from './OrderRegion.vue';
 import ContractRegion from './ContractRegion.vue';
 import SupplyPointRegion from './SupplyPointRegion.vue';
+import PiggyBankRegion from './PiggyBankRegion.vue';
 
 const { t } = useI18n();
 const toast = useToast();
@@ -25,12 +26,23 @@ const { permissions, loading } = usePermissions();
 const props = defineProps({
   id: Number, // ID de l'element
   isSubRegion: false,
-  isSubRegionOpen: Boolean
+  isSubRegionOpen: Boolean,
+  // Des de l'alta: obrir directament el pressupost/factura de la baixa
+  autoOpenBudget: {
+    type: Boolean,
+    default: false
+  },
+  // Opció 3: la baixa es finalitzarà quan hi hagi factura definitiva
+  awaitFinalizeAfterInvoice: {
+    type: Boolean,
+    default: false
+  }
 });
 
-const emit = defineEmits(['show-subregion', 'close-subregion']);
+const emit = defineEmits(['show-subregion', 'close-subregion', 'auto-budget-opened', 'invoice-confirmed']);
 const router = useRouter();
 const { $ContractTerminationApiService, $ConfigProjectApiService } = useNuxtApp();
+const { fetchFinalInvoiceTokens, findFinalInvoice } = useFinalInvoiceTokens();
 const pending = ref(true);
 const error = ref(null);
 const data = ref(null);
@@ -42,6 +54,7 @@ const editingChangeStatus = ref(false);
 const showRegion = ref(false);
 const observationNumber = ref(0)
 const finishedToken = ref(null);
+const invoiceConfirmedEmitted = ref(false);
 
 const reload = ref(false)
 
@@ -64,6 +77,13 @@ const getPermissions = async () => {
     error.value = err;
   }
 }
+
+const notifyInvoiceConfirmedIfNeeded = () => {
+  if (!props.awaitFinalizeAfterInvoice || invoiceConfirmedEmitted.value) return;
+  if (!findFinalInvoice(data.value?.invoices)) return;
+  invoiceConfirmedEmitted.value = true;
+  emit('invoice-confirmed', data.value);
+};
 
 const getData = async (load=false) => {
   if (!objectPermissions.value?.can_view) {
@@ -97,12 +117,19 @@ const getData = async (load=false) => {
         role: t('contract_block.tenant')
       });
     });
+    notifyInvoiceConfirmedIfNeeded();
   } catch (err) {
     console.error(err);
   } finally {
     pending.value = false;
   }
 }
+
+const openBudgetIfRequested = () => {
+  if (!props.autoOpenBudget || !data.value) return;
+  showDetail('AddInvoiceContract', null);
+  emit('auto-budget-opened');
+};
 const handleClickChangeStatus = () => {
   editingChangeStatus.value = true;
   SubRegion.value = true;
@@ -119,9 +146,11 @@ watch(() => props.id, () => {
 });
 
 onMounted(async () => {
+  await fetchFinalInvoiceTokens();
   await getPermissions();
   if (objectPermissions.value?.can_view) {
     await getData()
+    openBudgetIfRequested();
   } else {
     toast.error(t('common.no_permissions'));
     emit('close-subregion');
@@ -132,8 +161,25 @@ watch(() => props.isSubRegionOpen, (newValue) => {
   SubRegion.value = newValue;
 });
 
+watch(() => props.autoOpenBudget, (shouldOpen) => {
+  if (shouldOpen && data.value && !pending.value) {
+    openBudgetIfRequested();
+  }
+});
+
+watch(() => props.awaitFinalizeAfterInvoice, (awaiting) => {
+  if (awaiting) {
+    invoiceConfirmedEmitted.value = false;
+    notifyInvoiceConfirmedIfNeeded();
+  }
+});
+
 const refresh = async () => {
   await getData()
+}
+
+const onBudgetChange = async () => {
+  await getData(false);
 }
 
 const closeSubRegion = function () {
@@ -279,8 +325,10 @@ const setActiveTab = (tab) => {
         <OrderRegion v-if="showRegionDetailComponent === 'OrderRegion'" :id="regionDetailId" :isSubRegion="true" />
         <AddInvoiceBudget v-if="showRegionDetailComponent == 'AddInvoiceContract'" :object_id="data.id"
           :service="$ContractTerminationApiService" :entity="'contract_termination_request'"
-          :persons="[data.person]" @change="getData(false)" :isSubRegion="true" :bill_termination_requester="true" />
+          :persons="[data.person]" @change="onBudgetChange" :isSubRegion="true" :bill_termination_requester="true" />
         <InvoiceView v-if="showRegionDetailComponent == 'InvoiceView'" :id="regionDetailId" />
+        <PiggyBankRegion v-if="showRegionDetailComponent === 'PiggyBankRegion'" :id="Number(regionDetailId)"
+          :isSubRegion="true" />
       </div>
     </div>
   </div>

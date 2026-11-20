@@ -6,7 +6,6 @@ import { checkPermission } from '~/middleware/permission';
 import { useToast } from 'vue-toastification';
 import Pagination from '~/components/molecules/Pagination.vue';
 import H1 from '~/components/atoms/H1.vue';
-import TableHeader from '~/components/atoms/TableHeader.vue';
 import { useI18n } from 'vue-i18n';
 import ContractRequestTypeRegion from '~/components/organisms/ContractRequestTypeRegion.vue';
 import ContractRequestTypeEditRegion from '~/components/organisms/ContractRequestTypeEditRegion.vue';
@@ -147,6 +146,23 @@ const handleSavedAdd = (item) => {
   getData();
 }
 
+const rowClass = (item) => ({
+  'bg-yellow-50': item.id === selectedItemId.value,
+});
+
+const tableColumns = computed(() => [
+  { key: 'token', label: t('common.identification'), sortKey: 'token', width: 150, min: 110, priority: 1, removable: false },
+  { key: 'name', label: t('common.type'), sortKey: 'name', width: 240, grow: 2, min: 140, priority: 1, removable: false },
+  { key: 'docs', label: t('common.docs'), width: 100, min: 70, priority: 3 },
+  { key: 'variables', label: t('variables'), width: 100, min: 70, priority: 3 },
+  { key: 'orders', label: t('common.orders'), width: 100, min: 70, priority: 3 },
+  { key: 'change_of_name_orders', label: t('contract_block.change_of_name_orders'), width: 120, min: 80, grow: 1, priority: 4 },
+  { key: 'clauses', label: t('contract_block.clauses'), width: 100, min: 70, priority: 3 },
+  { key: 'price_rates', label: t('contract_block.contract_price_rate'), width: 120, min: 80, grow: 1, priority: 4 },
+  { key: 'registration_price_rates', label: t('contract_block.registration_price_rate'), width: 120, min: 80, grow: 1, priority: 4 },
+  { key: 'change_of_name_registration_price_rates', label: t('contract_block.change_of_name_registration_price_rate'), width: 120, min: 80, grow: 1, priority: 4 },
+]);
+
 </script>
 
 <template>
@@ -172,52 +188,37 @@ const handleSavedAdd = (item) => {
       </span>
     </form>
     <DataTable
-      grid-template="150px,minmax(0,2fr),repeat(8,minmax(0,1fr))"
+      table-key="contract-request-type"
+      :columns="tableColumns"
+      :items="items"
+      :row-class="rowClass"
+      :current-sort-by="sortBy"
+      :sort-desc="sortDesc"
       :pending="pending"
       :error="error"
       :is-empty="items.length === 0"
+      @sort="handleSort"
       @retry="getData">
-      <template #header>
-        <TableHeader :label="$t('common.identification')" sortKey="token" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.type')" sortKey="name" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.docs')" :sortable="false" />
-        <TableHeader :label="$t('variables')" :sortable="false" />
-        <TableHeader :label="$t('common.orders')" :sortable="false" />
-        <TableHeader :label="$t('contract_block.change_of_name_orders')" :sortable="false" />
-        <!-- <TableHeader :label="$t('Fiances')" :sortable="false" /> -->
-        <TableHeader :label="$t('contract_block.clauses')" :sortable="false" />
-        <TableHeader :label="$t('contract_block.contract_price_rate')" :sortable="false" />
-        <TableHeader :label="$t('contract_block.registration_price_rate')" :sortable="false" />
-        <TableHeader :label="$t('contract_block.change_of_name_registration_price_rate')" :sortable="false" />
+      <template #cell-token="{ item }">
+        <button class="group flex justify-between w-full items-center text-sky-500 text-nowrap text-left"
+          @click="showDetail(item.id);">
+          <abbr :title="item.token" class="no-underline truncate">{{ item.token }}</abbr>
+          <Icon name="fa6-solid:eye"
+            class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
+        </button>
       </template>
-
-      <template #default="{ gridStyle }">
-        <div v-for="item in items" :key="item.id"
-          class="gap-3 text-base border-b items-center bg-white px-1"
-          :style="gridStyle"
-          :class="{ 'bg-yellow-50': item.id === selectedItemId }">
-          <span class="min-w-0">
-            <button class="group flex justify-between w-full items-center p-1 text-sky-500 text-nowrap text-left"
-              @click="showDetail(item.id);">
-              <abbr :title="item.token" class="no-underline truncate">{{ item.token }}</abbr>
-              <Icon name="fa6-solid:eye"
-                class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
-            </button>
-          </span>
-          <span class="p-1 truncate" :title="item.name">{{ item.name }}</span>
-          <span class="p-1">{{ item.documentation_types?.length }}</span>
-          <span class="p-1">{{ item.variable_types?.length }}</span>
-          <span class="p-1">{{ item.order_types?.length }}</span>
-          <span class="p-1">{{ item.change_of_name_order_types?.length }}</span>
-          <!-- <span class="p-1">{{ item.bail_types?.length }}</span> -->
-          <span class="p-1">{{ item.clause_templates?.length }}</span>
-          <span class="p-1">{{ item.price_rates?.length }}</span>
-          <span class="p-1">{{ item.registration_price_rates?.length }}</span>
-          <span class="p-1">{{ item.change_of_name_registration_price_rates?.length }}</span>
-        </div><!-- end for items -->
+      <template #cell-name="{ item }">
+        <span class="truncate" :title="item.name">{{ item.name }}</span>
       </template>
+      <template #cell-docs="{ item }">{{ item.documentation_types?.length }}</template>
+      <template #cell-variables="{ item }">{{ item.variable_types?.length }}</template>
+      <template #cell-orders="{ item }">{{ item.order_types?.length }}</template>
+      <template #cell-change_of_name_orders="{ item }">{{ item.change_of_name_order_types?.length }}</template>
+      <!-- <template #cell-bails="{ item }">{{ item.bail_types?.length }}</template> -->
+      <template #cell-clauses="{ item }">{{ item.clause_templates?.length }}</template>
+      <template #cell-price_rates="{ item }">{{ item.price_rates?.length }}</template>
+      <template #cell-registration_price_rates="{ item }">{{ item.registration_price_rates?.length }}</template>
+      <template #cell-change_of_name_registration_price_rates="{ item }">{{ item.change_of_name_registration_price_rates?.length }}</template>
     </DataTable>
     <div id="list__footer">
       <Pagination v-if="items.length > 0" :pagination="pagination" @update:page="handlePageChange" />

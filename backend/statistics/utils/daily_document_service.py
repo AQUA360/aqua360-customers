@@ -1,6 +1,6 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 from documentmanager.models import Document
-from statistics.models import DailyDocument
+from statistics.models import DailyDocument, DailyDocumentTemplate
 
 
 def execute_available_report(available_report, report_data):
@@ -40,7 +40,67 @@ def compute_due_date(start_date, days_to_complete, is_work_days=False):
     return start_date + timedelta(days=days)
 
 
-def generate_daily_document(template, current_time, pending_status):
+def _as_date(value):
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    return value
+
+
+def compute_period_range(template, end_date):
+    """
+    Inclusive date window covered by a document generated on end_date.
+    - daily: [end, end]
+    - weekly: 7 days ending on end_date (selected weekday)
+    - every_x_days: interval_days ending on end_date
+    """
+    end = _as_date(end_date)
+    periodicity = getattr(template, 'periodicity', None) or DailyDocumentTemplate.PERIODICITY_DAILY
+
+    if periodicity == DailyDocumentTemplate.PERIODICITY_WEEKLY:
+        return end - timedelta(days=6), end
+
+    if periodicity == DailyDocumentTemplate.PERIODICITY_EVERY_X_DAYS:
+        interval = template.interval_days or 1
+        if interval < 1:
+            interval = 1
+        return end - timedelta(days=interval - 1), end
+
+    return end, end
+
+
+def should_generate_on_date(template, on_date):
+    """Whether this template should produce a document on on_date."""
+    day = _as_date(on_date)
+    periodicity = getattr(template, 'periodicity', None) or DailyDocumentTemplate.PERIODICITY_DAILY
+
+    if periodicity == DailyDocumentTemplate.PERIODICITY_DAILY:
+        return True
+
+    if periodicity == DailyDocumentTemplate.PERIODICITY_WEEKLY:
+        if template.weekday is None:
+            return False
+        return day.weekday() == int(template.weekday)
+
+    if periodicity == DailyDocumentTemplate.PERIODICITY_EVERY_X_DAYS:
+        interval = template.interval_days
+        anchor = template.period_anchor_date
+        if not interval or interval < 1 or not anchor:
+            return False
+        delta = (day - _as_date(anchor)).days
+        return delta >= 0 and delta % interval == 0
+
+    return False
+
+
+def _format_period_label(start, end):
+    if start == end:
+        return start.strftime('%Y/%m/%d')
+    return f"{start.strftime('%Y/%m/%d')} - {end.strftime('%Y/%m/%d')}"
+
+
+def generate_daily_document(template, current_time, pending_status, cancelled_status=None):
     try:
         from statistics.tasks import ReportNoData
         from statistics.utils.submission_service import (
@@ -48,15 +108,24 @@ def generate_daily_document(template, current_time, pending_status):
             submit_daily_document,
         )
 
+        document_day = _as_date(current_time)
+        if not should_generate_on_date(template, document_day):
+            return None
+
+        # if DailyDocument.objects.filter(template=template, document_date=document_day).exists():
+        #     return None
+
+        period_start, period_end = compute_period_range(template, document_day)
+        period_label = _format_period_label(period_start, period_end)
+
         document = None
         error_message = None
         no_data_found = False
         try:
-            date_str = current_time.strftime('%Y-%m-%d')
             report_data = {
-                'start_date': date_str,
-                'end_date': date_str,
-                'name': f"{template.name} {current_time.strftime('%Y/%m/%d')}",
+                'start_date': period_start.strftime('%Y-%m-%d'),
+                'end_date': period_end.strftime('%Y-%m-%d'),
+                'name': f"{template.name} {period_label}",
             }
             document = execute_available_report(template.available_report, report_data)
         except ReportNoData:
@@ -69,17 +138,22 @@ def generate_daily_document(template, current_time, pending_status):
             error_message = str(e)
 
         due_date = compute_due_date(
-            current_time.date(),
+            document_day,
             template.days_to_complete,
             is_work_days=bool(template.is_work_days),
         )
 
+        # No report file → cancelled; otherwise pending.
+        status = cancelled_status if cancelled_status is not None and no_data_found else pending_status
+
         daily_document = DailyDocument.objects.create(
-            token=f"{template.token}_{current_time.strftime('%Y%m%d')}",
-            name=f"{template.name} {current_time.strftime('%Y/%m/%d')}",
-            document_date=current_time.date(),
+            token=f"{template.token}_{document_day.strftime('%Y%m%d')}",
+            name=f"{template.name} {period_label}",
+            document_date=document_day,
+            period_start_date=period_start,
+            period_end_date=period_end,
             due_date=due_date,
-            status=pending_status,
+            status=status,
             template=template,
             document=document,
             creation_error=error_message,
@@ -94,5 +168,8 @@ def generate_daily_document(template, current_time, pending_status):
                 except Exception as e:
                     print(f"Error while submitting daily document {template.name}: {e}")
 
+        return daily_document
+
     except Exception as e:
         print(f"Error while generating daily document {template.name}: {e}")
+        return None

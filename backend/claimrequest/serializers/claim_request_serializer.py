@@ -5,7 +5,6 @@ from claimrequest.serializers.claim_request_status_serializer import ClaimReques
 from coredata.models import ConfigProject
 from order.serializers.order_serializer import OrderMinimalSerializer
 from ..models import ClaimRequest
-from billing.serializers.invoice_serializer import InvoiceMinimalSerializer
 from .claim_request_step_serializer import ClaimRequestStepSerializer
 from contract.serializers.contract_termination_request_serializer import ContractTerminationRequestMinimalSerializer
 
@@ -20,9 +19,13 @@ class ClaimRequestSerializer(serializers.ModelSerializer):
     current_step_due_date = serializers.DateField(source='current_step.due_date', read_only=True)
     total_payments = serializers.SerializerMethodField()
     total_contracts = serializers.SerializerMethodField()
+    total_invoices = serializers.SerializerMethodField()
     amount = serializers.SerializerMethodField()
     pending_payments_count = serializers.SerializerMethodField()
     excluded_payments_count = serializers.SerializerMethodField()
+    excluded_contracts_count = serializers.SerializerMethodField()
+    excluded_invoices_count = serializers.SerializerMethodField()
+    affected_invoices_count = serializers.SerializerMethodField()
     vulnerable_payments_count = serializers.SerializerMethodField()
     paid_payments_count = serializers.SerializerMethodField()
     contract_termination_requests = ContractTerminationRequestMinimalSerializer(many=True, read_only=True)
@@ -42,8 +45,8 @@ class ClaimRequestSerializer(serializers.ModelSerializer):
             'template', 'template_name',
             'current_step', 'current_step_name', 'current_step_position',
             'current_step_is_completed', 'current_step_due_date',
-            'due_date', 'description', 'total_payments', 'total_contracts', 'amount',
-            'pending_payments_count', 'excluded_payments_count', 'vulnerable_payments_count', 'paid_payments_count',
+            'due_date', 'description', 'total_payments', 'total_contracts', 'total_invoices', 'amount',
+            'pending_payments_count', 'excluded_payments_count', 'excluded_contracts_count', 'excluded_invoices_count', 'affected_invoices_count', 'vulnerable_payments_count', 'paid_payments_count',
             'contract_termination_requests', 'vulnerable_pending_requests_count', 'vulnerable_accepted_requests_count',
             'vulnerable_requests_count', 'vulnerable_accepted_requests_not_exclosed_count',
             'cut_suply_orders', 'remove_meter_orders', 'status', 'user'
@@ -119,25 +122,37 @@ class ClaimRequestSerializer(serializers.ModelSerializer):
     
     def get_excluded_payments_count(self, obj):
         return obj.payments.filter(is_excluded=True).count()
-    
+
+    def get_excluded_contracts_count(self, obj):
+        # Un contracte està exclòs quan tots els seus pagaments de la reclamació ho estan
+        # (mateix criteri que `count_excluded` de la llista de contractes). Es compta en
+        # contractes, no en pagaments, perquè es pugui restar de `total_contracts`.
+        included_contract_ids = obj.payments.filter(
+            is_excluded=False, contract__isnull=False
+        ).values('contract_id')
+        return obj.payments.filter(
+            is_excluded=True, contract__isnull=False
+        ).exclude(
+            contract_id__in=included_contract_ids
+        ).values('contract_id').distinct().count()
+
+    def get_excluded_invoices_count(self, obj):
+        return obj.payments.filter(
+            is_excluded=True, payment__invoice__isnull=False
+        ).values('payment__invoice').distinct().count()
+
+    def get_affected_invoices_count(self, obj):
+        # Factures dels pagaments no exclosos (mateix criteri que `total_invoices`)
+        return obj.payments.filter(
+            is_excluded=False, payment__invoice__isnull=False
+        ).values('payment__invoice').distinct().count()
+
     def get_vulnerable_payments_count(self, obj):
         return obj.payments.filter(is_vulnerable=True).count()
 
     def get_paid_payments_count(self, obj):
         return obj.payments.filter(is_paid=True).count()
         
-    def to_representation(self, instance):
-        representation = super().to_representation(instance)
-
-        # Obtenim les factures dels pagaments
-        payments = instance.payments.all()
-        invoices = set()
-
-        for claim_payment in payments:
-            if claim_payment.payment and claim_payment.payment.invoice:
-                invoices.add(claim_payment.payment.invoice)
-        
-        # representation['invoices'] = InvoiceMinimalSerializer(sorted(invoices, key=lambda inv: inv.customer_token_final), many=True).data
-        representation['invoices'] = []
-
-        return representation 
+    def get_total_invoices(self, obj):
+        # Factures dels pagaments no exclosos, amb el mateix criteri que l'import (`amount`)
+        return getattr(obj, 'total_invoices', None) or 0

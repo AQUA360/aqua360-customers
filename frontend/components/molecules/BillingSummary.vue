@@ -7,6 +7,7 @@ import H1 from '~/components/atoms/H1.vue';
 import InvoiceViewEdit from '~/components/organisms/InvoiceViewEdit.vue';
 import MissingContractsDetail from './MissingContractsDetail.vue';
 import BillingProcessErrorsDetail from './BillingProcessErrorsDetail.vue';
+import BillingTerminatedContractsDialog from './BillingTerminatedContractsDialog.vue';
 import ConsumptionAlertsDetail from './ConsumptionAlertsDetail.vue';
 import BilledInvoicesCard from './BilledInvoicesCard.vue';
 import BilledInvoicesDetail from './BilledInvoicesDetail.vue';
@@ -539,8 +540,13 @@ const getInfoMissingContracts = async (reload = false) => {
   }
 }
 
+const terminatedDialog = ref(null);
+
 const regenerate = async () => {
   try {
+    // Contractes de baixa: l'usuari tria quins es facturen (null = cancel·lat o error)
+    const terminatedContractIds = await terminatedDialog.value?.ask(true);
+    if (terminatedContractIds === null || terminatedContractIds === undefined) return;
     if (confirm(t('confirmation_text_block.confirm_recalculate_invoices'))) {
       reloading.value = true
       counters.value = null;
@@ -550,7 +556,7 @@ const regenerate = async () => {
       numInvoices.value = 0;
       numSuccessInvoices.value = 0;
       numWarningInvoices.value = 0;
-      const res = await $BillingApiService.recalculate(props.billing_id);
+      const res = await $BillingApiService.recalculate(props.billing_id, { terminated_contract_ids: terminatedContractIds });
       // Un cop acceptat: si el recàlcul falla, els errors es continuen veient
       processErrors.value = [];
       emit('recalculate', res);
@@ -714,6 +720,7 @@ watch(() => props.load_invoices, (newValue) => {
 
 <template>
   <div id="wrapper" class="text-base">
+    <BillingTerminatedContractsDialog ref="terminatedDialog" :billing-id="props.billing_id" />
     <div class="mb-2">
       <h2 class="mb-1 text-xl font-semibold">{{ $t('billing_block.prev_invoices') }}</h2>
       <div class="flex gap-2">

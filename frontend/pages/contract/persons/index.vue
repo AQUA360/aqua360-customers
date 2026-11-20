@@ -7,7 +7,6 @@ import { formatDate } from '~/utils/date';
 import Pagination from '~/components/molecules/Pagination.vue';
 import H1 from '~/components/atoms/H1.vue';
 import PersonRegion from '~/components/organisms/PersonRegion.vue';
-import TableHeader from '~/components/atoms/TableHeader.vue';
 import { useToast } from 'vue-toastification';
 import DataTable from '~/components/organisms/DataTable.vue';
 
@@ -184,6 +183,31 @@ const handleSubRegionEvent = (event) => {
 watch(() => route.query, () => {
   checkRouteQuery()
 }, { immediate: true })
+const rowClass = (item) => ({
+  'bg-yellow-50': item.id === selectedItemId.value,
+});
+
+const tableColumns = computed(() => [
+  {
+    key: 'token', label: t('common.identification'), sortKey: 'token',
+    width: 130, min: 105, priority: 1, removable: false,
+  },
+  { key: 'name', label: t('common.name'), sortKey: 'name', width: 160, grow: 1, min: 100, priority: 1, removable: false },
+  { key: 'surname', label: t('common.surname'), sortKey: 'surname', width: 160, grow: 1, min: 100, priority: 1 },
+  {
+    key: 'is_juridic', label: t('contract_block.is_juridic'), sortKey: 'is_juridic',
+    width: 150, min: 90, priority: 2, cellClass: 'flex items-center justify-center', headerClass: 'justify-center',
+  },
+  {
+    key: 'vulnerability', label: t('contract_block.vulnerability'),
+    width: 100, min: 80, priority: 3, cellClass: 'flex items-center justify-center', headerClass: 'justify-center',
+  },
+  {
+    key: 'debt_amount', label: t('common.debt'),
+    width: 125, min: 100, priority: 2, cellClass: 'flex items-center justify-center', headerClass: 'justify-center',
+  },
+]);
+
 </script>
 
 <template>
@@ -208,6 +232,8 @@ watch(() => route.query, () => {
           autocomplete="off" />
       </span>
 
+      <div class="h-8 w-px bg-gray-300"></div>
+
       <span class="flex gap-3">
         <label class="text-slate-800 text-base flex items-center gap-1">
           {{ $t('contract_block.is_juridic') }}
@@ -228,54 +254,48 @@ watch(() => route.query, () => {
       </span>
     </form>
     <DataTable
-      grid-template="1fr,1fr,1fr,150px,100px,125px,15px"
+      table-key="persons"
+      :columns="tableColumns"
+      :items="items"
+      :row-class="rowClass"
+      :current-sort-by="sortBy"
+      :sort-desc="sortDesc"
       :pending="pending"
       :error="error"
       :is-empty="items.length === 0"
+      @sort="handleSort"
       @retry="getData">
-      <template #header>
-        <TableHeader :label="$t('common.identification')" sortKey="token" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.name')" sortKey="name" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.surname')" sortKey="surname" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('contract_block.is_juridic')" sortKey="is_juridic" :currentSortBy="sortBy"
-          :sortDesc="sortDesc" @sort="handleSort" class="justify-center" />
-        <TableHeader :label="$t('contract_block.vulnerability')" :sortable="false" class="justify-center" />
-        <TableHeader :label="$t('common.debt')" :sortable="false" class="justify-center" />
-        <span></span>
+      <template #cell-token="{ item }">
+        <button class="group flex justify-between w-full items-center text-sky-500 text-nowrap text-left"
+          @click="showDetail(item.id);">
+          <abbr :title="item.id" class="no-underline">{{ item.token }}</abbr>
+          <Icon name="fa6-solid:eye"
+            class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
+        </button>
       </template>
 
-      <template #default="{ gridStyle }">
-        <div v-for="item in items" :key="item.id"
-          class="gap-3 text-base border-b items-center bg-white"
-          :style="gridStyle"
-          :class="{ 'bg-yellow-50': item.id === selectedItemId }">
-          <span>
-            <button class="group flex justify-between w-full items-center p-1 text-sky-500 text-nowrap text-left"
-              @click="showDetail(item.id);">
-              <abbr :title="item.id" class="no-underline">{{ item.token }}</abbr>
-              <Icon name="fa6-solid:eye"
-                class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
-            </button>
-          </span>
-          <span class="p-0">{{ item.name }}</span>
-          <span class="p-1">{{ item.surname }}</span>
-          <span class="p-1 flex items-center justify-center">
-            <AtomsColorBadge :value="item.is_juridic ? t('common.yes') : t('common.no')"
-              :color="item.is_juridic ? 'green' : 'gray'" />
-          </span>
-          <span class="p-1 flex items-center justify-center">
-            <AtomsVulnerabilityCheck :vulnerability_level="item.vulnerability_level" :small="true" />
-          </span>
-          <span class="p-1 flex items-center justify-center">
-            <span
-              :class="Number(item.debt_amount) !== 0 ? 'inline-flex items-center px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-sm font-semibold' : ''">
-              {{ formatMoneyWithCurrency(item.debt_amount) }}
-            </span>
-          </span>
-        </div><!-- end for items -->
+      <template #cell-name="{ item }">
+        <span class="truncate" :title="item.name">{{ item.name }}</span>
+      </template>
+
+      <template #cell-surname="{ item }">
+        <span class="truncate" :title="item.surname">{{ item.surname }}</span>
+      </template>
+
+      <template #cell-is_juridic="{ item }">
+        <AtomsColorBadge :value="item.is_juridic ? t('common.yes') : t('common.no')"
+          :color="item.is_juridic ? 'green' : 'gray'" />
+      </template>
+
+      <template #cell-vulnerability="{ item }">
+        <AtomsVulnerabilityCheck :vulnerability_level="item.vulnerability_level" :small="true" />
+      </template>
+
+      <template #cell-debt_amount="{ item }">
+        <span
+          :class="Number(item.debt_amount) !== 0 ? 'inline-flex items-center px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-sm font-semibold' : ''">
+          {{ formatMoneyWithCurrency(item.debt_amount) }}
+        </span>
       </template>
     </DataTable>
     <div id="list__footer">

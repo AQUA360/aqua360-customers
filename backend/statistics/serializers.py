@@ -92,7 +92,7 @@ class AvailableReportSerializer(serializers.ModelSerializer):
             'id', 'name', 'description', 'is_active', 'function_name', 
             'section', 'section_name', 'section_token', 
             'download_button_name', 'has_custom_config', 'required_fields', 'position',
-            'submission_channel',
+            'submission_channel', 'allow_pdf_export',
         ]
 
     def get_name(self, obj):
@@ -170,6 +170,40 @@ class DailyDocumentTemplateSaveSerializer(serializers.ModelSerializer):
     class Meta:
         model = DailyDocumentTemplate
         exclude = ('notify_users', 'notify_groups')
+
+    def validate(self, attrs):
+        periodicity = attrs.get(
+            'periodicity',
+            getattr(self.instance, 'periodicity', DailyDocumentTemplate.PERIODICITY_DAILY),
+        )
+        weekday = attrs.get('weekday', getattr(self.instance, 'weekday', None) if self.instance else None)
+        interval_days = attrs.get(
+            'interval_days',
+            getattr(self.instance, 'interval_days', None) if self.instance else None,
+        )
+        period_anchor_date = attrs.get(
+            'period_anchor_date',
+            getattr(self.instance, 'period_anchor_date', None) if self.instance else None,
+        )
+
+        if periodicity == DailyDocumentTemplate.PERIODICITY_WEEKLY:
+            if weekday is None or weekday < 0 or weekday > 6:
+                raise serializers.ValidationError({'weekday': 'Weekday (0=Mon … 6=Sun) is required for weekly periodicity.'})
+            attrs['interval_days'] = None
+            attrs['period_anchor_date'] = None
+        elif periodicity == DailyDocumentTemplate.PERIODICITY_EVERY_X_DAYS:
+            if not interval_days or interval_days < 1:
+                raise serializers.ValidationError({'interval_days': 'Interval days must be at least 1.'})
+            if not period_anchor_date:
+                raise serializers.ValidationError({'period_anchor_date': 'Anchor date is required for every-X-days periodicity.'})
+            attrs['weekday'] = None
+        else:
+            attrs['weekday'] = None
+            attrs['interval_days'] = None
+            attrs['period_anchor_date'] = None
+            attrs['periodicity'] = DailyDocumentTemplate.PERIODICITY_DAILY
+
+        return attrs
     
     def _apply_notify_targets(self, instance, user_ids=None, group_ids=None):
         from django.contrib.auth.models import Group, User

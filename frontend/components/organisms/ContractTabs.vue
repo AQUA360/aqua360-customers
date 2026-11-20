@@ -355,7 +355,11 @@ const tabDefinitions = computed(() => {
     { key: 'documents', icon: 'fa6-solid:file', label: t('common.docs'), count: documentsCount },
     { key: 'call_register', icon: 'fa6-solid:phone', label: t('contract_block.call_register'), count: props.callRegisterNumber },
     { key: 'bails', icon: 'fa6-solid:users', label: t('common.bails'), count: countOf(contract.bails) },
-    { key: 'debt_mng', icon: 'fa-solid:exclamation-circle', label: t('contract_block.debt_management') },
+    // Sol·licituds de vulnerabilitat + compromisos de pagament + gestions d'impagats (ve del backend)
+    {
+      key: 'debt_mng', icon: 'fa-solid:exclamation-circle', label: t('contract_block.debt_management'),
+      count: contract.debt_management_count || 0,
+    },
     {
       key: 'supply_point', icon: 'fa6-solid:street-view', label: t('contract_block.additional_supply_points'),
       count: countOf(contract.supply_points) - 1 || 0,
@@ -1207,7 +1211,7 @@ const groupedPriceRates = computed(() => {
         </div>
 
         <div class="my-2">
-          <ClaimRequestList :contract_id="contract.id" :isSubRegion="isSubRegion" @show-detail="showDetail" />
+          <ClaimRequestList :contract_id="contract.id" :isSubRegion="isSubRegion && !isPinned" @show-detail="showDetail" />
         </div>
       </div>
     </section>

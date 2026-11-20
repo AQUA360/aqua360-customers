@@ -64,6 +64,7 @@ const { $VerifactuApiService, $InvoiceApiService, $ConfigProjectApiService, $Per
 const pending = ref(true);
 const error = ref(null);
 const reloadLog = ref(false);
+const reloadPayments = ref(false);
 const data = ref(null);
 const invoiceId = ref(props.id);
 
@@ -136,6 +137,7 @@ const getData = async (load = true) => {
   if (load) pending.value = true;
   error.value = null;
   reloadLog.value = !reloadLog.value;
+  reloadPayments.value = !reloadPayments.value;
   try {
     origin_reading.value = await $ConfigProjectApiService.get('origin_reading_token');
     status_confirmed_token.value = await $ConfigProjectApiService.get('invoice_status_confirmed_token');
@@ -470,10 +472,40 @@ const canSaveToPiggyBank = computed(() => {
     && statusToken !== status_canceled_token.value;
 });
 
+const canManualPay = computed(() => {
+  if (!data.value) return false;
+  if (canSaveToPiggyBank.value) return false;
+  const statusToken = data.value.status?.token;
+  if (!statusToken) return false;
+  return statusToken !== status_pending_token.value
+    && statusToken !== status_canceled_token.value
+    && statusToken !== status_paid_token.value;
+});
+
 const saveToPiggyBank = async () => {
   if (!confirm(t("confirmation_text_block.confirm_save_amount_in_piggy_bank"))) return;
   try {
     const response = await $InvoiceApiService.saveToPiggyBank(invoiceId.value);
+    if (response) {
+      toast.success(t("common.correct_save"));
+      await getData(false);
+      emit('changed');
+    }
+  } catch (error) {
+    console.error(error);
+    toast.error(error?.data?.error || t("common.error"));
+  }
+};
+
+// "Marcar per remesar": es pot marcar si la factura té pagaments pendents per domiciliació
+// (SEPA) que no siguin ja en una remesa pendent d'enviar; es pot desmarcar si n'hi ha de marcats.
+const canMarkForRemittance = computed(() => !!data.value?.remittance_mark?.can_mark);
+const isMarkedForRemittance = computed(() => (data.value?.remittance_mark?.marked || 0) > 0);
+
+const toggleMarkedForRemittance = async (marked) => {
+  if (!confirm(t(marked ? "confirmation_text_block.confirm_mark_invoice_for_remittance" : "confirmation_text_block.confirm_unmark_invoice_for_remittance"))) return;
+  try {
+    const response = await $InvoiceApiService.markForRemittance(invoiceId.value, marked);
     if (response) {
       toast.success(t("common.correct_save"));
       await getData(false);
@@ -587,7 +619,7 @@ const handleRefactor = async () => {
         :message="data.type.token != invoice_token ? t('confirmation_text_block.confirm_delete_budget') : t('confirmation_text_block.confirm_delete_pre_invoice')"
         :expected-phrase="data.type.token != invoice_token ? t('confirmation_phrase_block.delete_budget') : t('confirmation_phrase_block.delete_pre_invoice')" @confirm="deleteBudget" />
       <InvoiceRegionModals class="overflow-x-hidden" ref="modalsRef" :invoice-id="invoiceId" :data="data"
-        :local-persons="localPersons" @refresh-data="getData"
+        :local-persons="localPersons" @refresh-data="(load) => { getData(load); emit('changed'); }"
         @open-person-bank-select="showRegionDetailComponent = 'PersonBankSelect'"
         @close-person-bank-select="closeSubRegion" :is_paid="data.status?.token == status_paid_token" />
 
@@ -599,6 +631,11 @@ const handleRefactor = async () => {
           {{ data.type.token == invoice_token ? $t('invoice') : $t('common.budget_detail') }}
           <span v-if="data.is_late" class="mx-5 px-2 bg-red-100 text-red-500 text-sm">
             {{ t("billing_block.expired_invoice") }}
+          </span>
+          <span v-if="data.remittance_mark?.marked > 0"
+            class="mx-5 px-2 border-l-2 border-sky-500 bg-sky-100 text-sky-600 text-sm">
+            <Icon name="fa6-solid:flag" class="display-inline mr-1" />
+            {{ t("billing_block.marked_for_remittance") }}
           </span>
           <span v-if="verifactuEnabled && data.type.token == invoice_token && !data.verifactu_invoice"
             class="mx-5 px-2 rounded border border-orange-500 text-orange-500 bg-orange-100 text-sm">
@@ -672,6 +709,14 @@ const handleRefactor = async () => {
             <Icon name="fa6-solid:credit-card" class="display-inline mr-2" /> {{ `${t('common.generate')}
             ${t('billing_block.payment').toLowerCase()}` }}
           </DropdownOption>
+          <DropdownOption
+            v-if="canManualPay"
+            :disabled="allow_changes || !Number(data.left_to_pay) || !(data.total_payments > 0)"
+            :name="t('billing_block.single_pay')"
+            @click="modalsRef?.openManualPayment()">
+            <Icon name="fa6-solid:coins" class="display-inline mr-2" />
+            {{ t('billing_block.single_pay') }}
+          </DropdownOption>
           <!-- Pagada: el mètode no es pot canviar sense fer-ne abans el retorn (el moviment comptable no canviaria) -->
           <DropdownOption v-if="data.status?.token != status_canceled_token" :disabled="allow_changes ||
           data.status?.token == status_paid_token"
@@ -713,6 +758,16 @@ const handleRefactor = async () => {
               :name="`${t('common.confirm')} ${t('invoice').toLowerCase()}`" @click="confirmInvoice">
               <Icon name="fa6-solid:check" class="display-inline mr-2" /> {{ `${t('common.confirm')}
               ${t('invoice').toLowerCase()}` }}
+            </DropdownOption>
+            <DropdownOption v-if="canMarkForRemittance" :name="t('billing_block.mark_for_remittance')"
+              @click="toggleMarkedForRemittance(true)">
+              <Icon name="fa6-solid:flag" class="display-inline mr-2" />
+              {{ t('billing_block.mark_for_remittance') }}
+            </DropdownOption>
+            <DropdownOption v-if="isMarkedForRemittance" :name="t('billing_block.unmark_for_remittance')"
+              @click="toggleMarkedForRemittance(false)">
+              <Icon name="fa6-solid:flag" class="display-inline mr-2" />
+              {{ t('billing_block.unmark_for_remittance') }}
             </DropdownOption>
             <DropdownOption v-if="canSaveToPiggyBank" :disabled="allow_changes"
               :name="t('billing_block.save_amount_in_piggy_bank')" @click="saveToPiggyBank">
@@ -897,7 +952,8 @@ const handleRefactor = async () => {
 
           <section v-show="activeTab === 'payments'" role="tabpanel" id="tab_payments" class="bg-white antialiased">
             <div class="mt-2">
-              <InvoicePaymentDetail :invoice_id="invoiceId" @show-detail="showDetail" :isSubRegion="isSubRegion"
+              <InvoicePaymentDetail :invoice_id="invoiceId" :reload="reloadPayments" @show-detail="showDetail"
+                :isSubRegion="isSubRegion"
                 @generate-payment-proof="(id, payment_date) => modalsRef?.openPaymentProof(id, payment_date)" />
             </div>
           </section>

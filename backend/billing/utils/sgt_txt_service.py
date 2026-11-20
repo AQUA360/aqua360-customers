@@ -6,9 +6,58 @@ from types import SimpleNamespace
 
 from billing.models import Invoice
 from billing.templatetags.billing_filters import format_eu
-from coredata.models import ConfigProject
+from coredata.models import ConfigProject, PersonBank
 from coredata.utils.address_utils import get_address_complete_without_city
 from pricing.models import ArticleCode
+
+
+def _normalize_iban(iban):
+    if not iban:
+        return ''
+    return str(iban).replace(' ', '').replace('-', '').upper()
+
+
+def _as_date(value):
+    if value is None:
+        return None
+    if isinstance(value, datetime.datetime):
+        return value.date()
+    return value
+
+
+def _get_invoice_person_bank(invoice, contract):
+    """PersonBank de la factura: el del contracte si coincideix l'IBAN, sinó cerca per IBAN."""
+    invoice_iban = _normalize_iban(invoice.payment_bank_final)
+    if not invoice_iban:
+        return None
+
+    if contract and getattr(contract, 'payment', None) and contract.payment and contract.payment.IBAN:
+        person_bank = contract.payment.IBAN
+        if _normalize_iban(person_bank.iban) == invoice_iban:
+            return person_bank
+
+    # Variants habituals de com es desa l'IBAN
+    iban_variants = {
+        invoice.payment_bank_final,
+        invoice_iban,
+        invoice.payment_bank_final.replace(' ', '') if invoice.payment_bank_final else None,
+    }
+    iban_variants = {v for v in iban_variants if v}
+    return (
+        PersonBank.objects.filter(iban__in=iban_variants)
+        .order_by('-created_at')
+        .first()
+    )
+
+
+def _person_bank_created_in_range(person_bank, start_date, end_date):
+    """Només True si el PersonBank s'ha donat d'alta dins del rang de l'informe."""
+    start = _as_date(start_date)
+    end = _as_date(end_date)
+    if not person_bank or not person_bank.created_at or start is None or end is None:
+        return False
+    created = _as_date(person_bank.created_at)
+    return start <= created <= end
 
 
 def repeat_to_at_least_length(s, wanted):
@@ -237,7 +286,7 @@ def _get_desc_lines(invoice, contract, holder, config):
     return desc_lines_content
 
 
-def generate_sgt_txt_content(request, invoices, progress_callback=None):
+def generate_sgt_txt_content(request, invoices, progress_callback=None, start_date=None, end_date=None):
     config = _load_sgt_txt_config()
     invoice_type = ConfigProject.objects.get(token="invoice_type_invoice_token").value
     code_values = _get_code_values(config)
@@ -320,7 +369,13 @@ def generate_sgt_txt_content(request, invoices, progress_callback=None):
         normalized_address_city = normalize_text(invoice.city_final.upper(), 25)
         len_city = 25 - len(normalized_address_city)
 
-        normalized_iban = normalize_text(invoice.payment_bank_final.replace(' ', '').replace('-', ''), 34) if invoice.payment_type_token_final == config.direct_debit_token and invoice.payment_bank_final else ''
+        # IBAN (i pagador del compte) només si el PersonBank s'ha donat d'alta al període de l'informe
+        show_iban = False
+        if invoice.payment_type_token_final == config.direct_debit_token and invoice.payment_bank_final:
+            person_bank = _get_invoice_person_bank(invoice, contract)
+            show_iban = _person_bank_created_in_range(person_bank, start_date, end_date)
+
+        normalized_iban = normalize_text(_normalize_iban(invoice.payment_bank_final), 34) if show_iban else ''
         len_iban = 34 - len(normalized_iban)
 
         normalized_total_final = str(invoice.total_final).replace('.', '')

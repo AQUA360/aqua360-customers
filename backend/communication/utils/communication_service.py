@@ -1,5 +1,8 @@
 import base64
+import ipaddress
 import logging
+import os
+import socket
 import json
 import re
 from django.conf import settings
@@ -11,12 +14,13 @@ import fitz
 from rest_framework import status
 from rest_framework.response import Response
 from django.core.files.base import ContentFile
-from django.utils.html import escape
+from django.utils.html import conditional_escape, escape
 from django.utils.safestring import mark_safe
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.translation import gettext as _
 from io import BytesIO
+from urllib.parse import urlparse, unquote
 import numpy as np
 from PIL import Image
 from xhtml2pdf import pisa
@@ -30,6 +34,10 @@ from contract.serializers.contract_serializer import ContractSerializer
 from coredata.models import ConfigProject, Person
 from coredata.serializers import AddressSerializer, PersonAddressSerializer, PersonContractMinimalSerializer, PersonSerializer
 from coredata.utils.name_utils import generate_token
+from communication.utils.send_errors import (
+  EmailPreparationError, email_no_company_config_error, email_no_recipient_error, email_no_sender_error,
+  email_preparation_error, email_rejection_reason, sms_rejection_reason,
+)
 from documentmanager.utils.sign_certificate_service import sign_pdf
 
 from documentmanager.utils.main_utils import upload_document
@@ -190,8 +198,10 @@ def get_communication_file(id):
     subject = letter_msg.subject if letter_msg else ""
     body = letter_msg.body if letter_msg else ""
     
-    subject = refactor_text(subject, com_values)
-    body = refactor_text(body, com_values)
+    # El títol de la signatura és text pla; a la carta, les dades de la persona van escapades
+    plain_subject = refactor_text(subject, com_values)
+    subject = mark_safe(refactor_text(subject, com_values, escape_values=True))
+    body = refactor_text(body, com_values, escape_values=True)
     
     body = format_letter_body(body)
     
@@ -240,12 +250,12 @@ def get_communication_file(id):
     pdf_buffer = BytesIO()
 
     # Generate PDF from HTML
-    pisa_status = pisa.CreatePDF(html_content, dest=pdf_buffer)
+    pisa_status = pisa.CreatePDF(html_content, dest=pdf_buffer, link_callback=pdf_link_callback)
     if pisa_status.err:
         return JsonResponse({"error": "PDF generation failed"}, status=500)
 
     #SIGNATURE
-    signed_pdf_buffer = sign_pdf(pdf_buffer, letter_company, subject, 'COMMUNICATION')
+    signed_pdf_buffer = sign_pdf(pdf_buffer, letter_company, plain_subject, 'COMMUNICATION')
 
     # Save PDF to `contract_file` field in ContractRequest instance
     pdf_filename = f"{communication_file.token}.pdf"
@@ -284,12 +294,12 @@ def create_email_template(communication):
 
       com_values = get_com_values(person, communication, letter_company)
       
-      subject = refactor_text(subject, com_values)
+      subject = mark_safe(refactor_text(subject, com_values, escape_values=True))
       # Al cos del correu l'adreça de l'oficina virtual va com a enllaç clicable
       ov_url = com_values.get('company.ov_url')
       if ov_url:
-        com_values = {**com_values, 'company.ov_url': f'<a href="{escape(ov_url)}">{escape(ov_url)}</a>'}
-      body = refactor_text(body, com_values)
+        com_values = {**com_values, 'company.ov_url': mark_safe(f'<a href="{escape(ov_url)}">{escape(ov_url)}</a>')}
+      body = refactor_text(body, com_values, escape_values=True)
       body = mark_safe(body.replace('\n', '<br>'))
       
       html_content = render_to_string(
@@ -311,9 +321,16 @@ def create_email_template(communication):
     print(f"Error creating email template: {str(e)}")
     raise Exception(str(e))
 
-def refactor_text(text, com_values):
+def refactor_text(text, com_values, escape_values=False):
+  """Substitueix les variables (`%person.name`...) i les marques de format.
+
+  Amb `escape_values` (text que acabarà com a HTML: correus i cartes) els valors s'escapen,
+  perquè molts els pot escriure l'abonat (nom, adreça...). El text de la plantilla no
+  s'escapa: l'escriu l'empresa i pot portar HTML.
+  """
   for key, value in com_values.items():
-    text = text.replace(f'%{key}', str(value))
+    value = conditional_escape(value) if escape_values else str(value)
+    text = text.replace(f'%{key}', value)
   # replace format tag markers like **BOLD** something **BOLD** to <b>something</b> or **ITALIC** smt **ITALIC** to <i>smt</i>
   text = re.sub(r'\*\*BOLD\*\*(.*?)\*\*BOLD\*\*', r'<b>\1</b>', text, flags=re.DOTALL)
   text = re.sub(r'\*\*ITALIC\*\*(.*?)\*\*ITALIC\*\*', r'<i>\1</i>', text, flags=re.DOTALL)
@@ -648,7 +665,10 @@ def send_sms(comm):
     if not message and comm.process:
       message = comm.process.messages.filter(type__token=sms_token).first()
     if not message or not message.body:
-      raise BroadcasterError("No SMS message found")
+      raise BroadcasterError(
+        "No SMS message found",
+        user_message=_("The SMS could not be sent: the communication has no SMS message."),
+      )
 
     companies = comm.company_config.company_configs.all() if comm.company_config else []
     company_ins = companies.first() if companies else None
@@ -666,8 +686,8 @@ def send_sms(comm):
       object_id=str(comm.pk),
     )
   except Exception as e:
-    logger.warning("Error enviant la comunicació %s per SMS: %s", comm.pk, e)
-    return f"Error sending SMS: {str(e)}"
+    # Al motiu, un missatge llegible; el detall de l'error només al log.
+    return sms_rejection_reason(e, comm.pk)
 
   comm.sms_sent_at = timezone.now()
   comm.save(update_fields=['sms_sent_at'])
@@ -734,14 +754,16 @@ def send_electronic_mail(comm):
     subject = refactor_text(subject, get_com_values(person, comm, company))
 
     if not comm_config:
-      raise Exception("No company configuration found")
+      raise EmailPreparationError(email_no_company_config_error())
 
     if comm.company_config_email and comm.company_config_email.mail_send_user:
       from_email = comm.company_config_email.mail_send_user
     else:
-      from_email = comm_config.company_config_emails.filter(is_default=True).first().mail_send_user
+      default_email = comm_config.company_config_emails.filter(is_default=True).first()
+      from_email = default_email.mail_send_user if default_email else None
       if not from_email:
-        from_email = comm_config.company_config_emails.first().mail_send_user
+        first_email = comm_config.company_config_emails.first()
+        from_email = first_email.mail_send_user if first_email else None
 
     if not from_email:
       try:
@@ -750,13 +772,17 @@ def send_electronic_mail(comm):
         print(f"Error getting from email: {str(e)}")
 
     if not comm_email:
-      raise Exception("No receiver email address found")
+      raise EmailPreparationError(email_no_recipient_error())
     if not from_email:
-      raise Exception("No sender email address found")
+      raise EmailPreparationError(email_no_sender_error())
   except Exception as e:
-    error_msg = f"Error preparing email: {str(e)}"
-    print(error_msg)
-    comm.rejection_reason = error_msg
+    if isinstance(e, EmailPreparationError):
+      logger.warning("No s'ha pogut preparar el correu de la comunicació %s: %s", comm.pk, e)
+      comm.rejection_reason = str(e)
+    else:
+      # El detall de l'error només al log: pot portar dades internes.
+      logger.exception("Error preparant el correu de la comunicació %s", comm.pk)
+      comm.rejection_reason = email_preparation_error()
     comm.status = status_rejected
     comm.save()
     return
@@ -795,12 +821,10 @@ def send_electronic_mail(comm):
     logger.info("Comunicació %s enviada per correu", comm.pk)
 
   except Exception as e:
-    error_msg = f"Error sending email: {str(e)}"
-    logger.warning(
-      "Error enviant la comunicació %s (%s destinataris, %s adjunts): %s",
-      comm.pk, len(comm_emails), len(document_files or []), e,
+    # Al motiu, un missatge llegible; el detall de l'error (codi SMTP, resposta de Graph...) només al log.
+    comm.rejection_reason = email_rejection_reason(
+      e, comm.pk, f"{len(comm_emails)} destinataris, {len(document_files or [])} adjunts",
     )
-    comm.rejection_reason = error_msg
     comm.status = status_rejected
     comm.save()
     
@@ -958,9 +982,63 @@ def _is_row_heights_mismatch_error(error):
   return int(match.group(1)) > int(match.group(2))
 
 
+# Recurs buit: xhtml2pdf el tracta com si no existís
+_BLOCKED_PDF_RESOURCE = 'data:text/plain;base64,'
+
+
+def _is_public_host(hostname):
+  """Cert si totes les adreces del host són públiques (ni locals ni de la xarxa interna)."""
+  try:
+    addresses = {info[4][0] for info in socket.getaddrinfo(hostname, None)}
+  except (socket.gaierror, UnicodeError):
+    return False
+  for address in addresses:
+    ip = ipaddress.ip_address(address.split('%')[0])
+    if not ip.is_global or ip.is_multicast:
+      return False
+  return bool(addresses)
+
+
+def _is_allowed_local_path(path):
+  """Només fitxers dins de l'aplicació (fonts, plantilles) o de MEDIA_ROOT (logos)."""
+  real = os.path.realpath(path)
+  roots = [os.path.realpath(settings.BASE_DIR), os.path.realpath(settings.MEDIA_ROOT)]
+  return any(real == root or real.startswith(root + os.sep) for root in roots)
+
+
+def pdf_link_callback(uri, rel):
+  """`link_callback` de xhtml2pdf per als PDF de comunicacions.
+
+  Bloqueja els recursos (imatges, fonts, CSS) que llegirien fitxers de fora de
+  l'aplicació o farien peticions a la xarxa interna des del servidor (SSRF). Deixa
+  passar les dades en línia, els fitxers de l'aplicació i de MEDIA_ROOT, el servidor de
+  DOMAIN_MEDIA (logos) i les URL públiques.
+  """
+  if not uri:
+    return uri
+  uri = str(uri)
+  if uri.startswith('data:'):
+    return uri
+  parsed = urlparse(uri)
+  scheme = parsed.scheme.lower()
+  if scheme in ('http', 'https'):
+    media_host = urlparse(getattr(settings, 'DOMAIN_MEDIA', '') or '').hostname
+    if parsed.hostname and (parsed.hostname == media_host or _is_public_host(parsed.hostname)):
+      return uri
+  elif scheme == 'file':
+    path = unquote(parsed.path)
+    if _is_allowed_local_path(path):
+      return path
+  elif not scheme:
+    if _is_allowed_local_path(uri):
+      return uri
+  logger.warning('Recurs del PDF de comunicació bloquejat: %s', uri[:200])
+  return _BLOCKED_PDF_RESOURCE
+
+
 def _create_pdf_with_table_rowheight_retry(html_content, pdf_buffer):
   try:
-    return pisa.CreatePDF(html_content, dest=pdf_buffer)
+    return pisa.CreatePDF(html_content, dest=pdf_buffer, link_callback=pdf_link_callback)
   except ValueError as error:
     if not _is_row_heights_mismatch_error(error):
       raise
@@ -978,7 +1056,7 @@ def _create_pdf_with_table_rowheight_retry(html_content, pdf_buffer):
     try:
       pdf_buffer.seek(0)
       pdf_buffer.truncate(0)
-      return pisa.CreatePDF(html_content, dest=pdf_buffer)
+      return pisa.CreatePDF(html_content, dest=pdf_buffer, link_callback=pdf_link_callback)
     finally:
       reportlab_tables.Table.__init__ = original_table_init
 
@@ -1031,8 +1109,8 @@ def get_email_image_preview(message, comm_id=None):
     config_company = comm.company_config.company_configs.first()
     config_company = CompanySerializer(config_company).data if config_company else None
     company = get_communication_company(comm, config_company)
-    body = refactor_text(body, get_com_values(person, comm, company))
-    subject = refactor_text(subject, get_com_values(person, comm, company))
+    body = refactor_text(body, get_com_values(person, comm, company), escape_values=True)
+    subject = refactor_text(subject, get_com_values(person, comm, company), escape_values=True)
 
   else:
     person = Person.objects.get(id=person_id)

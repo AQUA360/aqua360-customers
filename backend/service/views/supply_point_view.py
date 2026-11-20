@@ -12,7 +12,8 @@ from django.db.models.functions import Coalesce, Concat
 
 from auth.permissions import PermissionManager
 from billing.models import EstimatedBagMovement, Reading
-from service.models import Meter, MeterStatus, Route, SupplyCut, SupplyPoint, SupplyPointObservation, Property
+from service.models import Meter, MeterStatus, Route, SupplyCut, SupplyPoint, SupplyPointMeterHistory, SupplyPointObservation, Property
+from service.serializers.supply_point_meter_history_serializer import SupplyPointMeterHistorySerializer
 from service.utils.route_bulk_service import set_supply_point_route
 from service.utils.route_scope import serialize_effective_route
 from service.serializers.supply_point_serializer import SupplyPointListSerializer, SupplyPointSerializer
@@ -197,12 +198,12 @@ class SupplyPointViewSet(viewsets.ModelViewSet):
             assignments = get_meter_assignments_elsewhere(meter, supply_point.id)
             if assignments:
                 return Response(meter_assigned_response_data(assignments), status=status.HTTP_409_CONFLICT)
-        release_meter_from_other_supply_points(request.user, meter, supply_point)
+        release_meter_from_other_supply_points(request.user, meter, supply_point, source='ui')
         previous_meter = supply_point.meter
         supply_point.meter = meter
         supply_point.save()
-        
-        supply_point_change_meter(request.user, supply_point.id, previous_meter, meter)
+
+        supply_point_change_meter(request.user, supply_point.id, previous_meter, meter, source='ui')
         serializer = SupplyPointSerializer(supply_point, context={'request': request})
         return Response(serializer.data)
     
@@ -251,7 +252,10 @@ class SupplyPointViewSet(viewsets.ModelViewSet):
             assignments = get_meter_assignments_elsewhere(new_meter, supply_point.id)
             if assignments:
                 return Response(meter_assigned_response_data(assignments), status=status.HTTP_409_CONFLICT)
-        release_meter_from_other_supply_points(request.user, new_meter, supply_point)
+        release_meter_from_other_supply_points(
+            request.user, new_meter, supply_point,
+            change_date=change_date_instance, source='ui',
+        )
         supply_point.meter = new_meter
         supply_point.save()
         
@@ -269,8 +273,14 @@ class SupplyPointViewSet(viewsets.ModelViewSet):
 
         set_meter_change_dates(new_meter, released_meter, change_date_instance)
         
-        supply_point_change_meter(request.user, supply_point.id, current_meter, new_meter)
-        
+        supply_point_change_meter(
+            request.user, supply_point.id, current_meter, new_meter,
+            change_date=change_date_instance,
+            old_reading=(previous_reading_data or {}).get('reading_value') if current_meter else None,
+            new_reading=(new_reading_data or {}).get('reading_value'),
+            source='ui',
+        )
+
         previous_reading_instance = Reading.objects.filter(meter=current_meter, is_control=False).order_by('-reading_date').first() if current_meter else None
         
         def _create_meter_reading(meter, reading_data, date, supply_point, previous_reading, active_contract_token):
@@ -344,6 +354,22 @@ class SupplyPointViewSet(viewsets.ModelViewSet):
         serializer = SupplyPointSerializer(supply_point, context={'request': request})
         return Response(serializer.data)
     
+    @action(detail=True, methods=['get'], url_path='meter-history')
+    def meter_history(self, request, pk=None):
+        """Historial de canvis de comptador del punt, del més recent al més antic."""
+        supplypoint_permissions = PermissionManager.get_model_permissions(request.user, 'supplypoint', 'service')
+        if not supplypoint_permissions['can_view']:
+            return Response({"error": "Insufficient permissions to view supply points"}, status=status.HTTP_403_FORBIDDEN)
+
+        history = (
+            SupplyPointMeterHistory.objects
+            .filter(supply_point_id=pk)
+            .select_related('old_meter', 'new_meter', 'order', 'user')
+            .order_by('-change_date', '-created_at', '-id')
+        )
+        serializer = SupplyPointMeterHistorySerializer(history, many=True)
+        return Response({'count': len(serializer.data), 'results': serializer.data})
+
     @action(detail=True, methods=['post'], url_path='set-route')
     def set_route(self, request, pk=None):
         """Assigna al punt una ruta pròpia, diferent de la de la finca.
@@ -431,7 +457,7 @@ class SupplyPointViewSet(viewsets.ModelViewSet):
         pk = request.query_params.get('id')
         if pk:
             from django.contrib.auth.models import Group
-            user_permissions = PermissionManager.get_model_permissions(request.user, 'auth', 'group')
+            user_permissions = PermissionManager.get_model_permissions(request.user, 'group', 'auth')
             if not user_permissions['can_view'] or not user_permissions['can_change'] or not request.user.is_superuser:
                 return Response( None, status=status.HTTP_403_FORBIDDEN )
             group = Group.objects.filter(id=pk).first()

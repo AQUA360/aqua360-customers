@@ -8,7 +8,6 @@ import { formatMoneyWithCurrency } from '~/utils/money';
 import Pagination from '~/components/molecules/Pagination.vue';
 import H1 from '~/components/atoms/H1.vue';
 import PaymentRegion from '~/components/organisms/PaymentRegion.vue';
-import TableHeader from '~/components/atoms/TableHeader.vue';
 import FilterSelect from '~/components/atoms/FilterSelect.vue';
 import AddSEPAManagement from '~/components/molecules/AddSEPAManagement.vue';
 import SEPARemittanceList from '~/components/organisms/SEPARemittanceList.vue';
@@ -393,6 +392,29 @@ const handleSubRegionEvent = (event) => {
 watch(() => route.query, () => {
   checkRouteQuery()
 }, { immediate: true })
+
+const rowClass = (item) => ({
+  'bg-yellow-50': item.id === selectedItemId.value,
+  'bg-purple-50': item.is_excluded && !(item.id === selectedItemId.value),
+});
+
+const tableColumns = computed(() => [
+  {
+    key: 'token', label: t('common.identification'), sortKey: 'token',
+    width: 110, min: 95, priority: 1, removable: false,
+  },
+  { key: 'name', label: t('invoice'), sortKey: 'invoice', width: 200, grow: 2, min: 120, priority: 1 },
+  { key: 'amount', label: t('common.total'), sortKey: 'amount', width: 90, min: 80, priority: 2 },
+  { key: 'payment_date', label: t('billing_block.payment'), sortKey: 'payment_date', width: 110, min: 90, priority: 3 },
+  { key: 'payment_type', label: t('common.payment_method'), sortKey: 'payment_type', width: 130, min: 100, priority: 3 },
+  { key: 'status', label: t('common.status'), sortKey: 'status', width: 200, min: 100, priority: 1, removable: false, cellClass: 'flex items-center gap-1' },
+  { key: 'payment_origin', label: t('billing_block.payment_origin'), sortKey: 'payment_origin', width: 110, min: 90, priority: 3 },
+  { key: 'due_date', label: t('common.limit'), sortKey: 'due_date', width: 110, min: 90, priority: 2 },
+  {
+    key: 'reject', label: t('common.return_reason'), sortKey: 'reject__name',
+    width: 200, grow: 1.5, min: 120, priority: 2,
+  },
+]);
 </script>
 
 <template>
@@ -545,73 +567,47 @@ watch(() => route.query, () => {
 
     </div>
     <DataTable
-      grid-template="110px,2fr,90px,110px,130px,110px,110px,110px,1.5fr,100px"
+      table-key="wallet-managements"
+      :columns="tableColumns"
+      :items="items"
+      :row-class="rowClass"
+      :current-sort-by="sortBy"
+      :sort-desc="sortDesc"
       :pending="pending"
       :error="error"
       :is-empty="items.length === 0"
+      @sort="handleSort"
       @retry="getData">
-      <template #header>
-        <TableHeader :label="$t('common.identification')" sortKey="token" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('invoice')" sortKey="invoice" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.total')" sortKey="amount" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('billing_block.payment')" sortKey="payment_date" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.payment_method')" sortKey="payment_type" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.status')" sortKey="status" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('billing_block.payment_origin')" sortKey="payment_origin" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.limit')" sortKey="due_date" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.return_reason')" sortKey="reject__name" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <span></span>
+      <template #cell-token="{ item }">
+        <button class="group flex justify-between w-full items-center text-sky-500 text-nowrap text-left"
+          @click="showDetail(item.id);">
+          <abbr :title="item.id" class="no-underline">{{ item.token }}</abbr>
+          <Icon name="fa6-solid:eye"
+            class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
+        </button>
       </template>
 
-      <template #default="{ gridStyle }">
-        <div v-for="item in items" :key="item.id"
-          class="gap-3 text-base border-b items-center"
-          :style="gridStyle"
-          :class="{ 'bg-yellow-50': item.id === selectedItemId, 'bg-purple-50': item.is_excluded && !(item.id === selectedItemId) }">
-          <span>
-            <button class="group flex justify-between w-full items-center p-1 text-sky-500 text-nowrap text-left"
-              @click="showDetail(item.id);">
-              <abbr :title="item.id" class="no-underline">{{ item.token }}</abbr>
-              <Icon name="fa6-solid:eye"
-                class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
-            </button>
-          </span>
-
-          <span class="p-1">{{ item.name }}</span>
-          <span class="p-1">{{ formatMoneyWithCurrency(item.amount) }}</span>
-
-          <span class="p-1">{{ item.payment_date ? formatDate(item.payment_date) : '-' }}</span>
-          <span class="p-1">
-            {{ item.payment_type }}
-          </span>
-          <span class="p-1">
-            <AtomsColorBadge :value="item.status?.name" :color="item.status?.color">
-            </AtomsColorBadge>
-          </span>
-          <span class="p-1">
-            {{ item.payment_origin === 'box_office' ? t('billing_block.box_office') : (item.payment_origin === 'post_office' ? t('billing_block.post_office') : '-') }}
-          </span>
-          <span v-if="!item.is_late"> {{ item.due_date ? formatDate(item.due_date) : '-' }}</span>
-          <span v-else>
-            <AtomsColorBadge :value="formatDate(item.due_date)" :color="'red'">
-            </AtomsColorBadge>
-          </span>
-          <span class="p-1">
-            {{ item.reject?.name || item.reject?.token || '-' }}
-          </span>
-          <span class="p-1">
-            <AtomsColorBadge v-if="item.is_excluded" :value="$t('billing_block.excluded')" :color="'purple'" />
-          </span>
-        </div><!-- end for items -->
+      <template #cell-name="{ item }">{{ item.name }}</template>
+      <template #cell-amount="{ item }">{{ formatMoneyWithCurrency(item.amount) }}</template>
+      <template #cell-payment_date="{ item }">{{ item.payment_date ? formatDate(item.payment_date) : '-' }}</template>
+      <template #cell-payment_type="{ item }">{{ item.payment_type }}</template>
+      <template #cell-status="{ item }">
+        <AtomsColorBadge :value="item.status?.name" :color="item.status?.color">
+        </AtomsColorBadge>
+        <AtomsColorBadge v-if="item.is_excluded" :value="$t('billing_block.excluded')" :color="'purple'" />
+      </template>
+      <template #cell-payment_origin="{ item }">
+        {{ item.payment_origin === 'box_office' ? t('billing_block.box_office') : (item.payment_origin === 'post_office' ? t('billing_block.post_office') : '-') }}
+      </template>
+      <template #cell-due_date="{ item }">
+        <span v-if="!item.is_late"> {{ item.due_date ? formatDate(item.due_date) : '-' }}</span>
+        <span v-else>
+          <AtomsColorBadge :value="formatDate(item.due_date)" :color="'red'">
+          </AtomsColorBadge>
+        </span>
+      </template>
+      <template #cell-reject="{ item }">
+        <span class="truncate">{{ item.reject?.name || item.reject?.token || '-' }}</span>
       </template>
     </DataTable>
     <div id="list__footer">

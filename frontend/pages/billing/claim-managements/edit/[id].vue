@@ -119,6 +119,8 @@ onMounted(async () => {
   <div v-if="objectPermissions?.can_change" class="text-base px-4 max-w-full">
     <div class="flex justify-between items-center mb-3">
       <H1>{{ $t(`claim_block.claim_payments`) }}: {{ request?.token }}</H1>
+      <!-- ClaimRequestManage hi teleporta el canvi d'estat -->
+      <div id="claim-request-header-actions"></div>
     </div>
     <div v-if="loading">
       <div class="border border-gray-300 rounded-b p-4 bg-white">

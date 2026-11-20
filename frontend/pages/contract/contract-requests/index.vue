@@ -7,7 +7,6 @@ import FilterSelect from '~/components/atoms/FilterSelect.vue';
 import Pagination from '~/components/molecules/Pagination.vue';
 import H1 from '~/components/atoms/H1.vue';
 import ContractRequestRegion from '~/components/organisms/ContractRequestRegion.vue';
-import TableHeader from '~/components/atoms/TableHeader.vue';
 import { useToast } from 'vue-toastification';
 import DataTable from '~/components/organisms/DataTable.vue';
 
@@ -397,6 +396,22 @@ const onClose = () => {
 watch(() => route.query, () => {
   checkRouteQuery()
 }, { immediate: true })
+
+const rowClass = (item) => ({
+  'bg-yellow-50': item.id === selectedItemId.value,
+});
+
+const tableColumns = computed(() => [
+  { key: 'created_at', label: t('common.creation'), sortKey: 'created_at', width: 82, min: 78, priority: 3 },
+  { key: 'token', label: t('common.identification'), sortKey: 'token', width: 130, min: 105, priority: 1, removable: false },
+  { key: 'requester', label: t('common.requester'), width: 150, min: 110, grow: 2, priority: 1 },
+  { key: 'type', label: t('common.usage_type'), width: 130, min: 90, priority: 3 },
+  { key: 'request_kind', label: t('contract_block.request_kind'), width: 130, min: 90, priority: 3 },
+  { key: 'supply_point_default', label: t('common.short_supply'), width: 120, min: 90, priority: 2 },
+  { key: 'meters', label: t('meter'), width: 110, min: 80, priority: 3 },
+  { key: 'supply_point', label: t('address_block.address'), width: 200, min: 150, grow: 3, priority: 1, removable: false },
+  { key: 'status', label: t('common.status'), sortKey: 'status', width: 120, min: 90, priority: 1 },
+]);
 </script>
 
 <template>
@@ -419,6 +434,8 @@ watch(() => route.query, () => {
           :placeholder="$t('dashboard.search')" class="w-full p-1 rounded-md focus:outline-none focus-visible:border-0"
           autocomplete="off" />
       </span>
+
+      <div class="h-8 w-px bg-gray-300"></div>
 
       <span class="flex gap-3" v-if="filter_status.length">
         <label v-for="status in filter_status" :key="status.id"
@@ -505,52 +522,47 @@ watch(() => route.query, () => {
 
     </div>
     <DataTable
-      grid-template="80px,150px,150px,150px,120px,150px,150px,200px,150px"
+      table-key="contract-requests"
+      :columns="tableColumns"
+      :items="items"
+      :row-class="rowClass"
+      :current-sort-by="sortBy"
+      :sort-desc="sortDesc"
       :pending="pending"
       :error="error"
       :is-empty="items.length === 0"
+      @sort="handleSort"
       @retry="getData">
-      <template #header>
-        <TableHeader :label="$t('common.creation')" sortKey="created_at" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.identification')" sortKey="token" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.requester')" :sortable="false" />
-        <TableHeader :label="$t('common.usage_type')" :sortable="false" />
-        <TableHeader :label="$t('contract_block.request_kind')" :sortable="false" />
-        <TableHeader :label="$t('common.short_supply')" :sortable="false" />
-        <TableHeader :label="$t('meter')" :sortable="false" />
-        <TableHeader :label="$t('address_block.address')" :sortable="false" />
-        <TableHeader :label="$t('common.status')" sortKey="status" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
+      <template #cell-created_at="{ item }">{{ formatDate(item.created_at) }}</template>
+
+      <template #cell-token="{ item }">
+        <button class="group flex justify-between w-full items-center text-sky-500 text-nowrap text-left"
+          @click="showDetail(item.id);">
+          <abbr :title="item.id" class="no-underline">{{ item.token }}</abbr>
+          <Icon name="fa6-solid:eye"
+            class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
+        </button>
       </template>
 
-      <template #default="{ gridStyle }">
-        <div v-for="item in items" :key="item.id"
-          class="gap-3 text-base border-b items-center bg-white group"
-          :style="gridStyle"
-          :class="{ 'bg-yellow-50': item.id === selectedItemId }">
-          <span class="p-1">{{ formatDate(item.created_at) }}</span>
-          <span>
-            <button class="group flex justify-between w-full items-center p-1 text-sky-500 text-nowrap text-left"
-              @click="showDetail(item.id);">
-              <abbr :title="item.id" class="no-underline">{{ item.token }}</abbr>
-              <Icon name="fa6-solid:eye"
-                class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
-            </button>
-          </span>
-          <span class="p-1"><abbr :title=item.person_token>{{ item.person_name }} {{ item.person_surname
-              }}</abbr></span>
-          <span class="p-1">{{ item.type_name }}</span>
-          <span class="p-1">{{ requestKindName(item) }}</span>
-          <span class="p-1">{{ item.supply_point_default_token }}</span>
-          <span class="p-1">{{ item.meters }}</span>
-          <span class="p-1">{{ item.supply_point }}</span>
-          <span class="p-1">
-            <AtomsColorBadge :value="item.status_name || item.status_token" :color="item.status_color">
-            </AtomsColorBadge>
-          </span>
-        </div><!-- end for items -->
+      <template #cell-requester="{ item }">
+        <abbr :title="item.person_token" class="block truncate">{{ item.person_name }} {{ item.person_surname }}</abbr>
+      </template>
+      <template #cell-type="{ item }">
+        <span class="truncate" :title="item.type_name">{{ item.type_name }}</span>
+      </template>
+      <template #cell-request_kind="{ item }">
+        <span class="truncate" :title="requestKindName(item)">{{ requestKindName(item) }}</span>
+      </template>
+      <template #cell-supply_point_default="{ item }">
+        <span class="truncate" :title="item.supply_point_default_token">{{ item.supply_point_default_token }}</span>
+      </template>
+      <template #cell-meters="{ item }">{{ item.meters }}</template>
+      <template #cell-supply_point="{ item }">
+        <span class="truncate" :title="item.supply_point">{{ item.supply_point }}</span>
+      </template>
+      <template #cell-status="{ item }">
+        <AtomsColorBadge :value="item.status_name || item.status_token" :color="item.status_color">
+        </AtomsColorBadge>
       </template>
     </DataTable>
     <div id="list__footer">

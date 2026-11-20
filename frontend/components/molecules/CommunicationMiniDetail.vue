@@ -81,8 +81,8 @@ const gridTemplateColumns = computed(() => {
     // Ident | Canal | Assumpte | Estat | Enviat
     return '120px 180px minmax(220px, 1fr) 120px 130px';
   }
-  // Ident | Destinatari | Canal | Estat | Enviat
-  return '120px minmax(220px, 1fr) 180px 120px 130px';
+  // Ident | Destinatari | Adreça | CP | Ciutat | Canal | Estat | Enviat
+  return '120px minmax(160px, 1fr) minmax(180px, 1.2fr) 90px 120px 140px 100px 120px';
 });
 
 const selectedId = ref(null)
@@ -95,7 +95,9 @@ const exportColumns = computed(() => {
   ];
   if (!props.person_ids || props.person_ids.length == 0) {
     cols.push({ header: t('customer_service_block.recipient'), value: (row) => row.person_name, key: 'person_name' });
-    cols.push({ header: t('common.person_id'), value: (row) => row.person_token, key: 'person_token' });
+    cols.push({ header: t('common.send_address'), value: (row) => row.used_address || '', key: 'used_address' });
+    cols.push({ header: t('address_block.postal_code'), value: (row) => row.postal_code || '', key: 'postal_code' });
+    cols.push({ header: t('address_block.city'), value: (row) => row.city_name || '', key: 'city_name' });
   }
   cols.push({ header: t('customer_service_block.channel'), value: (row) => row.type_names, key: 'type_names' });
   if (props.person_ids && props.person_ids.length > 0) {
@@ -267,23 +269,26 @@ watch(() => props.item, (newVal) => {
             <Icon name="fa6-solid:rotate-right" class="text-slate-500" />
           </button>
         </span>
+        
+        
+        <button v-if="props.id" type="button" @click="toggleMultiPage"
+          class="inline-flex items-center gap-2 rounded-lg border px-2 py-1 text-xs font-semibold transition-colors"
+          :class="onlyMultiPage
+            ? 'border-sky-500 bg-sky-100 text-sky-800'
+            : 'border-sky-500 bg-sky-50 text-sky-700 hover:bg-sky-100'">
+            <div class="grid grid-cols-[auto,1fr] gap-x-2 items-center">
+              <input type="checkbox" :checked="onlyMultiPage" tabindex="-1"
+                class="pointer-events-none w-3.5 h-3.5 rounded border-sky-300 text-sky-500 focus:ring-0" />
+                <span>{{ t('billing_block.multi_page_invoices') }}</span>
+              </div>
+          </button>
+
         <FilterSelect :options="filter_status" :filters="selectedFilters" :multiple="false"
           :placeholder="t(`common.statuses`)" @update:modelValue="handleStatusChange($event)">
           <template #icon>
             <Icon name="fa6-solid:ruler-combined" class="text-md ml-2 mr-1" size="10px" />
           </template>
         </FilterSelect>
-
-        <button v-if="props.id" type="button" @click="toggleMultiPage"
-          class="inline-flex items-center gap-2 rounded-md border px-2 py-1 text-xs font-medium transition-colors"
-          :class="onlyMultiPage
-            ? 'border-amber-400 bg-amber-100 text-amber-800'
-            : 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'">
-          <input type="checkbox" :checked="onlyMultiPage" tabindex="-1"
-            class="pointer-events-none w-3.5 h-3.5 rounded border-amber-300 text-amber-500 focus:ring-0" />
-          {{ t('billing_block.multi_page_invoices') }}
-        </button>
-
         <FilterSelect :options="filter_types" :filters="selected_types" :multiple="false"
           :placeholder="t(`common.type`)" @update:modelValue="handleTypeChange($event)">
           <template #icon>
@@ -319,6 +324,15 @@ watch(() => props.item, (newVal) => {
           <span v-if="!props.person_ids || props.person_ids.length == 0"
             class="p-2 pl-2 text-slate-900 font-bold flex items-center"> {{ t('customer_service_block.recipient') }}
           </span>
+          <span v-if="!props.person_ids || props.person_ids.length == 0"
+            class="p-2 pl-2 text-slate-900 font-bold flex items-center"> {{ t('common.send_address') }}
+          </span>
+          <!-- <span v-if="!props.person_ids || props.person_ids.length == 0"
+            class="p-2 pl-2 text-slate-900 font-bold flex items-center"> {{ t('address_block.postal_code') }}
+          </span> -->
+          <!-- <span v-if="!props.person_ids || props.person_ids.length == 0"
+            class="p-2 pl-2 text-slate-900 font-bold flex items-center"> {{ t('address_block.city') }}
+          </span> -->
           <span class="p-2 pl-2 text-slate-900 font-bold flex items-center"> {{ t('customer_service_block.channel') }}
           </span>
           <span v-if="props.person_ids && props.person_ids.length > 0"
@@ -342,11 +356,23 @@ watch(() => props.item, (newVal) => {
           </div>
 
           <div v-if="!props.person_ids || props.person_ids.length == 0" class="footering text-slate-500 p-2 w-full">
-            <p class="truncate">{{ item.person_name }} ({{ item.person_token }})</p>
+            <p class="truncate">{{ item.person_name }}</p>
             <p v-if="props.id && !item.message_ids.every(id => item.process_message_ids.includes(id))">
               <AtomsColorBadge :value="t('customer_service_block.with_custom_msg')" color="green" class="truncate" />
             </p>
           </div>
+
+          <div v-if="!props.person_ids || props.person_ids.length == 0" class="footering text-slate-500 p-2 w-full">
+            <p class="truncate">{{ item.used_address || '-' }}</p>
+          </div>
+
+          <!-- <div v-if="!props.person_ids || props.person_ids.length == 0" class="footering text-slate-500 p-2 w-full">
+            <p class="truncate">{{ item.postal_code || '-' }}</p>
+          </div>
+
+          <div v-if="!props.person_ids || props.person_ids.length == 0" class="footering text-slate-500 p-2 w-full">
+            <p class="truncate">{{ item.city_name || '-' }}</p>
+          </div> -->
           
           <div class="footering text-slate-500 p-2 w-full">
             <p class="truncate">{{ item.type_names }}</p>

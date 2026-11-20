@@ -185,10 +185,15 @@ export default defineNuxtPlugin(nuxtApp => {
     const getOrderByToken = async (token) => {
       const apiUrl = `${apiHost}${entity}by-token/${token}/`;
       try {
-        const response = await $apiManager.fetch(apiUrl, 'GET')
+        // Sense avís: comprova si el codi ja existeix mentre s'escriu
+        const response = await $apiManager.fetch(apiUrl, 'GET', null, null, true)
         return response
       }
       catch (error) {
+        // 404: no hi ha cap ordre amb aquest codi
+        if (error?.response?.status === 404) {
+          return null
+        }
         throw error
       }
     }
@@ -344,7 +349,7 @@ export default defineNuxtPlugin(nuxtApp => {
       const apiUrl = `${apiHost}/order/download-order/${id}/`;
 
       try {
-        const response = await $apiManager.fetch(apiUrl,'GET');
+        const response = await $apiManager.fetch(apiUrl, 'POST');
 
         if (response) {
           return response;

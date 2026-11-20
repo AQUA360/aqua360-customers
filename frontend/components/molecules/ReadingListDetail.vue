@@ -117,14 +117,8 @@ const closePhotoModal = () => {
   showPhotoModal.value = false;
 }
 
-const photoSrc = computed(() => {
-  if (!detail.value) return '';
-  const photo = detail.value?.photo;
-  if (!photo) return '';
-  if (typeof photo !== 'string') return '';
-  if (photo.startsWith('data:') || photo.startsWith('http')) return photo;
-  return `data:image/jpeg;base64,${photo}`;
-});
+// Les fotos de /media/ exigeixen el token: es carreguen només amb el modal obert.
+const photoSrc = useAuthenticatedImage(() => (showPhotoModal.value ? detail.value?.photo : ''));
 
 const setupData = async () => {
   const order_types = await $ConfiglistApiService.getAll('order/order-type');

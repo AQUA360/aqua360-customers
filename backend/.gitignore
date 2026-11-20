@@ -17,6 +17,9 @@ logs/*.log
 logs/*.log.*
 logs/
 
+# Carpeta de control de la sincronització prod → test (local)
+sync-control/
+
 # Python
 __pycache__/
 *.py[co]

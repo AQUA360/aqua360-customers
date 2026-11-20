@@ -4,6 +4,7 @@ from django.db.models import OuterRef, Q, Subquery
 from django.utils import timezone
 from rest_framework.decorators import action
 from rest_framework import viewsets, status
+from django.utils.translation import gettext as _
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
 from rest_framework.pagination import PageNumberPagination
@@ -21,6 +22,7 @@ from rest_framework.filters import OrderingFilter
 
 from billing.utils.invoice_service import invoice_return_charge
 from billing.utils.payment_return_warnings import is_rectified_invoice
+from billing.utils.remittance_mark_service import payment_in_pending_remittance
 from billing.utils.sepa_invalid_account_service import get_invalid_account_reject_tokens, handle_invalid_account_return, invalid_account_return_has_changes, is_invalid_account_reject_token
 from billing.utils.payment_service import check_claim_payments_for_paid_invoice, check_paid_claim_requests_for_payments, disconnect_payment_signals, generate_method_change_rejection_movements, generate_payment_movement, get_sii_invoices, is_paid_by_direct_debit_with_other_method, log_invoice_status, log_payment_status, reconnect_payment_signals, settle_negative_payment_to_piggy
 from coredata.utils.name_utils import generate_token
@@ -115,6 +117,14 @@ class PaymentViewSet(viewsets.ModelViewSet):
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
+        # "Marcar per remesar": no es pot marcar un pagament que ja és en una remesa pendent d'enviar.
+        if (str(request.data.get('is_marked_for_remittance')).upper() == 'TRUE'
+                and not instance.is_marked_for_remittance
+                and payment_in_pending_remittance(instance)):
+            return Response(
+                {"error": _("The payment is already in a remittance pending to be sent.")},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
@@ -168,6 +178,13 @@ class PaymentViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'], url_path='manage-rejection-payments')
     def manage_rejection_payments(self, request):
+        # AVÍS IMPORTANT ABANS DE FER CANVIS TANT PER DESENVOLUPADORS COM IA
+        # MAI FER SKIP AMB LES FACTURES I PAGAMENTS ABONATS O RECTIFICATS NOMÉS PEL FET DE TENIR AQUEST ESTAT 
+        # COMPTABLEMENT ÉS UN GREU ERROR NO FER AQUEST PAS
+        # UNA FACTURA PAGADA QUE ES RETORNA S'HA DE MARCAR COM A TAL, SE LI TREGUI L'OBLIGACIÓ DE PAGAR O NO, AQUEST DINERS JA NO ELS TENIM
+        # EN CAS DE VOLER FER CANVIS AL RESPECTE PARLAR-HO AMB L'EQUIP
+        # JA S'HA COMENTAT LA LÍNIA QUE PROVOCAVA AQUEST ERROR MÉS ABAIX AMB EL MATEIX COMENTARI, PER SABER QUÈ NO FER
+        # LA RESTA DE LA FUNCIÓ POT CONTINUAR COM ARA
         data = request.data
         payments_to_return_data = self._parse_multipart_json_field(data.get("payments_to_return"), [])
         return_payments = self._parse_multipart_json_field(data.get("return_payments"), [])
@@ -323,10 +340,15 @@ class PaymentViewSet(viewsets.ModelViewSet):
                 ).exists()
                 if previous_returns.exists() or already_returned:
                     skip_return = True
-                # Factura ja anul·lada amb una rectificativa (i refeta): el deute és a la factura nova,
-                # i retornar aquest pagament tornaria a obrir la factura antiga i la reclamaria dos cops
-                if payment.invoice and is_rectified_invoice(payment.invoice, invoice_cancelled_token or ''):
-                    skip_return = True
+                
+                # AVÍS IMPORTANT ABANS DE FER CANVIS TANT PER DESENVOLUPADORS COM IA
+                # MAI FER SKIP AMB LES FACTURES I PAGAMENTS ABONATS O RECTIFICATS NOMÉS PEL FET DE TENIR AQUEST ESTAT 
+                # COMPTABLEMENT ÉS UN GREU ERROR NO FER AQUEST PAS
+                # UNA FACTURA PAGADA QUE ES RETORNA S'HA DE MARCAR COM A TAL, SE LI TREGUI L'OBLIGACIÓ DE PAGAR O NO, AQUESTS DINERS JA NO ELS TENIM
+                # EN CAS DE VOLER FER CANVIS AL RESPECTE PARLAR-HO PRIMER AMB L'EQUIP
+                
+                # if payment.invoice and is_rectified_invoice(payment.invoice, invoice_cancelled_token or ''):
+                #     skip_return = True
 
                 returned_now = False
                 if not skip_return and ((payment.status.token == payment_paid_token and ((payment.invoice and payment.invoice.status and payment.invoice.status.token == invoice_paid_token) or payment.commitment_deposit)) or (payment.status.token == payment_cancelled_token)):
@@ -745,7 +767,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
         pk = request.query_params.get('id')
         if pk:
             from django.contrib.auth.models import Group
-            user_permissions = PermissionManager.get_model_permissions(request.user, 'auth', 'group')
+            user_permissions = PermissionManager.get_model_permissions(request.user, 'group', 'auth')
             if not user_permissions['can_view'] or not user_permissions['can_change'] or not request.user.is_superuser:
                 return Response( None, status=status.HTTP_403_FORBIDDEN )
             group = Group.objects.filter(id=pk).first()

@@ -64,7 +64,6 @@ const loadingPaymentTypes = ref(false)
 const loadingCommitStatuses = ref(false)
 
 const filteringTaskId = ref(null)
-const attachReadings = ref(false)
 
 // Un tall de 7847 destinataris trigava uns 125 s a la tasca de Celery: es sona
 // cada 4 s per no saturar /task-progress/ i es dona marge de 240 s abans de
@@ -133,7 +132,7 @@ const refreshData = async () => {
         showNoPersonsWarning.value = response.result.persons.length === 0
         // Persones que no poden rebre cap dels canals triats, amb el motiu.
         emit('change-unreachable', response.result.excluded || [])
-        emit('change', persons_data.value, null, false, attachReadings.value)
+        emit('change', persons_data.value, null)
         filteringTaskId.value = null;
     } catch (error) {
         console.error(error)
@@ -162,11 +161,6 @@ const fetchConfigData = async (service, entity, targetArray, loading) => {
     } finally {
         loading.value = false;
     }
-}
-
-const toggleAttachReadings = () => {
-    attachReadings.value = !attachReadings.value
-    emit('change', persons_data.value, null, false, attachReadings.value)
 }
 
 // La tasca de cerca pot fallar (p. ex. una entitat de fixed_data que el backend
@@ -350,19 +344,6 @@ watch(() => props.search, async (newVal, oldVal) => {
             </div>
 
             <div class="flex items-center gap-2">
-                <div v-if="data.entity === 'billing'" class="flex gap-3 h-fit items-center my-auto">
-                    <div @click="toggleAttachReadings"
-                        class="flex items-center gap-2 cursor-pointer px-3 py-1.5 rounded-md transition-all duration-200" >
-                        <div class="w-4 h-4 rounded border-2 flex items-center justify-center shrink-0"
-                            :class="[attachReadings ? 'border-sky-600 bg-sky-600' : 'border-gray-300']">
-                            <Icon v-if="attachReadings" name="fa6-solid:check" class="text-white" />
-                        </div>
-                        <span class="text-sm text-gray-600">
-                            {{ t('customer_service_block.attach_readings') }}
-                        </span>
-                    </div>
-                </div>
-
                 <div class="flex items-center gap-2">
                     <input type="checkbox" v-model="group_by_person" />
                     <label class="text-sm text-slate-600">{{ t('customer_service_block.group_by_person') }}</label>

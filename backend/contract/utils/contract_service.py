@@ -22,6 +22,7 @@ from django.utils import timezone
 from datetime import datetime
 
 from service.models import Meter, MeterStatus, SupplyPointStatus
+from service.utils.supply_point_service import supply_point_change_meter
 
 def _create_fictitious_meter(no_meter_status):
     from coredata.utils.name_utils import generate_token
@@ -218,6 +219,11 @@ def _contract_create_locked(user, contract_request):
                 fictitious_meter = _create_fictitious_meter(meter_no_meter_status)
                 supply_point.meter = fictitious_meter
                 supply_point.save()
+                supply_point_change_meter(
+                    user, supply_point.id, None, fictitious_meter,
+                    source='contract',
+                    observation='Comptador fictici assignat en donar d\'alta el contracte',
+                )
     
     """ if contract_request.contract_file:
         original_filename = os.path.basename(contract_request.contract_file.name)
@@ -376,6 +382,11 @@ def _contract_create_locked(user, contract_request):
     create_bails(contract, piggy_bank)
     
     check_contract_terminations(contract, contract_request)
+
+    # Avís al sistema extern (webhook): es desa dins la transacció de contract_create
+    # i només s'envia si es confirma. Inclou les dades de la sol·licitud d'alta.
+    from integrations.outbound.webhooks.events import emit_contract_created
+    emit_contract_created(contract)
 
     return contract
 
@@ -872,6 +883,7 @@ def _get_new_person_bank(person, bank_account, bank, country, swift_code):
             swift=swift_code,
             is_default=True,
             iban=bank_account,
+            origin=PersonBank.ORIGIN_MANUAL,
         )
     
     return new_person_bank

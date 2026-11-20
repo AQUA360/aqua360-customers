@@ -6,7 +6,6 @@ import { formatDate } from '~/utils/date';
 import { useToast } from 'vue-toastification';
 import Pagination from '~/components/molecules/Pagination.vue';
 import H1 from '~/components/atoms/H1.vue';
-import TableHeader from '~/components/atoms/TableHeader.vue';
 import DataTable from '~/components/organisms/DataTable.vue';
 import ContractRegion from '~/components/organisms/ContractRegion.vue';
 import { usePermissions } from '~/middleware/permission';
@@ -122,6 +121,23 @@ const handleSort = (key) => {
   }
   getData(searchInput.value, selectedTypes.value, pagination.value.page, sortBy.value, sortDesc.value);
 };
+
+const rowClass = (item) => ({
+  'hover:bg-slate-50': true,
+  'bg-yellow-50': item.contract_id === selectedItemId.value,
+});
+
+const tableColumns = computed(() => [
+  { key: 'type', label: t('consumption_management.type'), sortKey: 'type', width: 200, min: 120, priority: 1, removable: false },
+  {
+    key: 'contract', label: t('contract'), sortKey: 'contract_token',
+    width: 150, min: 105, grow: 1, priority: 1, removable: false,
+  },
+  { key: 'holder', label: t('common.holder'), sortKey: 'holder_name', width: 200, min: 140, grow: 2, priority: 1 },
+  { key: 'supply_point', label: t('supply_point'), sortKey: 'supply_point_address', width: 220, min: 160, grow: 2, priority: 2 },
+  { key: 'consumption', label: t('consumption_management.consumption'), sortKey: 'consumption', width: 120, min: 90, priority: 2 },
+  { key: 'reading_date', label: t('consumption_management.reading_date'), sortKey: 'reading_date', width: 120, min: 90, priority: 3 },
+]);
 
 const exportColumns = computed(() => [
   { header: t('consumption_management.type'), value: (row) => row.type_display, key: 'type' },
@@ -250,6 +266,8 @@ watch([searchInput], () => {
           autocomplete="off" />
       </span>
 
+      <div class="h-8 w-px bg-gray-300"></div>
+
       <span class="flex gap-3">
         <label v-for="tf in TYPE_FILTERS" :key="tf.value"
           class="text-slate-800 text-base flex items-center gap-1 cursor-pointer">
@@ -257,6 +275,8 @@ watch([searchInput], () => {
           {{ $t(tf.label) }}
         </label>
       </span>
+
+      <div v-if="activeMode === 'history'" class="h-8 w-px bg-gray-300"></div>
 
       <span v-if="activeMode === 'history'" class="flex items-center gap-2">
         <label class="text-slate-600 text-sm font-medium">{{ $t('billing') }}:</label>
@@ -283,79 +303,70 @@ watch([searchInput], () => {
     </form>
 
     <DataTable
-      grid-template="200px,1fr,1fr,1fr,120px,120px"
+      table-key="consumption-management"
+      :columns="tableColumns"
+      :items="items"
+      :row-class="rowClass"
+      :current-sort-by="sortBy"
+      :sort-desc="sortDesc"
       :pending="pending"
       :error="error"
       :is-empty="items.length === 0"
+      @sort="handleSort"
       @retry="getData">
-      <template #header>
-        <TableHeader :label="$t('consumption_management.type')" sortKey="type"
-          :currentSortBy="sortBy" :sortDesc="sortDesc" @sort="handleSort" />
-        <TableHeader :label="$t('contract')" sortKey="contract_token"
-          :currentSortBy="sortBy" :sortDesc="sortDesc" @sort="handleSort" />
-        <TableHeader :label="$t('common.holder')" sortKey="holder_name"
-          :currentSortBy="sortBy" :sortDesc="sortDesc" @sort="handleSort" />
-        <TableHeader :label="$t('supply_point')" sortKey="supply_point_address"
-          :currentSortBy="sortBy" :sortDesc="sortDesc" @sort="handleSort" />
-        <TableHeader :label="$t('consumption_management.consumption')" sortKey="consumption"
-          :currentSortBy="sortBy" :sortDesc="sortDesc" @sort="handleSort" />
-        <TableHeader :label="$t('consumption_management.reading_date')" sortKey="reading_date"
-          :currentSortBy="sortBy" :sortDesc="sortDesc" @sort="handleSort" />
+      <template #cell-type="{ item }">
+        <span
+          class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border"
+          :class="[
+            TYPE_COLORS[item.type]?.bg    ?? 'bg-slate-100',
+            TYPE_COLORS[item.type]?.text  ?? 'text-slate-700',
+            TYPE_COLORS[item.type]?.border ?? 'border-slate-300',
+          ]">
+          {{ item.type_display }}
+        </span>
       </template>
 
-      <template #default="{ gridStyle }">
-        <div v-for="item in items" :key="item.id"
-          class="gap-3 text-base border-b items-center bg-white hover:bg-slate-50"
-          :style="gridStyle"
-          :class="{ 'bg-yellow-50': item.contract_id === selectedItemId }">
+      <template #cell-contract="{ item }">
+        <button class="group flex justify-between w-full items-center text-sky-500 text-nowrap text-left"
+          @click="showDetail(item.contract_id)">
+          <span class="font-mono text-sm">{{ item.contract_token }}</span>
+          <Icon name="fa6-solid:eye"
+            class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
+        </button>
+      </template>
 
-          <span class="p-1">
-            <span
-              class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border"
-              :class="[
-                TYPE_COLORS[item.type]?.bg    ?? 'bg-slate-100',
-                TYPE_COLORS[item.type]?.text  ?? 'text-slate-700',
-                TYPE_COLORS[item.type]?.border ?? 'border-slate-300',
-              ]">
-              {{ item.type_display }}
-            </span>
-          </span>
+      <template #cell-holder="{ item }">
+        <span class="truncate" :title="item.holder_name">{{ item.holder_name }}</span>
+      </template>
 
-          <span class="p-1">
-            <button class="group flex justify-between w-full items-center p-1 text-sky-500 text-nowrap text-left"
-              @click="showDetail(item.contract_id)">
-              <span class="font-mono text-sm">{{ item.contract_token }}</span>
-              <Icon name="fa6-solid:eye"
-                class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
-            </button>
-          </span>
+      <template #cell-supply_point="{ item }">
+        <span class="text-sm text-slate-600 truncate" :title="item.supply_point_address">
+          {{ item.supply_point_address }}
+        </span>
+      </template>
 
-          <span class="p-1 truncate" :title="item.holder_name">{{ item.holder_name }}</span>
+      <template #cell-consumption="{ item }">
+        <span class="text-sm">
+          <template v-if="item.readings_in_period !== null">
+            {{ item.readings_in_period }} {{ $t('consumption_management.readings') }}
+          </template>
+          <template v-else-if="item.consumption !== null">
+            {{ item.consumption }} {{ item.consumption_unit }}
+          </template>
+          <template v-else>—</template>
+        </span>
+      </template>
 
-          <span class="p-1 text-sm text-slate-600 truncate" :title="item.supply_point_address">
-            {{ item.supply_point_address }}
-          </span>
-
-          <span class="p-1 text-sm">
-            <template v-if="item.readings_in_period !== null">
-              {{ item.readings_in_period }} {{ $t('consumption_management.readings') }}
-            </template>
-            <template v-else-if="item.consumption !== null">
-              {{ item.consumption }} {{ item.consumption_unit }}
-            </template>
-            <template v-else>—</template>
-          </span>
-
-          <span class="p-1 text-sm text-slate-500">
-            <template v-if="item.period_start && item.period_end">
-              {{ formatDate(item.period_start) }} – {{ formatDate(item.period_end) }}
-            </template>
-            <template v-else-if="item.reading_date">
-              {{ formatDate(item.reading_date) }}
-            </template>
-            <template v-else>—</template>
-          </span>
-        </div>
+      <template #cell-reading_date="{ item }">
+        <span class="text-sm text-slate-500">
+          <template v-if="item.period_start && item.period_end">
+            {{ formatDate(item.period_start) }} – {{ formatDate(item.period_end) }}
+          </template>
+          <template v-else-if="item.reading_date">
+            {{ formatDate(item.reading_date) }}
+          </template>
+          <template v-else>—</template>
+        </span>
       </template>
     </DataTable>
 

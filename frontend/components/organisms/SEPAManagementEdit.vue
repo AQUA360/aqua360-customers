@@ -55,6 +55,8 @@ const include_excluded = ref(false)
 // pendents de pagar (vençudes/impagades), sense comptar les de despeses
 // d'impagats. No els treu del llistat: queden a la pestanya "Exclosos".
 const excludeContractsWithPendingInvoices = ref(false)
+// Només els pagaments marcats amb "Marcar per remesar" des de la fitxa del pagament.
+const onlyMarkedForRemittance = ref(false)
 const useRemittanceDate = ref(false)
 // Filtre addicional només SEPA: motius de devolució (RejectMotive) amb mode
 // include (només aquests) o exclude (treure'ls de la remesa).
@@ -138,6 +140,10 @@ const total_sepa_files = ref(0);
 // Avisos de l'encaminament (rebuts sense IBAN, empreses sense compte per
 // defecte...). No bloquegen mai la generació, només informen.
 const routingWarnings = ref([]);
+// Comptes de l'empresa sense les dades que demana el fitxer SEPA (IBAN, BIC,
+// identificador de creditor...). A diferència dels avisos, bloquegen la
+// generació fins que es completen.
+const bankIssues = ref([]);
 
 // Empresa que s'està revisant a la region d'encaminament. Es pot obrir des
 // d'aquí mateix per repassar o retocar el mapa abans de generar la remesa.
@@ -159,6 +165,93 @@ const taskId = ref(null);
 const loadingTask = ref(false);
 
 /* ---- NOU: mesura dinàmica de l'alçada del footer fix ---- */
+// Configuració del concepte del rebut bancari (només aquesta remesa, no es desa).
+const ALL_CONCEPT_FIELDS = ['contract', 'invoice', 'amount', 'consumption', 'supply_point']
+const conceptFields = ref([...ALL_CONCEPT_FIELDS])
+// Configuració desada (global, per a tots els usuaris): és la que fan servir les remeses.
+const savedConceptFields = ref([...ALL_CONCEPT_FIELDS])
+const savingConceptFields = ref(false)
+const conceptFieldsDirty = computed(() =>
+  [...conceptFields.value].sort().join(',') !== [...savedConceptFields.value].sort().join(',')
+)
+
+const sameFields = (a, b) => [...a].sort().join(',') === [...b].sort().join(',')
+
+const loadConceptConfig = async () => {
+  const before = [...conceptFields.value]
+  try {
+    const response = await $PaymentApiService.getSEPAConceptConfig()
+    if (response?.concept_fields) {
+      savedConceptFields.value = [...response.concept_fields]
+      // Només es pinten les caselles si l'usuari no les ha tocat mentre es carregava.
+      if (sameFields(conceptFields.value, before)) {
+        conceptFields.value = [...response.concept_fields]
+      }
+    }
+  } catch (error) {
+    console.error(error)
+  }
+}
+
+const saveConceptConfig = async () => {
+  savingConceptFields.value = true
+  const sent = [...conceptFields.value]
+  try {
+    const response = await $PaymentApiService.saveSEPAConceptConfig(sent)
+    if (response?.concept_fields) {
+      savedConceptFields.value = [...response.concept_fields]
+      // Si l'usuari ha tocat les caselles mentre es desava, es respecten (i queden com a «sense guardar»).
+      if (sameFields(conceptFields.value, sent)) {
+        conceptFields.value = [...response.concept_fields]
+      }
+      toast.success(t('billing_block.sepa_concept_saved'))
+    }
+  } catch (error) {
+    console.error(error)
+    toast.error(t('common.error'))
+  } finally {
+    savingConceptFields.value = false
+  }
+}
+const conceptFieldOptions = computed(() => ALL_CONCEPT_FIELDS.map(key => ({
+  key,
+  label: t(`billing_block.sepa_concept_field_${key}`),
+})))
+const conceptExamples = ref([])
+let conceptExamplesTimer = null
+
+// Identificador de la darrera petició d'exemples: les respostes (o errors) d'una petició
+// anterior s'ignoren, perquè no trepitgin els exemples de la selecció vigent.
+let conceptExamplesRequestId = 0
+
+const loadConceptExamples = async () => {
+  if (!props.onlySEPA) return
+  const requestId = ++conceptExamplesRequestId
+  try {
+    // Sense cerca encara no hi ha pagaments reals: el backend torna exemples inventats.
+    const base = lastSearchData.value || { samples_only: true }
+    const response = await $PaymentApiService.getSEPAConceptPreview({
+      ...base,
+      concept_fields: conceptFields.value,
+    })
+    if (requestId === conceptExamplesRequestId) {
+      conceptExamples.value = response?.examples || []
+    }
+  } catch (error) {
+    console.error(error)
+    if (requestId === conceptExamplesRequestId) {
+      conceptExamples.value = []
+    }
+  }
+}
+
+watch([conceptFields, lastSearchData], () => {
+  // Invalida de seguida la petició en curs: ja no correspon a la selecció actual.
+  conceptExamplesRequestId++
+  clearTimeout(conceptExamplesTimer)
+  conceptExamplesTimer = setTimeout(loadConceptExamples, 300)
+}, { deep: true, immediate: true })
+
 const footerRef = ref(null)
 const footerHeight = ref(96) // valor per defecte raonable mentre no s'ha mesurat encara
 let footerResizeObserver = null
@@ -173,7 +266,7 @@ const excludedPaymentsSearchData = computed(() => (
 const totalToRemit = computed(() => Math.max(0, (Number(total_invoices.value) || 0) - (Number(total_excluded.value) || 0)))
 
 const computedAllowSearch = computed(() => {
-  const anyEspecificFilter = selectedInvoices.value.length > 0 || selectedContracts.value.length > 0 || filter_send_date_start.value || (filter_send_date_start.value && filter_send_date_end.value);
+  const anyEspecificFilter = onlyMarkedForRemittance.value || selectedInvoices.value.length > 0 || selectedContracts.value.length > 0 || filter_send_date_start.value || (filter_send_date_start.value && filter_send_date_end.value);
   /* if (selectedBilling.value || (selectedExploitation.value && selectedOrigins.value) || anyEspecificFilter) return false; */
   if (selectedBilling.value || selectedExploitation.value || anyEspecificFilter) return false;
   return true;
@@ -207,6 +300,7 @@ const search = async (applyPendingInvoicesExclusion = true) => {
       due_date_start: filter_due_date_start.value,
       due_date_end: filter_due_date_end.value,
       use_remittance_date: useRemittanceDate.value,
+      only_marked_for_remittance: onlyMarkedForRemittance.value,
 
       ...(props.onlySEPA ? {
         reject_motives: selectedRejectMotives.value.map(motive => motive.value),
@@ -238,6 +332,7 @@ const search = async (applyPendingInvoicesExclusion = true) => {
     total_excluded.value = result.total_excluded || 0;
     total_sepa_files.value = result.total_sepa_files || 0;
     routingWarnings.value = result.routing_warnings || [];
+    bankIssues.value = result.bank_issues || [];
     
     lastSearchData.value = { ...searchData };
 
@@ -311,6 +406,7 @@ const clickFinalize = async () => {
 
       include_excluded: include_excluded.value,
       use_remittance_date: useRemittanceDate.value,
+      only_marked_for_remittance: onlyMarkedForRemittance.value,
       create_doc: true,
 
       ...(props.onlySEPA ? {
@@ -332,6 +428,7 @@ const clickFinalize = async () => {
     const result = await $PaymentApiService.getSEPADocData(searchData)
     
     if (result){
+      bankIssues.value = [];
       // console.log("result", result);
       // console.log("result.document_ids", result.document_ids);
       // await downloadSEPADocument(result.document_ids);
@@ -342,6 +439,10 @@ const clickFinalize = async () => {
 
   } catch (error) {
     console.error(error);
+    // El servidor torna a comprovar els comptes: si n'hi ha cap sense dades,
+    // es mostra què falta de forma persistent (el missatge ja surt en un toast).
+    const issues = error?.response?._data?.bank_issues;
+    if (Array.isArray(issues)) bankIssues.value = issues;
   }
   finally {
     saving.value = false;
@@ -718,7 +819,9 @@ const resetFilters = (reset_all = true) => {
   include_excluded.value = false;
   useRemittanceDate.value = false;
   excludeContractsWithPendingInvoices.value = false;
+  onlyMarkedForRemittance.value = false;
   rejectMotivesMode.value = 'include';
+  conceptFields.value = [...savedConceptFields.value];
   selectedRejectMotives.value = [];
   paymentsListTab.value = 'included';
   selectedInvoiceStatuses.value = [];
@@ -728,11 +831,13 @@ const resetFilters = (reset_all = true) => {
   total_invoices.value = 0;
   total_sepa_files.value = 0;
   routingWarnings.value = [];
+  bankIssues.value = [];
   lastSearchData.value = null;
 }
 
 onMounted(async () => {
   objectPermissions.value = await checkPermission($PaymentApiService);
+  loadConceptConfig();
   if (!objectPermissions.value.can_change) {
     toast.error(t('common.no_permissions'));
     return navigateTo('/');
@@ -946,6 +1051,20 @@ watch(selectedContracts, () => {
         </div>
       </div>
 
+      <!-- Comptes sense les dades del fitxer SEPA: impedeixen generar -->
+      <div v-if="bankIssues.length"
+        class="mb-4 rounded border border-red-200 bg-red-50 px-3 py-2">
+        <p class="text-xs font-semibold text-red-900 uppercase tracking-wide mb-1">
+          {{ $t('billing_block.remittance_bank_issues') }}
+        </p>
+        <ul class="text-sm text-red-900 space-y-0.5">
+          <li v-for="issue in bankIssues" :key="issue.bank" class="flex items-start gap-2">
+            <Icon name="fa6-solid:circle-exclamation" class="text-xs mt-1 shrink-0" />
+            <span>{{ issue.message }}</span>
+          </li>
+        </ul>
+      </div>
+
       <!-- Avisos de l'encaminament: informatius, no impedeixen generar -->
       <div v-if="routingWarnings.length"
         class="mb-4 rounded border border-amber-200 bg-amber-50 px-3 py-2">
@@ -1030,6 +1149,22 @@ watch(selectedContracts, () => {
                   :aria-checked="excludeContractsWithPendingInvoices">
                   <span class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform"
                     :class="excludeContractsWithPendingInvoices ? 'translate-x-6' : 'translate-x-1'" />
+                </button>
+              </div>
+
+              <div class="flex items-center justify-between gap-3">
+                <label class="text-xs font-medium text-slate-600">
+                  {{ $t('billing_block.only_marked_for_remittance') }}
+                  <abbr :title="$t('billing_block.info_only_marked_for_remittance')">
+                    <Icon name="fa6-solid:info" class="w-3.5 h-3.5 text-slate-400 hover:text-slate-600" />
+                  </abbr>
+                </label>
+                <button type="button" @click="onlyMarkedForRemittance = !onlyMarkedForRemittance"
+                  class="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full focus:outline-none"
+                  :class="onlyMarkedForRemittance ? 'bg-sky-500' : 'bg-gray-300'" role="switch"
+                  :aria-checked="onlyMarkedForRemittance">
+                  <span class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform"
+                    :class="onlyMarkedForRemittance ? 'translate-x-6' : 'translate-x-1'" />
                 </button>
               </div>
 
@@ -1252,7 +1387,7 @@ watch(selectedContracts, () => {
                       <SelectorType v-model="rejectMotivesMode" :options="rejectMotivesModeOptions" />
                       <v-select
                         multiple
-                        class="block flex-1 min-w-[14rem] custom-select custom-select-small"
+                        class="block flex-1 min-w-[14rem] custom-select custom-select-small custom-select-motives"
                         v-model="selectedRejectMotives"
                         :options="rejectMotives"
                         :loading="loadingRejectMotives"
@@ -1264,6 +1399,39 @@ watch(selectedContracts, () => {
               
               </div>
             </Transition>
+        </div>
+
+        <!-- Configurar el concepte del rebut bancari: esquerra tries els camps, dreta veus com queda. -->
+        <div v-if="onlySEPA" class="pt-3 mt-3 border-t border-gray-200">
+          <h4 class="px-2 py-2 text-sm font-semibold text-slate-700">
+            {{ $t('billing_block.sepa_concept_config') }}
+            <abbr :title="$t('billing_block.sepa_concept_config_info')">
+              <Icon name="fa6-solid:info" class="w-3.5 h-3.5 text-slate-400 hover:text-slate-600" />
+            </abbr>
+          </h4>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6 px-2 pb-2">
+            <div>
+              <label v-for="option in conceptFieldOptions" :key="option.key"
+                class="flex items-center gap-2 py-1 text-sm text-slate-700 cursor-pointer">
+                <input type="checkbox" :value="option.key" v-model="conceptFields" class="rounded border-gray-300" />
+                {{ option.label }}
+              </label>
+              <div class="flex items-center gap-3 mt-3">
+                <button type="button" class="button-primary" :disabled="!conceptFieldsDirty || savingConceptFields"
+                  @click="saveConceptConfig">
+                  {{ $t('billing_block.sepa_concept_save') }}
+                </button>
+                <span v-if="conceptFieldsDirty" class="text-xs text-amber-600">{{ $t('billing_block.sepa_concept_unsaved') }}</span>
+              </div>
+            </div>
+            <div>
+              <p class="text-xs font-medium text-slate-600 mb-1">{{ $t('billing_block.sepa_concept_preview_title') }}</p>
+              <div v-for="(example, index) in conceptExamples" :key="index"
+                class="mb-2 px-3 py-2 rounded border border-slate-200 bg-slate-50">
+                <p class="text-sm font-mono break-words text-slate-800">{{ example.concept }}</p>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1380,8 +1548,8 @@ watch(selectedContracts, () => {
             &nbsp; {{ $t('dashboard.search') }}
           </button>
         </abbr>
-        <abbr >
-          <button v-if="!taskId" @click="clickFinalize" :disabled="!hasRemittanceTarget || !selectedSendDate || total_invoices === 0"
+        <abbr :title="bankIssues.length ? $t('billing_block.remittance_bank_issues') : ''">
+          <button v-if="!taskId" @click="clickFinalize" :disabled="!hasRemittanceTarget || !selectedSendDate || total_invoices === 0 || bankIssues.length > 0"
             class="button-secondary">
             <Icon name="fa6-solid:circle-check" />&nbsp; {{ $t('common.finish') }}
           </button>
@@ -1487,6 +1655,10 @@ watch(selectedContracts, () => {
 
 :deep(.custom-select-small .vs__dropdown-menu) {
   max-height: 100px !important;
+}
+
+:deep(.custom-select-small.custom-select-motives .vs__dropdown-menu) {
+  max-height: 240px !important;
 }
 
 :deep(.custom-select-billing .vs__dropdown-menu) {

@@ -26,20 +26,20 @@
     "date-fns": "^3.6.0",
     "dayjs": "^1.11.13",
     "leaflet": "^1.9.4",
+    "lodash": "^4.18.1",
     "lodash.debounce": "^4.0.8",
     "nuxt": "^4.5.2",
     "ol": "^10.4.0",
     "ol-contextmenu": "^5.5.0",
     "ol-ext": "^4.0.27",
     "pinia": "^2.3.0",
-    "quill": "^2.0.3",
     "vue": "^3.4.21",
     "vue-router": "^4.3.0",
     "vue-select": "^4.0.0-beta.6",
     "vue-toastification": "^2.0.0-rc.5",
     "vue3-openlayers": "^12.2.2",
     "vuedraggable": "^4.1.0",
-    "xlsx": "^0.18.5"
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
     "@fortawesome/free-brands-svg-icons": "^6.5.2",
@@ -50,5 +50,13 @@
     "@iconify-json/healthicons": "^1.2.2",
     "@vesp/nuxt-fontawesome": "^1.0.4",
     "sass-embedded": "^1.85.0"
+  },
+  "overrides": {
+    "readdir-glob": {
+      "minimatch": "^11.0.1"
+    },
+    "@typescript-eslint/typescript-estree": {
+      "minimatch": "^11.0.1"
+    }
   }
 }

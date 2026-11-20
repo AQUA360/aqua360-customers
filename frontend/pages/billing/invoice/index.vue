@@ -46,7 +46,7 @@ const unpaidFeesEnabled = ref(false)
 
 const route = useRoute();
 const router = useRouter();
-const { $InvoiceApiService, $ConfiglistApiService } = useNuxtApp();
+const { $InvoiceApiService, $PaymentApiService, $ConfiglistApiService } = useNuxtApp();
 const pending = ref(true);
 const error = ref(null);
 const items = ref([]);
@@ -58,6 +58,9 @@ const sortBy = ref(null);
 const sortDesc = ref(false);
 const regionComponent = ref(null)
 const permissions = ref(null);
+// Pagar en massa demana els mateixos permisos que pagar un cobrament a mà
+const paymentPermissions = ref(null);
+const canMarkPaymentsAsPaid = computed(() => !!paymentPermissions.value?.can_add);
 const selectedFilters = ref([]);
 const selectedOrigins = ref([]);
 const selectedBilling = ref([]);
@@ -96,12 +99,19 @@ const pagination = ref({
 
 const getPermissions = async () => {
   error.value = null;
-  try {
-    const data = await $InvoiceApiService.getPermissions();
-    permissions.value = data;
-  } catch (err) {
-    error.value = err;
+  const [invoiceResult, paymentResult] = await Promise.allSettled([
+    $InvoiceApiService.getPermissions(),
+    $PaymentApiService.getPermissions(),
+  ]);
+  if (invoiceResult.status === 'fulfilled') {
+    permissions.value = invoiceResult.value;
+  } else {
+    permissions.value = null;
+    error.value = invoiceResult.reason;
   }
+  paymentPermissions.value = paymentResult.status === 'fulfilled'
+    ? paymentResult.value
+    : null;
 }
 
 const getData = async (searchQuery = '', filters = [], page = 1, sort = null, desc = false, contract = null, is_invoice = true, origin = null, billing = null, issue_date = null, due_date = null, serie = [], total_query = '', payment_types = [], line_item = '') => {
@@ -536,7 +546,7 @@ watch(() => route.query, () => {
                   <Icon name="fa-solid:file-invoice" class="display-inline mr-2" />
                 </div>
               </button>
-              <button @click="showDetail(null, 'ManageInvoicesPaidRegion')" class="button-default">
+              <button v-if="canMarkPaymentsAsPaid" @click="showDetail(null, 'ManageInvoicesPaidRegion')" class="button-default">
                 <div class="flex justify-between items-center">
                   {{ $t('billing_block.manage_massively_paid') }}
                   <Icon name="fa-solid:coins" class="display-inline mr-2" />
@@ -752,7 +762,7 @@ watch(() => route.query, () => {
         :isSubRegion="false" :individual="true" :selectedCustom="null"
         @show-subregion="handleSubRegionEvent" @change="refresh" @close-subregion="toggleRegion(false)" />
       <ManageInvoicesPaidRegion v-if="regionComponent === 'ManageInvoicesPaidRegion'" 
-        :filters="{ origin, billing, issue_date, due_date, serie, statuses, searchInput, searchInputTotalFinal, payment_types }"
+        :filters="{ origin, billing, issue_date, due_date, serie, statuses, searchInput, searchInputTotalFinal, payment_types, line_item: searchInputLineItem }"
         @changed="refresh" @close="toggleRegion(false)" />
     </div>
   </div>

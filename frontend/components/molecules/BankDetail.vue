@@ -32,7 +32,7 @@ const isLoading = ref(false);
       <AtomsFieldDetail v-else-if="person" :label="$t('contract_block.holder')"
         :value="item.name ? item.name : person?.full_name" />
       <AtomsFieldDetail v-else-if="company" :label="$t('company')" :value="company.name ? company.name : '-'" />
-      <AtomsFieldDetail :label="$t('common.updated')" :value="formatDate(item.updated_at)" />
+      <AtomsFieldDetail :label="$t('common.updated')" :value="`${formatDate(item.updated_at)}${item.origin ? ` (${item.origin})` : ''}`" />
     </div>
 
     <div class="flex grid grid-cols-[4fr,2fr] items-center" v-if="!props.is_detail">

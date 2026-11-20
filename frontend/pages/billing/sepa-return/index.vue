@@ -7,7 +7,7 @@ import { formatDate } from '~/utils/date';
 import Pagination from '~/components/molecules/Pagination.vue';
 import H1 from '~/components/atoms/H1.vue';
 import SEPARemittanceReturnDetail from '~/components/molecules/SEPARemittanceReturnDetail.vue';
-import TableHeader from '~/components/atoms/TableHeader.vue';
+import DataTable from '~/components/organisms/DataTable.vue';
 import { useSidebarStore } from '~/stores/useNavSideBar';
 import FilterSelect from '~/components/atoms/FilterSelect.vue';
 import { useToast } from 'vue-toastification';
@@ -257,6 +257,23 @@ const handleSubRegionEvent = (event) => {
 watch(() => route.query, () => {
     checkRouteQuery()
 }, { immediate: true })
+const rowClass = (item) => ({
+  'bg-yellow-50': item.id === selectedItemId.value,
+});
+
+const tableColumns = computed(() => [
+  { key: 'created_at', label: t('common.creation'), sortKey: 'created_at', width: 82, min: 78, priority: 3 },
+  {
+    key: 'token', label: t('common.identification'), sortKey: 'token',
+    width: 200, min: 120, grow: 1, priority: 1, removable: false,
+  },
+  { key: 'total_payments', label: t('billing_block.payments'), width: 80, min: 70, priority: 3 },
+  { key: 'total_amount', label: t('billing_block.total_amount'), width: 100, min: 85, priority: 2 },
+  { key: 'return_date', label: t('common.returned'), sortKey: 'return_date', width: 100, min: 82, priority: 2 },
+  { key: 'returned_by', label: t('common.returned_by'), sortKey: 'returned_by', width: 120, min: 90, priority: 2 },
+  { key: 'manual', label: '', width: 120, min: 90, priority: 3 },
+]);
+
 </script>
 
 <template>
@@ -290,66 +307,37 @@ watch(() => route.query, () => {
       </span>
     </form>
 
-    <div id="list" class="flex flex-col overflow-hidden" :style="{
-      width: 'calc(100vw - ' + sidebarStore.sidebarWidth + 'px)',
-      maxWidth: '100%',
-      minHeight: 'calc(100vh - 230px)',
-      maxHeight: 'calc(100vh - 230px)',
-    }">
-      <div
-        class="heading flex-shrink-0 bg-white grid gap-3 text-base border-b items-center"
-        style="grid-template-columns: 75px 200px 80px 100px 80px 100px 100px;"
-        >
-        <TableHeader :label="$t('common.creation')" sortKey="created_at" :currentSortBy="sortBy"
-          :sortDesc="sortDesc" @sort="handleSort" />
-        <TableHeader :label="$t('common.identification')" sortKey="token" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-          <TableHeader :label="$t('billing_block.payments')" :sortable="false" />
-          <TableHeader :label="$t('billing_block.total_amount')" :sortable="false" />
-        <TableHeader :label="$t('common.returned')" sortKey="return_date" :currentSortBy="sortBy"
-          :sortDesc="sortDesc" @sort="handleSort" />
-        <TableHeader :label="$t('common.returned_by')" sortKey="returned_by" :currentSortBy="sortBy"
-          :sortDesc="sortDesc" @sort="handleSort" />
-          <span></span>
-      </div>
-      <div class="flex-1 min-h-0 overflow-y-auto" :style="{ width: 'calc(100vw - ' + sidebarStore.sidebarWidth + 'px)', maxWidth: '100%' }">
-      <div v-if="pending">
-        <AppLoading :text="$t('common.loading')" />
-      </div>
-      <div v-else-if="error">
-        <p>Error: {{ error.message }}</p>
-        <p><button @click="getData" class="underline text-sky-500 hover:no-underline">{{ $t('common.load_again')
-        }}</button></p>
-      </div>
-      <div v-else>
-        <div v-for="item in items" :key="item.id"
-          class="grid gap-3 text-base border-b items-center"
-          :class="{ 'bg-yellow-50': item.id === selectedItemId }"
-          style="grid-template-columns: 75px 200px 80px 100px 80px 100px 100px;">
-          <span class="p-1 text-nowrap">{{ formatDate(item.created_at) }}</span>
-          <span>
-            <button
-              class="group flex justify-between w-full items-center p-1 text-sky-500 text-nowrap text-left truncate"
-              @click="showDetail(item);">
-              <abbr :title="item.token" class="no-underline truncate">{{ item.token }}</abbr>
-              <Icon name="fa6-solid:eye"
-                class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
-            </button>
-          </span>
-          <span class="p-1">{{ item.total_payments }}</span>
-          <span class="p-1">{{ formatMoneyWithCurrency(item.total_amount) }}</span>
-          <span class="p-1">{{ item.return_date ? formatDate(item.return_date) : '-' }}</span>
-          <span class="p-1">{{ item.returned_by_username ? item.returned_by_username : '-' }}</span>
-          <span v-if="!item.document" class="p-1">{{ t('billing_block.manual_return') }}</span>
-        </div><!-- end for items -->
+    <DataTable
+      table-key="sepa-return"
+      :columns="tableColumns"
+      :items="items"
+      :row-class="rowClass"
+      :current-sort-by="sortBy"
+      :sort-desc="sortDesc"
+      :pending="pending"
+      :error="error"
+      :is-empty="items.length === 0"
+      @sort="handleSort"
+      @retry="getData">
+      <template #cell-created_at="{ item }">{{ formatDate(item.created_at) }}</template>
 
-        <div v-if="items.length === 0" class="my-3">
-          <p class="text-">{{ $t('common.no_records') }}</p>
-        </div>
+      <template #cell-token="{ item }">
+        <button class="group flex justify-between w-full items-center text-sky-500 text-nowrap text-left"
+          @click="showDetail(item);">
+          <abbr :title="item.token" class="no-underline">{{ item.token }}</abbr>
+          <Icon name="fa6-solid:eye"
+            class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
+        </button>
+      </template>
 
-      </div><!-- else no-error no-pending -->
-      </div><!-- scroll area -->
-    </div><!-- end list -->
+      <template #cell-total_payments="{ item }">{{ item.total_payments }}</template>
+      <template #cell-total_amount="{ item }">{{ formatMoneyWithCurrency(item.total_amount) }}</template>
+      <template #cell-return_date="{ item }">{{ item.return_date ? formatDate(item.return_date) : '-' }}</template>
+      <template #cell-returned_by="{ item }">{{ item.returned_by_username ? item.returned_by_username : '-' }}</template>
+      <template #cell-manual="{ item }">
+        <span v-if="!item.document">{{ t('billing_block.manual_return') }}</span>
+      </template>
+    </DataTable>
     <div id="list__footer">
       <Pagination v-if="items.length > 0" :pagination="pagination" @update:page="handlePageChange" />
     </div>

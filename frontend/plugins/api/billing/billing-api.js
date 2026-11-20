@@ -240,10 +240,10 @@ export default defineNuxtPlugin(nuxtApp => {
       throw error;
     }
   }
-  const recalculate = async (id) => {
+  const recalculate = async (id, data = {}) => {
     let apiUrl = apiHost + '/billing/billing/' + id + '/recalculate';
     try {
-      const response = await $apiManager.fetch(apiUrl, 'POST', {}, { 'Content-Type': 'application/json' })
+      const response = await $apiManager.fetch(apiUrl, 'POST', data, { 'Content-Type': 'application/json' })
       if (response) {
         return response;
       } else {
@@ -252,6 +252,15 @@ export default defineNuxtPlugin(nuxtApp => {
     } catch (error) {
       throw error;
     }
+  }
+  // Contractes de baixa amb lectures per facturar (recalculate: els d'un recàlcul)
+  const getTerminatedContracts = async (id, recalculate = false) => {
+    let apiUrl = apiHost + '/billing/billing/' + id + '/terminated-contracts' + (recalculate ? '?recalculate=1' : '');
+    const response = await $apiManager.fetch(apiUrl, 'GET')
+    if (response) {
+      return response;
+    }
+    throw new Error('Error no trobat');
   }
   const regeneratePdfs = async (id) => {
     let apiUrl = apiHost + '/billing/billing/' + id + '/regenerate-pdfs';
@@ -536,6 +545,7 @@ export default defineNuxtPlugin(nuxtApp => {
     getSummary,
     downloadSummary,
     recalculate,
+    getTerminatedContracts,
     regeneratePdfs,
     checkRegeneratePdfsTask,
     moveInvoiceToBilling,

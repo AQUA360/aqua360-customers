@@ -19,7 +19,11 @@ from billing.models import PaymentRemittance, PaymentRemittanceStatus, PaymentSt
 from billing.serializers.payment_remittance_serializer import PaymentRemittanceSerializer, PaymentRemittanceListSerializer
 from billing.serializers.payment_serializer import PaymentSerializer, PaymentSEPASerializer
 from coredata.models import ConfigProject
+from decouple import config
+from pricing.models import ProductOrigin
 from billing.tasks import send_payment_remittances
+from billing.utils.remittance_mark_service import clear_remittance_marks
+from billing.utils.sepa_file_service import build_payment_sepa_concept, get_saved_concept_fields
 from billing.permissions import PaymentPermission
 from billing.utils.payment_remittance_lock_service import (
     is_remittance_sent,
@@ -31,6 +35,7 @@ logger = logging.getLogger(__name__)
 
 
 class PaymentRemittanceViewSet(viewsets.ModelViewSet):
+    CONCEPT_PREVIEW_EXAMPLES = 3
     queryset = PaymentRemittance.objects.select_related('company_bank').order_by('-created_at')
     serializer_class = PaymentRemittanceSerializer
     permission_classes = [IsAuthenticated, PaymentPermission]
@@ -114,6 +119,8 @@ class PaymentRemittanceViewSet(viewsets.ModelViewSet):
                 {"detail": f"Expected to update {len(ids)} records, but updated {updated_count}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+        # "Marcar per remesar": un cop enviada la remesa, els seus pagaments es desmarquen.
+        clear_remittance_marks(ids)
         # Start background task
         send_payment_remittances.delay(ids, sent_at)
         
@@ -175,6 +182,40 @@ class PaymentRemittanceViewSet(viewsets.ModelViewSet):
                 {"detail": "Error eliminant la relació."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+    @action(detail=True, methods=['get'], url_path='concept-preview')
+    def concept_preview(self, request, pk=None):
+        """
+        Com es veuria el concepte del rebut (RmtInf/Ustrd) amb la configuració actual dels camps,
+        per a uns quants pagaments d'aquesta remesa (els d'aigua amb contracte, si n'hi ha).
+        """
+        try:
+            payment_remittance = PaymentRemittance.objects.get(pk=pk)
+        except PaymentRemittance.DoesNotExist:
+            return Response({"detail": f"PaymentRemittance amb ID {pk} no existeix."}, status=status.HTTP_404_NOT_FOUND)
+
+        language = config('LANGUAGE', default="ca")
+        origin_water = ProductOrigin.objects.filter(token='aigua').first()
+        concept_fields = get_saved_concept_fields()
+        payments = payment_remittance.payments.select_related(
+            'invoice__contract', 'invoice__origin', 'commitment_deposit', 'contract', 'person'
+        ).order_by('token')
+
+        water_payments = []
+        if origin_water is not None:
+            water_payments = list(payments.filter(
+                invoice__origin=origin_water, invoice__contract__isnull=False
+            )[:self.CONCEPT_PREVIEW_EXAMPLES])
+        examples = water_payments or list(payments[:self.CONCEPT_PREVIEW_EXAMPLES])
+        return Response({"examples": [
+            {
+                "payment_id": payment.id,
+                "concept": build_payment_sepa_concept(
+                    payment, language, origin_water, payment_remittance.is_return, concept_fields
+                ),
+            }
+            for payment in examples
+        ]})
 
     @action(detail=True, methods=['get'], url_path='payments')
     def get_payments(self, request, pk=None):

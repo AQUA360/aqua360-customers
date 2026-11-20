@@ -20,7 +20,7 @@ import { AVAILABLE_LANGUAGES } from '~/utils/languages';
 
 const route = useRoute()
 const router = useRouter()
-const { $ContractApiService, $ConfiglistApiService, $GeneralPaymentApiService, $ConfigProjectApiService } = useNuxtApp();
+const { $ContractApiService, $GeneralPaymentApiService, $ConfigProjectApiService } = useNuxtApp();
 const { t } = useI18n();
 const toast = useToast();
 const objectPermissions = ref(null);
@@ -60,13 +60,8 @@ const previousPaymentIBANValue = ref(null);
 const previousTotalPersons = ref(null);
 const paymentSnapshotAtLoad = ref(null);
 
-// Representatives
-const selectedRepresentatives = ref([]); // Array de { person: Object, type: Object|null }
-const representativeTypes = ref([]);
-const editingRepresentative = ref(false);
 const addressPaymentRef = ref(null);
 const isSaving = ref(false);
-const initialRepresentativesSnapshot = ref(null);
 const allowContractDateEdit = ref(false);
 const registrationDate = ref('');
 const previousRegistrationDate = ref('');
@@ -81,20 +76,6 @@ const toInputDate = (value) => {
 };
 
 const isConfigFlagEnabled = (value) => value === true || value === 'True' || value === 'true';
-
-const snapshotRepresentatives = (reps) =>
-  JSON.stringify(
-    (reps || []).map((rep) => ({
-      person: rep.person?.id ?? rep.person,
-      type: rep.type?.id ?? rep.type ?? null,
-    })),
-  );
-
-const representativesChanged = () => {
-  if (!initialRepresentativesSnapshot.value) return true;
-  return snapshotRepresentatives(selectedRepresentatives.value)
-    !== initialRepresentativesSnapshot.value;
-};
 
 /** Telèfons seleccionats al formulari fill (evita desincronització pare/fill). */
 const getPhoneStateForSave = () => {
@@ -159,16 +140,6 @@ const getData = async function () {
   syncPhonesSnapshotFromContract();
   selectedPerson.value = contract.value.holder;
 
-  if (contract.value.representatives && Array.isArray(contract.value.representatives)) {
-    selectedRepresentatives.value = contract.value.representatives.map((rep) => {
-      const matchedType = representativeTypes.value.find(t => t.id === rep.type?.id) || rep.type || null;
-      return {
-        person: rep.person,
-        type: matchedType,
-      };
-    });
-  }
-  initialRepresentativesSnapshot.value = snapshotRepresentatives(selectedRepresentatives.value);
   paymentToUpdate.value = null;
 
   if (contractPaymentIsComplete(contract.value.payment)) {
@@ -316,7 +287,6 @@ const save = async () => {
     const mandateChanged = mandateId.value != contract.value?.mandate_id;
     const registrationChanged = allowContractDateEdit.value
       && registrationDate.value !== previousRegistrationDate.value;
-    const repsChanged = representativesChanged();
     const needsPaymentSave = !!paymentToUpdate.value || paymentNeedsSave();
     // Cal vincular el GeneralPayment al contracte si abans no n'hi havia o ha canviat tipus/IBAN.
     // També sempre que es desi el payment: el backend fa copy-on-write si la fila
@@ -331,7 +301,7 @@ const save = async () => {
     const needsContractSave = billingAddressChanged || contactAddressChanged
       || communicationTypeChanged || emailChanged || totalPersonsChanged
       || phonesChanged || smsPhonesChanged || remittanceChanged || mandateChanged
-      || registrationChanged || repsChanged || needsPaymentLink;
+      || registrationChanged || needsPaymentLink;
 
     // Sense cap canvi real: no tocar BD
     if (!hasDataChange && !needsPaymentSave && !needsContractSave) {
@@ -462,12 +432,6 @@ const save = async () => {
       if (registrationChanged) {
         address_options.registration_date = registrationDate.value || null;
       }
-      if (repsChanged) {
-        address_options.representatives_save = selectedRepresentatives.value.map((rep) => ({
-          person: rep.person.id,
-          type: rep.type ? rep.type.id : null,
-        }));
-      }
 
       if (needsPaymentLink) {
         address_options.payment_id = response_payment?.id
@@ -517,45 +481,9 @@ const onChange = async (data) => {
 const closeAllRegions = () => {
   // tanquem tots els components
   editingPerson.value = false;
-  editingRepresentative.value = false;
   showRegionComponent.value = '';
   // tanquem region
   showRegion.value = false;
-};
-
-// Funció per obrir el formulari de representant
-const openRepresentativeForm = async () => {
-  if (!representativeTypes.value.length) {
-    await fetchRepresentativeType();
-  }
-  closeAllRegions();
-  editingRepresentative.value = true;
-  showRegion.value = true;
-};
-
-// Funció per obtenir els tipus de representant
-const fetchRepresentativeType = async () => {
-  try {
-    const data = await $ConfiglistApiService.getAll('contract/contract-representative-type');
-    representativeTypes.value = data.results;
-  } catch (error) {
-    console.error('Error fetching representative types:', error);
-  }
-};
-
-// Funció per gestionar la salvaguarda d'un representant
-const onRepresentativeSaved = async (item) => {
-  const defaultType = representativeTypes.value.find(type => type.is_default) || null;
-  selectedRepresentatives.value.push({
-    person: item,
-    type: defaultType
-  });
-  closeAllRegions();
-};
-
-// Funció per eliminar un representant
-const removeRepresentative = (index) => {
-  selectedRepresentatives.value.splice(index, 1);
 };
 
 const fetchPerson = async (item) => {
@@ -570,7 +498,6 @@ onMounted(async () => {
     toast.error(t('common.no_permissions'));
     return navigateTo('/');
   }
-  await fetchRepresentativeType();
   const allowEdit = await $ConfigProjectApiService.get('allow_contract_date_edit');
   console.log(allowEdit);
   allowContractDateEdit.value = isConfigFlagEnabled(allowEdit);
@@ -667,44 +594,6 @@ onMounted(async () => {
           </label>
         </span>
 
-        <!-- Representatives Section -->
-        <div class="mb-4 max-w-xl">
-          <div class="text-sm font-medium text-gray-700 mb-3">
-            <label class="block mb-1">{{ $t('contract_block.representatives') }}:</label>
-            <button @click="openRepresentativeForm"
-              class="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600" :title="`${t('common.add')} ${t('contract_block.representative')}`">
-              + {{ $t('common.add') }} {{ $t('contract_block.representative') }}
-            </button>
-          </div>
-
-          <!-- Llista de representants -->
-          <div v-if="selectedRepresentatives.length > 0" class="space-y-4">
-            <div v-for="(rep, index) in selectedRepresentatives" :key="index"
-              class="bg-yellow-100 p-4 rounded relative max-w-xl group">
-              <p class="font-semibold flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
-                <span>{{ rep.person.name }} {{ rep.person.surname }}</span>
-                <span class="text-sm text-gray-500 mr-10">{{ rep.person.token }}</span>
-              </p>
-              <div class="mt-2">
-                <label class="text-sm font-medium text-gray-700">{{ $t('contract_block.representative_type') }}:</label>
-                <select v-model="rep.type"
-                  class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-sky-500 focus:border-sky-500 sm:text-sm rounded-md">
-                  <option value="" disabled :selected="!rep.type">-- {{ $t('common.select') }} {{ $t('common.type') }} --</option>
-                  <option v-for="type in representativeTypes" :key="type.id" :value="type" :selected="type.is_default">
-                    {{ type.name }}
-                  </option>
-                </select>
-              </div>
-              <button @click="removeRepresentative(index)"
-                class="absolute cursor-pointer shadow-md border text-sm w-8 h-8 bg-white right-3 top-3 rounded-md text-red-600 opacity-0 transition-all duration-300 group-hover:opacity-100"
-                aria-label="Eliminar Persona">
-                <Icon name="fa6-solid:trash" />
-              </button>
-            </div>
-          </div>
-          <!-- /end Llista de representants -->
-        </div>
-        <!-- /end Representatives Section -->
       </div>
       <hr class="max-w-xl">
       <div class="flex flex-row-reverse mt-4 max-w-xl">
@@ -729,8 +618,6 @@ onMounted(async () => {
         <InputSepa v-if="showRegionComponent === 'addSepa'" :item="usedPayment" :sepa="sepaDocuments || null"
           :request="contract.id" @new-item="onSepaSaved" :value="'contract'" />
         <PersonSearch v-if="editingPerson" @saved="fetchPerson" />
-        <PersonSearch v-if="editingRepresentative" @saved="onRepresentativeSaved" 
-          :title="`${t('common.select')} ${t('common.or')} ${t('common.add')} ${t('contract_block.representative')}`" />
         <PersonBankSelect v-if="showRegionComponent === 'PersonBankSelect'" :title="`${$t('common.select')} ${$t('common.iban')}`"
           :persons="[selectedPerson]" @selected-item="onPersonBankSelected" />
       </div>

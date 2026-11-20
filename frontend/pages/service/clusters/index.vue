@@ -8,7 +8,6 @@ import { useToast } from 'vue-toastification';
 import Pagination from '~/components/molecules/Pagination.vue';
 import H1 from '~/components/atoms/H1.vue';
 import ClusterRegion from '~/components/organisms/ClusterRegion.vue';
-import TableHeader from '~/components/atoms/TableHeader.vue';
 import DataTable from '~/components/organisms/DataTable.vue';
 
 const { t } = useI18n();
@@ -52,6 +51,42 @@ const pagination = ref({
   next: null,
   isFiltered: false
 });
+
+const STORAGE_KEY = 'clustersSearchState';
+let isRestoringState = false;
+
+const saveSearchState = () => {
+  try {
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify({
+      searchInput: searchInput.value,
+      searchByAddress: searchByAddress.value,
+      showAddressSearch: showAddressSearch.value,
+      selectedFilters: selectedFilters.value,
+      sortBy: sortBy.value,
+      sortDesc: sortDesc.value,
+      page: pagination.value.page,
+    }));
+  } catch (e) {
+    console.error('Error saving search state', e);
+  }
+};
+
+const loadSearchState = () => {
+  try {
+    const state = sessionStorage.getItem(STORAGE_KEY);
+    if (!state) return;
+    const parsed = JSON.parse(state);
+    if (parsed.searchInput !== undefined) searchInput.value = parsed.searchInput;
+    if (parsed.searchByAddress !== undefined) searchByAddress.value = parsed.searchByAddress;
+    if (parsed.showAddressSearch !== undefined) showAddressSearch.value = parsed.showAddressSearch;
+    if (parsed.selectedFilters !== undefined) selectedFilters.value = parsed.selectedFilters;
+    if (parsed.sortBy !== undefined) sortBy.value = parsed.sortBy;
+    if (parsed.sortDesc !== undefined) sortDesc.value = parsed.sortDesc;
+    if (parsed.page !== undefined) pagination.value.page = parsed.page;
+  } catch (e) {
+    console.error('Error parsing search state', e);
+  }
+};
 
 const getPermissions = async () => {
   error.value = null;
@@ -140,7 +175,7 @@ const handleSort = (key) => {
     sortBy.value = key;
     sortDesc.value = false;
   }
-  getData(searchInput.value, selectedFilters.value, pagination.value.page, sortBy.value, sortDesc.value);
+  getData(searchInput.value, selectedFilters.value, pagination.value.page, sortBy.value, sortDesc.value, searchByAddress.value);
 }
 
 const resetFilters = () => {
@@ -149,6 +184,8 @@ const resetFilters = () => {
   selectedFilters.value = [];
   pagination.value.page = 1;
   showAddressSearch.value = false;
+  sortBy.value = 'token';
+  sortDesc.value = false;
   getData();
 };
 
@@ -157,7 +194,7 @@ const toggleAddressFilter = () => {
 };
 
 const onChangeRegion = (event) => {
-  getData(searchInput.value, selectedFilters.value, pagination.value.page, sortBy.value, sortDesc.value);
+  getData(searchInput.value, selectedFilters.value, pagination.value.page, sortBy.value, sortDesc.value, searchByAddress.value);
 }
 
 onMounted(async () => {
@@ -167,7 +204,11 @@ onMounted(async () => {
     toast.error(t('common.no_permissions'));
     return navigateTo('/');
   }
-  await getData();
+  isRestoringState = true;
+  loadSearchState();
+  await nextTick(); // let the watchers triggered by the restore run (and be ignored)
+  isRestoringState = false;
+  await getData(searchInput.value, selectedFilters.value, pagination.value.page, sortBy.value, sortDesc.value, searchByAddress.value);
   getFilterStatus();
   checkRouteQuery();
 });
@@ -199,9 +240,18 @@ const showConnectionDetail = (connection_id) => {
 
 // Watch for changes in searchInput and selectedFilters and reset pagination to 1
 watch([searchInput, selectedFilters], () => {
+  if (isRestoringState) return;
   pagination.value.page = 1;
   handleSearch();
 });
+
+// Persist search state so it survives navigating to a cluster and back
+watch(
+  () => [searchInput.value, searchByAddress.value, showAddressSearch.value, selectedFilters.value,
+    sortBy.value, sortDesc.value, pagination.value.page],
+  saveSearchState,
+  { deep: true }
+);
 
 const handleSubRegionEvent = (event) => {
   isSubRegionOpen.value = event;
@@ -209,6 +259,24 @@ const handleSubRegionEvent = (event) => {
 watch(() => route.query, () => {
   checkRouteQuery()
 }, { immediate: true })
+const rowClass = (item) => ({
+  'bg-yellow-50': item.id === selectedItemId.value,
+});
+
+const tableColumns = computed(() => [
+  {
+    key: 'token', label: t('common.identification'), sortKey: 'token',
+    width: 150, min: 110, priority: 1, removable: false,
+  },
+  {
+    key: 'address', label: t('address_block.address'), sortKey: 'address_complete',
+    width: 250, grow: 3, min: 160, priority: 1, removable: false,
+  },
+  { key: 'nb_nozzles', label: t('service_block.nozzles'), sortKey: 'nb_nozzles', width: 150, min: 90, priority: 3 },
+  { key: 'connection', label: t('common.connections'), sortKey: 'connection_token', width: 150, grow: 1, min: 110, priority: 2 },
+  { key: 'status', label: t('common.status'), sortKey: 'status_name', width: 150, min: 100, priority: 1 },
+]);
+
 </script>
 
 <template>
@@ -231,6 +299,8 @@ watch(() => route.query, () => {
           :placeholder="$t('dashboard.search')" class="w-full p-1 rounded-md focus:outline-none focus-visible:border-0"
           autocomplete="off" />
       </span>
+
+      <div v-if="filter_status.length" class="h-8 w-px bg-gray-300"></div>
 
       <span class="flex gap-3" v-if="filter_status.length">
         <label v-for="status in filter_status" :key="status.id"
@@ -260,52 +330,44 @@ watch(() => route.query, () => {
     </div>
     <DataTable
       v-if="permissions?.can_view"
-      grid-template="150px,250px,150px,150px,150px"
+      table-key="clusters"
+      :columns="tableColumns"
+      :items="items"
+      :row-class="rowClass"
+      :current-sort-by="sortBy"
+      :sort-desc="sortDesc"
       :pending="pending"
       :error="error"
       :is-empty="items.length === 0"
+      @sort="handleSort"
       @retry="getData">
-      <template #header>
-        <TableHeader :label="$t('common.identification')" sortKey="token" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('address_block.address')" sortKey="address_complete" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('service_block.nozzles')" sortKey="nb_nozzles" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.connections')" sortKey="connection_token" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
-        <TableHeader :label="$t('common.status')" sortKey="status_name" :currentSortBy="sortBy" :sortDesc="sortDesc"
-          @sort="handleSort" />
+      <template #cell-token="{ item }">
+        <button class="group flex justify-between w-full items-center text-sky-500 text-nowrap text-left"
+          @click="showDetail(item.id);">
+          <abbr :title="item.token" class="no-underline">{{ item.token }}</abbr>
+          <Icon name="fa6-solid:eye"
+            class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
+        </button>
       </template>
 
-      <template #default="{ gridStyle }">
-        <div v-for="item in items" :key="item.id"
-          class="gap-3 text-base border-b items-center bg-white mr-3"
-          :style="gridStyle"
-          :class="{ 'bg-yellow-50': item.id === selectedItemId }">
-          <span>
-            <button class="group flex justify-between w-full items-center p-1 text-sky-500 text-nowrap text-left"
-              @click="showDetail(item.id);">
-              <abbr :title="item.token" class="no-underline">{{ item.token }}</abbr>
-              <Icon name="fa6-solid:eye"
-                class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
-            </button>
-          </span>
-          <span class="p-0" :title="`${ item.street } ${ item.street_number && item.street_number != 'None' ? ', '+item.street_number : '' }`">{{ item.street }} {{ item.street_number && item.street_number != 'None' ? ', '+item.street_number : '' }}</span>
-          <span class="p-1">{{ item.nb_nozzles }}</span>
-          <span class="p-1">
-            <button class="group flex justify-between w-full items-center p-1 text-sky-500 text-nowrap text-left"
-              @click="showConnectionDetail(item.connection_id)">
-              <abbr :title="item.connection_name || item.connection_token || '-'" class="no-underline">{{ item.connection_name || item.connection_token || '-' }}</abbr>
-              <Icon name="fa6-solid:eye"
-                class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
-            </button>
-          </span>
-          <span class="p-1 text-nowrap">
-            <AtomsColorBadge :value="item.status_name || item.status_token" :color="item.status_color">
-            </AtomsColorBadge>
-          </span>
-        </div><!-- end for items -->
+      <template #cell-address="{ item }">
+        <span class="truncate" :title="`${ item.street } ${ item.street_number && item.street_number != 'None' ? ', '+item.street_number : '' }`">{{ item.street }} {{ item.street_number && item.street_number != 'None' ? ', '+item.street_number : '' }}</span>
+      </template>
+
+      <template #cell-nb_nozzles="{ item }">{{ item.nb_nozzles }}</template>
+
+      <template #cell-connection="{ item }">
+        <button class="group flex justify-between w-full items-center text-sky-500 text-nowrap text-left"
+          @click="showConnectionDetail(item.connection_id)">
+          <abbr :title="item.connection_name || item.connection_token || '-'" class="no-underline">{{ item.connection_name || item.connection_token || '-' }}</abbr>
+          <Icon name="fa6-solid:eye"
+            class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
+        </button>
+      </template>
+
+      <template #cell-status="{ item }">
+        <AtomsColorBadge :value="item.status_name || item.status_token" :color="item.status_color">
+        </AtomsColorBadge>
       </template>
     </DataTable>
     <div id="list__footer">

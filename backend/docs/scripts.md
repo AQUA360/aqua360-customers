@@ -344,6 +344,12 @@ Integració outbound amb **Giswater** (connecs, OAuth Keycloak, sincronització 
 |--------|-------------|
 | **get_or_create_smartmetering_user** | Obté o crea l’usuari inbound Smartmetering i l’assigna al grup `smartmetering` (només pot accedir a `/smartmetering/`). Requereix `SMARTMETERING_USER_USERNAME`, `SMARTMETERING_USER_PASSWORD` i `SMARTMETERING_USER_EMAIL` al `.env`. |
 
+### Usuari inbound GMAO
+
+| Command | Descripció |
+|--------|-------------|
+| **get_or_create_gmao_user** | Obté o crea l’usuari inbound GMAO i l’assigna al grup `gmao` (només pot accedir a `/gmao/` i fer login a `/gmao/v1/auth/login/`). Requereix `GMAO_USER_USERNAME`, `GMAO_USER_PASSWORD` i `GMAO_USER_EMAIL` al `.env`. |
+
 ### Validació i prova de connexió
 
 | Command | Descripció |

@@ -3,6 +3,7 @@ from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 from rest_framework.viewsets import ModelViewSet
 from django.shortcuts import get_object_or_404
@@ -98,6 +99,9 @@ class AuthenticationView(APIView):
     Authentication endpoint for ReadingOperator
     """
     permission_classes = [AllowAny]
+    # Límit d'intents de login per IP (scope "login")
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'login'
     
     def post(self, request):
         """Authenticate a reading operator and return a token"""
@@ -135,7 +139,7 @@ def password_change(request):
         }, status=400)
     
     operator = get_authenticated_operator(request)
-    serializer = ReadingOperatorPasswordChangeSerializer(data=request.POST)
+    serializer = ReadingOperatorPasswordChangeSerializer(data=request.POST, context={'operator': operator})
     
     if serializer.is_valid():
         old_password = serializer.validated_data['old_password']

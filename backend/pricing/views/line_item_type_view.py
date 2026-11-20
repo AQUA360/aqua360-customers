@@ -10,6 +10,7 @@ from pricing.serializers.price_variable_interval_stretch_serializer import Price
 
 from ..filters.line_item_type_filter import LineItemTypeFilter
 from pricing.permissions import PriceRatePermission
+from pricing.utils.accounting_catalog import ACCOUNTING_CATALOG_COLUMNS, accounting_catalog_rows
 from ..models import LineItemType
 from ..serializers.line_item_type_serializer import LineItemTypeArticleSerializer, LineItemTypeSerializer, LineItemTypeListSerializer, LineItemTypeSaveSerializer
 
@@ -40,6 +41,21 @@ class LineItemTypeViewSet(viewsets.ModelViewSet):
         return LineItemTypeSaveSerializer
     
     
+    @action(detail=False, methods=['get'], url_path='accounting-catalog')
+    def accounting_catalog(self, request):
+        exploitation_id = request.query_params.get('exploitation')
+        if exploitation_id in (None, ''):
+            exploitation_id = None
+        else:
+            try:
+                exploitation_id = int(exploitation_id)
+            except (TypeError, ValueError):
+                return Response({'exploitation': 'invalid'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'columns': list(ACCOUNTING_CATALOG_COLUMNS),
+            'results': accounting_catalog_rows(exploitation_id),
+        })
+
     @action(detail=False, methods=['get'], url_path='by-product')
     def get_by_product_article(self, request):
         product_id = request.query_params.get('product')

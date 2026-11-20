@@ -27,7 +27,9 @@ class MainPermission(models.Model):
     all_recommended = models.BooleanField(default=False)
     is_default = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
-    
+    # Si True, el change_key només el té el superusuari (no es pot donar a grups).
+    change_requires_superuser = models.BooleanField(default=False)
+
     def __str__(self):
         return self.name
 
@@ -544,6 +546,14 @@ class Holiday(models.Model):
         return f"{self.date} {self.name or ''}".strip()
 
 class PersonBank(models.Model):
+    ORIGIN_OV = 'OV'
+    ORIGIN_MANUAL = 'MANUAL'
+    ORIGIN_HIST = 'HIST'
+    ORIGIN_CHOICES = (
+        (ORIGIN_OV, 'Oficina Virtual'),
+        (ORIGIN_MANUAL, 'Manual'),
+        (ORIGIN_HIST, 'Històric'),
+    )
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True, null=True, blank=True)
     token = models.CharField(max_length=255, null=True, blank=True)
@@ -556,6 +566,7 @@ class PersonBank(models.Model):
     account_number = models.CharField(max_length=255, null=True, blank=True)
     swift = models.CharField(max_length=255, null=True, blank=True)
     iban = models.CharField(max_length=255, null=True, blank=True)
+    origin = models.CharField(max_length=10, choices=ORIGIN_CHOICES, default=ORIGIN_HIST)
     is_default = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     deactivated_at = models.DateTimeField(null=True, blank=True)

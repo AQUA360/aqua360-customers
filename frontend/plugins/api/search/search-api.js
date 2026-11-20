@@ -11,8 +11,8 @@ export default defineNuxtPlugin(nuxtApp => {
   const getSearch = async (searchQuery = '', entityFilter = '', page = 1) => {
     let apiUrl = apiHost + entity + 'results/?q=' + encodeURIComponent(searchQuery) + `&page=${page}`;
 
-    if (entityFilter !== '') {
-      apiUrl += `&entity=${entityFilter}`;
+    if (entityFilter) {
+      apiUrl += `&entity=${encodeURIComponent(entityFilter)}`;
     }
 
     try {

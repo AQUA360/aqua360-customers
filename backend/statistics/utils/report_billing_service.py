@@ -6,6 +6,7 @@ from django.core.files.base import ContentFile
 from django.db.models import F, Count, Sum, Q, Max, Case, When, Value, BooleanField, CharField, DecimalField, Subquery
 from decimal import Decimal
 from collections import defaultdict
+from types import SimpleNamespace
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.db.models import Window
@@ -20,7 +21,7 @@ from rest_framework import status
 from rest_framework.response import Response
 
 from billing.utils.aca_company_service import ACACompanyError, get_records_company, resolve_aca_company, use_multiple_companies
-from billing.utils.generate_factdeta_service import factdeta_invoice_volumes
+from billing.utils.generate_factdeta_service import AGRICULTURAL_USE_ACA, factdeta_invoice_volumes, use_aca_invoices_q
 from billing.models import Biller, Billing, Invoice, InvoiceLineItem, InvoiceStatus, Payment, PaymentRemittance, Reading
 from billing.utils.invoice_service import get_invoice_status, get_totals
 from billing.utils.payment_service import get_status_map
@@ -40,6 +41,9 @@ from statistics.utils.aca_declaration_service import aca_declaration_selection
 import logging
 
 logger = logging.getLogger(__name__)
+
+# Factures per tros en calcular els volums de la Declaració ACA (limita la memòria)
+ACA_VOLUMES_CHUNK_SIZE = 2000
 
 
 def _get_aca_part_tokens():
@@ -924,6 +928,7 @@ def generate_aca_summary_report(request, black_fill=None, white_bold_font=None, 
         exploitations = Exploitation.objects.all()
         contract_keeper_use_type_token = ConfigProject.objects.get(token="contract_keeper_use_type_token").value
         tarifa_social_token = ConfigProject.objects.get(token='tarifa_social').value
+        invoice_type = ConfigProject.objects.get(token="invoice_type_invoice_token").value
         
         part_fixa_token, part_variable_token = _get_aca_part_tokens()
         first_invoice = invoices.first()
@@ -931,9 +936,15 @@ def generate_aca_summary_report(request, black_fill=None, white_bold_font=None, 
         _aca_invoice_ids, _invoices_by_exploitation, _totals_dict, aca_line_items_qs = _get_aca_invoices_data(
             invoices, aca_product_token, pre_invoice_token, aca_line_items_q
         )
-        # Amb múltiples empreses el codi és el de l'empresa de les factures (totes la mateixa);
-        # si no, el de l'empresa de cada explotació.
-        aca_company = get_records_company(_aca_invoices_company_ids(_aca_invoice_ids)) if use_multiple_companies() else None
+        # Els usos agrícoles es declaren amb el volum consumit, encara que no tinguin cap línia de cànon
+        agricultural_invoices = invoices.filter(
+            use_aca_invoices_q(AGRICULTURAL_USE_ACA), type_final=invoice_type,
+        ).exclude(status__token__in=[pre_invoice_token])
+        # Amb múltiples empreses el codi és el de l'empresa de les factures (totes la mateixa, també
+        # les agrícoles); si no, el de l'empresa de cada explotació.
+        aca_company = get_records_company(_aca_invoices_company_ids(
+            set(_aca_invoice_ids) | set(agricultural_invoices.values_list('id', flat=True))
+        )) if use_multiple_companies() else None
         
         wb = openpyxl.Workbook()
         sheet = wb.active
@@ -965,6 +976,7 @@ def generate_aca_summary_report(request, black_fill=None, white_bold_font=None, 
         for i in range(4):
             titles.append(_("Tarifa social 50%% TRAM %(num)s") % {"num": i+1})
         titles.append(_("Tarifa social 0"))
+        titles.append(_("Vol. consumit d'ús agrícola"))
 
         # We will build a transposed table:
         # - First column: metric name (from titles)
@@ -979,16 +991,52 @@ def generate_aca_summary_report(request, black_fill=None, white_bold_font=None, 
             report_progress(task, idx_exploitation, len(unique_exploitations), every=1)
             print(f"exploitation: {exploitation}")
             try:
-                aca_line_items_ex = aca_line_items_qs.filter(invoice__exploitation__name=exploitation).distinct().annotate(
+                # Sense els prefetch de la consulta base (línies, ajustos i lectures de cada factura): aquí no
+                # es fan servir i, amb molts mesos, eren el que esgotava la memòria
+                aca_line_items_ex = aca_line_items_qs.prefetch_related(None).filter(invoice__exploitation__name=exploitation).distinct().annotate(
                     effective_use_aca=_aca_effective_use_annotation()
                 )
-                invoices_exploitation = Invoice.objects.filter(id__in=aca_line_items_ex.values_list('invoice__id', flat=True)).select_related('status', 'contract').distinct()
+                agricultural_invoice_ids = agricultural_invoices.filter(exploitation__name=exploitation).values('id')
+                invoices_exploitation = Invoice.objects.filter(
+                    Q(id__in=aca_line_items_ex.values_list('invoice__id', flat=True)) | Q(id__in=agricultural_invoice_ids)
+                ).select_related('status', 'contract').distinct()
                 """ if aca_line_items_qs.count() == 0:
                     continue """
                 print(f"\n\n\naca line items qs: {aca_line_items_ex.count()}, {exploitation}")
                 exploitation_instance = exploitations.get(name=exploitation)
                 unique_use_aca = aca_line_items_ex.values_list('effective_use_aca', flat=True).distinct()
                 print(f"unique use aca: {unique_use_aca}")
+
+                # Volums (m³) amb el mateix càlcul que el FACTDETA en baixa, sobre les mateixes línies:
+                # el consumit és el real de la factura i cada factura va al tipus de tarifa amb què es declara
+                # El full de factures surt amb els mateixos volums i tipus de tarifa que el resum
+                volumes_by_invoice = {}
+                consumed_by_tariff, billed_by_tariff = defaultdict(Decimal), defaultdict(Decimal)
+                dom_not_social, dom_social = [Decimal(0)] * 4, [Decimal(0)] * 4
+                dom_social_0 = Decimal(0)
+                # Per trossos de factures, guardant només les xifres: amb tot el període de cop
+                # (línies amb ajustos i condicions) no hi cabia a la memòria
+                volume_invoice_ids = list(invoices_exploitation.order_by('id').values_list('id', flat=True))
+                for chunk_start in range(0, len(volume_invoice_ids), ACA_VOLUMES_CHUNK_SIZE):
+                    chunk_ids = volume_invoice_ids[chunk_start:chunk_start + ACA_VOLUMES_CHUNK_SIZE]
+                    volume_lines = defaultdict(list)
+                    for line in aca_line_items_ex.filter(invoice_id__in=chunk_ids).prefetch_related(
+                        'adjustments__adjustment__conditions',
+                    ):
+                        volume_lines[line.invoice_id].append(line)
+                    volume_invoices = Invoice.objects.filter(id__in=chunk_ids).select_related(
+                        'status', 'contract', 'contract_termination__contract',
+                    )
+                    for volume in factdeta_invoice_volumes(volume_invoices, volume_lines, part_fixa_token, tarifa_social_token):
+                        volumes_by_invoice[volume.invoice.id] = SimpleNamespace(
+                            tariff_type=volume.tariff_type, consumed=volume.consumed, billed=volume.billed,
+                        )
+                        consumed_by_tariff[volume.tariff_type] += volume.consumed
+                        billed_by_tariff[volume.tariff_type] += volume.billed
+                        dom_not_social = [total + tram for total, tram in zip(dom_not_social, volume.trams)]
+                        dom_social = [total + tram for total, tram in zip(dom_social, volume.social_trams)]
+                        dom_social_0 += volume.social_zero
+                    del volume_lines, volume_invoices
 
                 written_invoice_ids = set()
                 empty_effective_use_q = Q(effective_use_aca__isnull=True) | Q(effective_use_aca='')
@@ -1001,7 +1049,7 @@ def generate_aca_summary_report(request, black_fill=None, white_bold_font=None, 
 
                 dom_invoices = invoices_exploitation.filter(id__in=dom_lines.values_list('invoice__id', flat=True)).distinct()
                 
-                serie_final_row = _add_invoices_to_sheet(serie_final_sheet, serie_final_row, dom_invoices, dom_lines, part_fixa_token, written_invoice_ids=written_invoice_ids)
+                serie_final_row = _add_invoices_to_sheet(serie_final_sheet, serie_final_row, dom_invoices, dom_lines, part_fixa_token, written_invoice_ids=written_invoice_ids, volumes_by_invoice=volumes_by_invoice)
                 
                 print(f"total_billed {aca_line_items_ex.aggregate(total_units=Sum('units'))['total_units'] or 0}")
                 print(f"dom lines units: {dom_lines.aggregate(total_units=Sum('units'))['total_units'] or 0}")
@@ -1011,7 +1059,7 @@ def generate_aca_summary_report(request, black_fill=None, white_bold_font=None, 
                 alta_lines = aca_line_items_ex.filter(effective_use_aca="L").distinct()
                 alta_invoices = invoices_exploitation.filter(id__in=alta_lines.values_list('invoice__id', flat=True)).distinct()
                 
-                serie_final_row = _add_invoices_to_sheet(serie_final_sheet, serie_final_row, alta_invoices, alta_lines, part_fixa_token, written_invoice_ids=written_invoice_ids)
+                serie_final_row = _add_invoices_to_sheet(serie_final_sheet, serie_final_row, alta_invoices, alta_lines, part_fixa_token, written_invoice_ids=written_invoice_ids, volumes_by_invoice=volumes_by_invoice)
                 print(f"alta lines units: {alta_lines.aggregate(total_units=Sum('units'))['total_units'] or 0}")
                 
                 #IND
@@ -1021,14 +1069,14 @@ def generate_aca_summary_report(request, black_fill=None, white_bold_font=None, 
                 ind_invoices = invoices_exploitation.filter(id__in=ind_lines.values_list('invoice__id', flat=True)).distinct()
                 print(f"ind lines units: {ind_lines.aggregate(total_units=Sum('units'))['total_units'] or 0}")
                 
-                serie_final_row = _add_invoices_to_sheet(serie_final_sheet, serie_final_row, ind_invoices, ind_lines, part_fixa_token, is_industrial=True, written_invoice_ids=written_invoice_ids)
+                serie_final_row = _add_invoices_to_sheet(serie_final_sheet, serie_final_row, ind_invoices, ind_lines, part_fixa_token, is_industrial=True, written_invoice_ids=written_invoice_ids, volumes_by_invoice=volumes_by_invoice)
 
                 ind_lines_free = aca_line_items_ex.filter(price_unit__range=(-0.001, 0.001)).filter(
                     Q(effective_use_aca="I") | empty_effective_use_q
                     ).exclude(invoice__contract__use_type__token=contract_keeper_use_type_token).distinct()   #not only ind
                 ind_invoices_free = invoices_exploitation.filter(id__in=ind_lines_free.values_list('invoice__id', flat=True)).distinct()
                 # print(f"ind lines free units: {ind_lines_free.aggregate(total_units=Sum('units'))['total_units'] or 0}")
-                serie_final_row = _add_invoices_to_sheet(serie_final_sheet, serie_final_row, ind_invoices_free, ind_lines_free, part_fixa_token, "E", is_industrial=True, written_invoice_ids=written_invoice_ids)
+                serie_final_row = _add_invoices_to_sheet(serie_final_sheet, serie_final_row, ind_invoices_free, ind_lines_free, part_fixa_token, "E", is_industrial=True, written_invoice_ids=written_invoice_ids, volumes_by_invoice=volumes_by_invoice)
                 #KEEPER
                 # keeper_lines = aca_line_items_ex.filter(invoice__contract__use_aca="I", invoice__contract__use_type__token=contract_keeper_use_type_token).distinct()
                 #KEEPER
@@ -1047,11 +1095,11 @@ def generate_aca_summary_report(request, black_fill=None, white_bold_font=None, 
                 mun_lines = aca_line_items_ex.filter(effective_use_aca="A").distinct()
                 mun_invoices = invoices_exploitation.filter(id__in=mun_lines.values_list('invoice__id', flat=True)).distinct()
                 print(f"mun lines units: {mun_lines.aggregate(total_units=Sum('units'))['total_units'] or 0}")
-                serie_final_row = _add_invoices_to_sheet(serie_final_sheet, serie_final_row, mun_invoices, mun_lines, part_fixa_token, written_invoice_ids=written_invoice_ids)
+                serie_final_row = _add_invoices_to_sheet(serie_final_sheet, serie_final_row, mun_invoices, mun_lines, part_fixa_token, written_invoice_ids=written_invoice_ids, volumes_by_invoice=volumes_by_invoice)
                 #KEEPER FREE
                 keeper_free_lines = aca_line_items_ex.filter(effective_use_aca="Q").distinct()
                 keeper_free_invoices = invoices_exploitation.filter(id__in=keeper_free_lines.values_list('invoice__id', flat=True)).distinct()
-                serie_final_row = _add_invoices_to_sheet(serie_final_sheet, serie_final_row, keeper_free_invoices, keeper_free_lines, part_fixa_token, "Q", is_industrial=True, written_invoice_ids=written_invoice_ids)
+                serie_final_row = _add_invoices_to_sheet(serie_final_sheet, serie_final_row, keeper_free_invoices, keeper_free_lines, part_fixa_token, "Q", is_industrial=True, written_invoice_ids=written_invoice_ids, volumes_by_invoice=volumes_by_invoice)
                 print(f"keeper free lines units: {keeper_free_lines.aggregate(total_units=Sum('units'))['total_units'] or 0}")
                 none_line_items = aca_line_items_ex.filter(empty_effective_use_q).distinct()
                 for line in none_line_items:
@@ -1061,7 +1109,11 @@ def generate_aca_summary_report(request, black_fill=None, white_bold_font=None, 
                 #DIRECT
                 direct_free_lines = aca_line_items_ex.filter(effective_use_aca="M").distinct()
                 direct_free_invoices = invoices_exploitation.filter(id__in=direct_free_lines.values_list('invoice__id', flat=True)).distinct()
-                serie_final_row = _add_invoices_to_sheet(serie_final_sheet, serie_final_row, direct_free_invoices, direct_free_lines, part_fixa_token, "M", is_industrial=True, written_invoice_ids=written_invoice_ids)
+                serie_final_row = _add_invoices_to_sheet(serie_final_sheet, serie_final_row, direct_free_invoices, direct_free_lines, part_fixa_token, "M", is_industrial=True, written_invoice_ids=written_invoice_ids, volumes_by_invoice=volumes_by_invoice)
+                #AGRICOLA (sense línies de cànon)
+                agricultural_lines = aca_line_items_ex.filter(effective_use_aca=AGRICULTURAL_USE_ACA).distinct()
+                exploitation_agricultural_invoices = invoices_exploitation.filter(use_aca_invoices_q(AGRICULTURAL_USE_ACA))
+                serie_final_row = _add_invoices_to_sheet(serie_final_sheet, serie_final_row, exploitation_agricultural_invoices, agricultural_lines, part_fixa_token, AGRICULTURAL_USE_ACA, is_industrial=True, written_invoice_ids=written_invoice_ids, volumes_by_invoice=volumes_by_invoice, include_invoices_without_lines=True)
                 
                 lines_part_fixa = aca_line_items_ex.filter(line_item_type__article__token=part_fixa_token).distinct()
                 print(f"total units fixa: {lines_part_fixa.aggregate(total_units=Sum('units'))['total_units'] or 0}")
@@ -1069,27 +1121,6 @@ def generate_aca_summary_report(request, black_fill=None, white_bold_font=None, 
                 # lines_no_line_item_type = aca_line_items_ex.filter(line_item_type__isnull=True) #if no line item it SHOULD be variable (error with prev 2026)
                 lines_part_variable = aca_line_items_ex.exclude(line_item_type__article__token=part_fixa_token).distinct()
                 
-                # Volums (m³) amb el mateix càlcul que el FACTDETA en baixa, sobre les mateixes línies:
-                # el consumit és el real de la factura i cada factura va al tipus de tarifa amb què es declara
-                volume_lines = defaultdict(list)
-                for line in aca_line_items_ex.select_related(
-                    'line_item_type__article', 'line_item_type__quantity',
-                ).prefetch_related('adjustments__adjustment__conditions'):
-                    volume_lines[line.invoice_id].append(line)
-                volume_invoices = invoices_exploitation.select_related(
-                    'contract', 'contract_termination__contract',
-                )
-                volumes = factdeta_invoice_volumes(volume_invoices, volume_lines, part_fixa_token, tarifa_social_token)
-                consumed_by_tariff, billed_by_tariff = defaultdict(Decimal), defaultdict(Decimal)
-                dom_not_social, dom_social = [Decimal(0)] * 4, [Decimal(0)] * 4
-                dom_social_0 = Decimal(0)
-                for volume in volumes:
-                    consumed_by_tariff[volume.tariff_type] += volume.consumed
-                    billed_by_tariff[volume.tariff_type] += volume.billed
-                    dom_not_social = [total + tram for total, tram in zip(dom_not_social, volume.trams)]
-                    dom_social = [total + tram for total, tram in zip(dom_social, volume.social_trams)]
-                    dom_social_0 += volume.social_zero
-
                 most_used_date_range = (None, None)
                 invoice_issue_dates = list(
                     invoices_exploitation.values_list("issue_date", flat=True)
@@ -1169,6 +1200,7 @@ def generate_aca_summary_report(request, black_fill=None, white_bold_font=None, 
                 ]
                 
                 new_line += [_m3(value) for value in dom_not_social + dom_social + [dom_social_0]]
+                new_line.append(_m3(consumed_by_tariff[AGRICULTURAL_USE_ACA]))
             except Exception as e:
                 print(f"Error adding line for exploitation {exploitation}: {e}")
                 raise e
@@ -1232,34 +1264,51 @@ def generate_aca_summary_report(request, black_fill=None, white_bold_font=None, 
         error_response = Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         return error_response, None, None
 
-def _add_invoices_to_sheet(sheet, row, invoices, aca_lines, part_fixa_token, forced_aca = None, is_industrial = False, written_invoice_ids=None):
+def _add_invoices_to_sheet(sheet, row, invoices, aca_lines, part_fixa_token, forced_aca = None, is_industrial = False, written_invoice_ids=None, volumes_by_invoice=None, include_invoices_without_lines=False):
+    """Una fila per factura de les línies de cànon donades. Amb `include_invoices_without_lines`, també les
+    factures d'`invoices` que no en tenen (usos agrícoles, que es declaren només amb el consumit)."""
     print(f"adding invoices to sheet, is_industrial: {is_industrial}")
-    aca_lines_list = list(aca_lines)
-    lines_by_invoice = {}
+    # Les línies es recorren sense guardar-les: per factura només se'n guarden els totals
+    # (i la factura un sol cop, no una còpia per línia)
+    totals_by_invoice = {}
     unique_invoices = {}
-    for line in aca_lines_list:
-        lines_by_invoice.setdefault(line.invoice_id, []).append(line)
-        unique_invoices[line.invoice_id] = line.invoice
-        
+    for line in aca_lines.iterator(chunk_size=2000):
+        totals = totals_by_invoice.get(line.invoice_id)
+        if totals is None:
+            totals = totals_by_invoice[line.invoice_id] = [0, 0, 0, 0]
+            unique_invoices[line.invoice_id] = line.invoice
+        is_fixa = bool(line.line_item_type and line.line_item_type.article and line.line_item_type.article.token == part_fixa_token)
+        counts_units = not is_industrial or bool(
+            line.line_item_type and line.line_item_type.quantity and line.line_item_type.quantity.token == 'diferencia_fuita_consum'
+        )
+        if counts_units:
+            totals[1 if is_fixa else 0] += line.units or 0
+        totals[3 if is_fixa else 2] += line.price or 0
+    if include_invoices_without_lines:
+        for inv in invoices:
+            unique_invoices.setdefault(inv.id, inv)
+
     for inv in unique_invoices.values():
         if written_invoice_ids is not None:
             if inv.id in written_invoice_ids:
                 continue
             written_invoice_ids.add(inv.id)
-        inv_lines = lines_by_invoice.get(inv.id, [])
-        inv_lines_units = inv_lines
-        if is_industrial:
-            inv_lines_units = [l for l in inv_lines_units if l.line_item_type and l.line_item_type.quantity and l.line_item_type.quantity.token == 'diferencia_fuita_consum']
-            
-        units_ex_fixa = sum(l.units or 0 for l in inv_lines_units if not (l.line_item_type and l.line_item_type.article and l.line_item_type.article.token == part_fixa_token))
-        units_inc_fixa = sum(l.units or 0 for l in inv_lines_units if l.line_item_type and l.line_item_type.article and l.line_item_type.article.token == part_fixa_token)
-        price_ex_fixa = sum(l.price or 0 for l in inv_lines if not (l.line_item_type and l.line_item_type.article and l.line_item_type.article.token == part_fixa_token))
-        price_inc_fixa = sum(l.price or 0 for l in inv_lines if l.line_item_type and l.line_item_type.article and l.line_item_type.article.token == part_fixa_token)
-        
+        units_ex_fixa, units_inc_fixa, price_ex_fixa, price_inc_fixa = totals_by_invoice.get(inv.id, (0, 0, 0, 0))
+
         consumption_real = inv.real_consumption or 0
         if inv.status.token == "-2" and consumption_real > 0: # payoff_status_token , si és un abonament hem de posar el consum en negatiu
             consumption_real = -consumption_real
             
+
+        aca_token = forced_aca if forced_aca else _invoice_effective_use_aca(inv)
+        volume = (volumes_by_invoice or {}).get(inv.id)
+        if volume:
+            # Els mateixos volums i tipus de tarifa que el resum (i el FACTDETA): la taula dinàmica del full
+            # per tipus ha de donar els volums consumit i facturat del resum. Mesurament directe, exempt,
+            # ramader amb quota 0 i agrícola es declaren amb el consumit.
+            consumption_real = _m3(volume.consumed)
+            units_ex_fixa = _m3(volume.consumed if volume.tariff_type in ('M', 'E', 'Q', 'G') else volume.billed)
+            aca_token = volume.tariff_type
 
         invoice_line = [
             inv.serie_final, inv.status.name, 
@@ -1269,7 +1318,7 @@ def _add_invoices_to_sheet(sheet, row, invoices, aca_lines, part_fixa_token, for
             inv.total_final, 
             price_ex_fixa,
             price_inc_fixa,
-            forced_aca if forced_aca else _invoice_effective_use_aca(inv),
+            aca_token,
         ]
         row = add_row(sheet, row, invoice_line)
     return row
@@ -2160,6 +2209,16 @@ def generate_billing_summary_by_rates(request, black_fill=None, white_bold_font=
             row = add_row(sheet, 0, [_("No s'han trobat productes per a aquest període")], fill=black_fill, font=white_bold_font)
         else:
             products = list(products)
+            # Factures i titulars diferents per tipus de línia, comptats a la BD en una sola consulta
+            counts_by_line_item_type = {
+                item['line_item_type']: (item['invoices_count'], item['holders_count'])
+                for item in InvoiceLineItem.objects.filter(
+                    invoice__in=invoices.values('id'), line_item_type__isnull=False,
+                ).order_by().values('line_item_type').annotate(
+                    invoices_count=Count('invoice', distinct=True),
+                    holders_count=Count('invoice__contract__holder', distinct=True),
+                )
+            }
             # Cada producte és una tanda de consultes: el progrés es publica a cada un.
             for idx_product, product in enumerate(products, start=1):
                 report_progress(task, idx_product, len(products), every=1)
@@ -2175,17 +2234,10 @@ def generate_billing_summary_by_rates(request, black_fill=None, white_bold_font=
                 line_item_types = LineItemType.objects.filter(line_items__product=product).distinct()
                 
                 for line_item_type in line_item_types:
-                    filtered_invoices = invoices.filter(line_items__line_item_type=line_item_type)
-                    print(filtered_invoices.count())
-                    
-                    contracts = [invoice.contract for invoice in filtered_invoices]
-                    num_persons = Person.objects.filter(
-                        contracts_holder__in=contracts
-                    ).distinct().count()
-                    
+                    invoices_count, num_persons = counts_by_line_item_type.get(line_item_type.id, (0, 0))
                     info_row = [
                         line_item_type.name,
-                        filtered_invoices.count(),
+                        invoices_count,
                         num_persons
                     ]
                     row = add_row(sheet, row, info_row)

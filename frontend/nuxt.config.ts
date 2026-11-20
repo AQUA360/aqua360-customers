@@ -1,3 +1,9 @@
+// `LANGUAGE` també és una variable del locale del sistema (p. ex. `ast` o `es_ES:es`):
+// si no és un dels idiomes de l'aplicació, es fa servir el català.
+const SUPPORTED_LOCALES = ['ca', 'es', 'gl', 'en'];
+const languageCode = (process.env.LANGUAGE || '').trim().split(':')[0].split(/[-_]/)[0].toLowerCase();
+const defaultLanguage = SUPPORTED_LOCALES.includes(languageCode) ? languageCode : 'ca';
+
 export default defineNuxtConfig({
 
   devtools: {
@@ -12,7 +18,7 @@ export default defineNuxtConfig({
     public: {
       externalGot: process.env.NUXT_EXTERNAL_GOT, // can be overridden by NUXT_EXTERNAL_GOT environment variable
       apiHost: process.env.NUXT_PUBLIC_API_HOST, // can be overridden by NUXT_PUBLIC_API_HOST environment variable
-      defaultLocale: process.env.LANGUAGE, // default locale for i18n
+      defaultLocale: defaultLanguage, // default locale for i18n
       env: process.env.ENV, // environment name (prod, dev, test, etc.)
       verifactuEnabled: process.env.VERIFACTU_ENABLED === 'True', // Verifactu feature flag
       // Installations of the same customer that live on their own URL (one database each), listed in
@@ -76,6 +82,7 @@ export default defineNuxtConfig({
 
     // coredata
     '~/plugins/api/coredata/config-project-api.js',
+    '~/plugins/api/coredata/db-sync-api.js',
     '~/plugins/api/coredata/address-api.js',
     '~/plugins/api/coredata/person-api.js',
     '~/plugins/api/coredata/person-address-api.js',
@@ -252,8 +259,8 @@ export default defineNuxtConfig({
     bundle: {
       optimizeTranslationDirective: false,
     },
-    locales: ['ca', 'es', 'gl', 'en'], // used in URL path prefix
-    defaultLocale: process.env.LANGUAGE,// default locale of your project for Nuxt pages and routings
+    locales: SUPPORTED_LOCALES, // used in URL path prefix
+    defaultLocale: defaultLanguage,// default locale of your project for Nuxt pages and routings
     strategy: 'no_prefix',
     // `lazy` ja no existeix a la v10 del mòdul: la càrrega mandrosa és obligatòria.
     detectBrowserLanguage: false, // Disable automatic browser language detection
@@ -262,7 +269,7 @@ export default defineNuxtConfig({
   app: {
     head: {
       htmlAttrs: {
-        lang: process.env.LANGUAGE || 'ca'
+        lang: defaultLanguage
       },
       link: [
         { rel: 'preconnect', href: 'https://fonts.googleapis.com' },

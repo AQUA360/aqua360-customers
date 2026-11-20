@@ -61,12 +61,19 @@ export default defineNuxtPlugin(nuxtApp => {
         }
       }
 
-      if (issue_date && issue_date.start_date && issue_date.end_date) {
-        query += `&start_issue_date=${issue_date.start_date}&end_issue_date=${issue_date.end_date}`;
+      // Cada límit del rang s'aplica per separat: una sola data també filtra
+      if (issue_date?.start_date) {
+        query += `&start_issue_date=${issue_date.start_date}`;
+      }
+      if (issue_date?.end_date) {
+        query += `&end_issue_date=${issue_date.end_date}`;
       }
 
-      if (due_date && due_date.start_date && due_date.end_date) {
-        query += `&start_due_date=${due_date.start_date}&end_due_date=${due_date.end_date}`;
+      if (due_date?.start_date) {
+        query += `&start_due_date=${due_date.start_date}`;
+      }
+      if (due_date?.end_date) {
+        query += `&end_due_date=${due_date.end_date}`;
       }
 
       if (serie.length > 0) {
@@ -423,6 +430,17 @@ export default defineNuxtPlugin(nuxtApp => {
       }
     }
 
+    // "Marcar per remesar": marca o desmarca els pagaments pendents per domiciliació de la factura.
+    const markForRemittance = async (id, marked = true) => {
+      const apiUrl = `${apiHost}${entity}${id}/mark-for-remittance/`;
+      try {
+        const response = await $apiManager.fetch(apiUrl, 'PUT', { marked }, { 'Content-Type': 'application/json' });
+        return response;
+      } catch (error) {
+        throw error;
+      }
+    }
+
     const recalculateSmart = async (id) => {
       const apiUrl = `${apiHost}${entity}${id}/recalculate-smart/`;
       try {
@@ -431,6 +449,12 @@ export default defineNuxtPlugin(nuxtApp => {
       } catch (error) {
         throw error;
       }
+    }
+
+    // Passa la prefactura d'un contracte amb la baixa pendent a la nova alta.
+    const billToNewContract = async (id) => {
+      const apiUrl = `${apiHost}${entity}${id}/bill-to-new-contract/`;
+      return await $apiManager.fetch(apiUrl, 'POST');
     }
 
     const addToCommunicationProcess = async (id) => {
@@ -940,6 +964,7 @@ export default defineNuxtPlugin(nuxtApp => {
       returnInvoice,
       passToPending,
       saveToPiggyBank,
+      markForRemittance,
       changePaymentMethod,
       getInvoiceByCustomerToken,
       changeAddress,
@@ -955,6 +980,7 @@ export default defineNuxtPlugin(nuxtApp => {
       getLogs,
       getDocuments,
       recalculateSmart,
+      billToNewContract,
       addToCommunicationProcess,
       manageMassivelyPaid,
       sendEmail,

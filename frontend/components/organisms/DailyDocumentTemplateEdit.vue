@@ -45,6 +45,10 @@ const description = ref('');
 const daysToComplete = ref(2);
 const isWorkDays = ref(false);
 const createWithoutData = ref(false);
+const periodicity = ref('daily');
+const weekday = ref(4); // Friday by default when switching to weekly
+const intervalDays = ref(15);
+const periodAnchorDate = ref('');
 
 const dayTypeOptions = computed(() => [
     { value: 'work', label: t('common.work') },
@@ -54,6 +58,28 @@ const dayTypeOptions = computed(() => [
 const dayType = computed({
     get: () => (isWorkDays.value ? 'work' : 'natural'),
     set: (value) => { isWorkDays.value = value === 'work'; },
+});
+
+const periodicityOptions = computed(() => [
+    { value: 'daily', label: t('statistics_block.periodicity_daily') },
+    { value: 'weekly', label: t('statistics_block.periodicity_weekly') },
+    { value: 'every_x_days', label: t('statistics_block.periodicity_every_x_days') },
+]);
+
+const weekdayOptions = computed(() => [
+    { value: 0, label: t('date.monday') },
+    { value: 1, label: t('date.tuesday') },
+    { value: 2, label: t('date.wednesday') },
+    { value: 3, label: t('date.thursday') },
+    { value: 4, label: t('date.friday') },
+    { value: 5, label: t('date.saturday') },
+    { value: 6, label: t('date.sunday') },
+]);
+
+const periodicityHelp = computed(() => {
+    if (periodicity.value === 'weekly') return t('statistics_block.periodicity_weekly_help');
+    if (periodicity.value === 'every_x_days') return t('statistics_block.periodicity_every_x_days_help');
+    return t('statistics_block.periodicity_daily_help');
 });
 
 const normalizeReport = (report) => ({
@@ -103,6 +129,10 @@ const getData = async () => {
         daysToComplete.value = response.days_to_complete;
         isWorkDays.value = !!response.is_work_days;
         createWithoutData.value = !!response.create_without_data;
+        periodicity.value = response.periodicity || 'daily';
+        weekday.value = response.weekday ?? 4;
+        intervalDays.value = response.interval_days || 15;
+        periodAnchorDate.value = response.period_anchor_date || '';
         selectedUsers.value = (response.notify_users || []).map((user) => ({
             code: user.id,
             label: user.username,
@@ -205,6 +235,10 @@ const save = async () => {
             days_to_complete: daysToComplete.value,
             is_work_days: isWorkDays.value,
             create_without_data: createWithoutData.value,
+            periodicity: periodicity.value,
+            weekday: periodicity.value === 'weekly' ? weekday.value : null,
+            interval_days: periodicity.value === 'every_x_days' ? Number(intervalDays.value) : null,
+            period_anchor_date: periodicity.value === 'every_x_days' ? periodAnchorDate.value || null : null,
             available_report_id: selectedAvailableReport.value?.id,
             user_ids: selectedUsers.value.map((user) => user.code),
             group_ids: selectedGroups.value.map((group) => group.code),
@@ -227,6 +261,13 @@ const isValid = () => {
     if (!name.value) return false;
     if (daysToComplete.value < 0) return false;
     if (!selectedAvailableReport.value) return false;
+    if (periodicity.value === 'weekly' && (weekday.value === null || weekday.value === undefined || weekday.value === '')) {
+        return false;
+    }
+    if (periodicity.value === 'every_x_days') {
+        if (!intervalDays.value || Number(intervalDays.value) < 1) return false;
+        if (!periodAnchorDate.value) return false;
+    }
     return true
 }
 
@@ -271,6 +312,52 @@ onMounted(async () => {
                     <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('common.description') }}</label>
                     <textarea name="description" id="description" rows="3" v-model="description"
                         class="w-full border border-slate-300 rounded-md p-2 focus:outline-none focus:border-primary"></textarea>
+                </div>
+                <div class="col-span-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-3 space-y-3">
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-1">
+                            {{ t('pricing_block.periodicity') }}
+                        </label>
+                        <p class="text-xs text-slate-500">{{ periodicityHelp }}</p>
+                    </div>
+                    <select v-model="periodicity" class="input">
+                        <option v-for="option in periodicityOptions" :key="option.value" :value="option.value">
+                            {{ option.label }}
+                        </option>
+                    </select>
+                    <div v-if="periodicity === 'weekly'">
+                        <label class="block text-sm font-medium text-slate-500 mb-1">
+                            {{ t('statistics_block.periodicity_weekday') }}
+                        </label>
+                        <select v-model.number="weekday" class="input"
+                            :class="{ 'invalid': attemptedSave && (weekday === null || weekday === undefined || weekday === '') }">
+                            <option v-for="option in weekdayOptions" :key="option.value" :value="option.value">
+                                {{ option.label }}
+                            </option>
+                        </select>
+                    </div>
+                    <div v-else-if="periodicity === 'every_x_days'" class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-500 mb-1">
+                                {{ t('statistics_block.periodicity_interval_days') }}
+                            </label>
+                            <div class="relative">
+                                <input type="number" min="1" v-model="intervalDays" class="input pr-14"
+                                    :class="{ 'invalid': attemptedSave && (!intervalDays || Number(intervalDays) < 1) }" />
+                                <span
+                                    class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-slate-400">
+                                    {{ t('common.days') }}
+                                </span>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-500 mb-1">
+                                {{ t('statistics_block.periodicity_anchor_date') }}
+                            </label>
+                            <input type="date" v-model="periodAnchorDate" class="input"
+                                :class="{ 'invalid': attemptedSave && !periodAnchorDate }" />
+                        </div>
+                    </div>
                 </div>
                 <div class="col-span-2">
                     <label for="create_without_data" class="flex items-start gap-2.5 cursor-pointer">

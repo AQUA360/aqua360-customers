@@ -62,6 +62,7 @@ class AcaDeclarationTests(TestCase):
             fixed_amount=result.fixed_amount, variable_amount=result.variable_amount,
         )
         declaration.line_items.set(result.line_ids)
+        declaration.invoices.set(result.agricultural_invoice_ids)
         return result
 
     def selected(self, period):
@@ -160,6 +161,84 @@ class AcaDeclarationTests(TestCase):
         self.assertEqual(set(invoices.values_list('serie_final', flat=True)), {'FC/1', 'FC/2'})
         self.assertEqual(lines.count(), 4)
 
+    def invoice_without_canon(self, number, used_aca, consumption, issue_date=datetime.date(2026, 6, 15)):
+        invoice = Invoice.objects.create(
+            serie_final=number, token=number, issue_date=issue_date, type_final='F', status=self.paid,
+            exploitation=self.masnou, used_aca=used_aca, real_consumption=consumption,
+        )
+        Payment.objects.create(invoice=invoice, amount=Decimal('1'))
+        return invoice
+
+    def test_presented_month_keeps_agricultural_invoices_without_canon(self):
+        self.invoice('FC/1', datetime.date(2026, 6, 10))
+        self.invoice_without_canon('FC/AGR', 'G', 40)
+        result = self.freeze(self.masnou, 2026, 6, timezone.now())
+        self.assertEqual(result.agricultural_invoice_ids, {Invoice.objects.get(serie_final='FC/AGR').id})
+
+        self.assertEqual(self.selected(JUNE), ({'FC/1', 'FC/AGR'}, Decimal('11.00')))
+        self.assertEqual(self.selected(OCTOBER), (set(), Decimal('0.00')))
+
+    def test_agricultural_invoice_not_listed_moves_once(self):
+        # Mes presentat abans de declarar l'ús agrícola: el full de factures no la llista
+        self.invoice('FC/1', datetime.date(2026, 6, 10))
+        self.invoice_without_canon('FC/AGR', 'G', 40)
+        self.freeze(self.masnou, 2026, 6, timezone.now(), listed_numbers=['FC/1'])
+        self.assertEqual(self.selected(JUNE), ({'FC/1'}, Decimal('11.00')))
+        july = (datetime.date(2026, 7, 1), datetime.date(2026, 7, 31))
+        self.assertEqual(self.selected(july), ({'FC/AGR'}, Decimal('0.00')))
+
+        # Es declara al juliol: en presentar-lo s'hi queda i ja no passa a l'agost
+        self.freeze(self.masnou, 2026, 7, timezone.now(), listed_numbers=['FC/AGR'])
+        self.assertEqual(self.selected(july), ({'FC/AGR'}, Decimal('0.00')))
+        self.assertEqual(self.selected((datetime.date(2026, 8, 1), datetime.date(2026, 8, 31))), (set(), Decimal('0.00')))
+
+    def test_factdeta_declares_agricultural_consumption_without_canon(self):
+        from billing.utils.factdeta_reader import read_factdeta
+        from billing.utils.generate_factdeta_service import generate_factdeta_normal_document
+        from service.models import Company
+
+        self.invoice('FC/1', datetime.date(2026, 6, 10))
+        self.invoice_without_canon('FC/AGR', 'G', 40)
+        # Sense cànon i sense ús agrícola: no es declara
+        self.invoice_without_canon('FC/DOM', 'D', 25)
+        selection = aca_declaration_selection(*JUNE, REQUEST)
+        config = SimpleNamespace(
+            aca_product_token='ACA', invoice_type='F', invoice_token_pending='1',
+            part_fixa_token='part_fixa', tarifa_social_token='tarifa_social',
+        )
+        company = Company.objects.create(name='Entitat', vat='B00000000', supply_code='1234')
+        files = generate_factdeta_normal_document([self.masnou], selection.invoices, config, company, selection.line_items_q)
+
+        # El número de factura del fitxer va sense la barra
+        records = {record['invoice'].strip(): record for record in read_factdeta(files[0]['content']).records}
+        self.assertEqual(set(records), {'FC1', 'FCAGR'})
+        agricultural = records['FCAGR']
+        self.assertEqual((agricultural['tariff'], agricultural['consumed_volume'], agricultural['billed_volume']), ('G', 40, 0))
+
+    def test_aca_summary_declares_agricultural_consumption_without_canon(self):
+        from unittest import mock
+
+        from statistics.utils.report_billing_service import generate_aca_summary_report
+
+        for token, value in (
+            ('invoice_status_payoff_token', '-2'), ('contract_keeper_use_type_token', 'RAMADER'), ('tarifa_social', 'TS'),
+        ):
+            ConfigProject.objects.create(token=token, value=value)
+        self.invoice('FC/1', datetime.date(2026, 6, 10))
+        self.invoice_without_canon('FC/AGR', 'G', 40)
+        self.invoice_without_canon('FC/DOM', 'D', 25)
+        request = SimpleNamespace(data={'date_range': ['2026-06-01T00:00:00.000Z', '2026-06-30T00:00:00.000Z']})
+        with mock.patch('statistics.utils.report_billing_service.save_report', return_value=None) as save:
+            generate_aca_summary_report(request)
+        workbook = save.call_args.kwargs['content']
+
+        summary = {row[0]: row[1:] for row in workbook[workbook.sheetnames[0]].iter_rows(values_only=True) if row and row[0]}
+        self.assertEqual(summary["Vol. consumit d'ús agrícola"][0], 40)
+        invoices = {row[0]: row for row in workbook[workbook.sheetnames[1]].iter_rows(min_row=2, values_only=True)}
+        self.assertIn('FC/AGR', invoices)
+        self.assertNotIn('FC/DOM', invoices)
+        self.assertEqual((invoices['FC/AGR'][2], invoices['FC/AGR'][3], invoices['FC/AGR'][8]), (40, 40, 'G'))
+
 
 class AcaVolumeTests(TestCase):
     """Els m³ de la Declaració ACA surten amb el mateix càlcul que el FACTDETA en baixa."""
@@ -215,3 +294,86 @@ class AcaVolumeTests(TestCase):
         )
         self.assertEqual(set(volumes), {'FC/I'})
         self.assertEqual((volumes['FC/I'].tariff_type, volumes['FC/I'].billed), ('I', Decimal('7')))
+
+    def test_invoices_sheet_uses_summary_volumes(self):
+        import openpyxl
+
+        from statistics.utils.report_billing_service import _add_invoices_to_sheet
+
+        invoice, lines = self.invoice('FC/I', 'D', 7, [(self.general, 7, 0.1, None), (self.specific, 7, 0.2, None)])
+        volumes = {volume.invoice.id: volume for volume in self.volumes((invoice, lines)).values()}
+        sheet = openpyxl.Workbook().active
+        aca_lines = InvoiceLineItem.objects.filter(invoice=invoice).select_related('invoice__status', 'line_item_type__article')
+        _add_invoices_to_sheet(sheet, 0, [invoice], aca_lines, 'part_fixa', volumes_by_invoice=volumes)
+        row = [cell.value for cell in sheet[1]]
+        # Com al resum: industrial i el volum facturat una sola vegada, encara que l'ús de la factura sigui domèstic
+        self.assertEqual((row[0], row[2], row[3], row[8]), ('FC/I', 7, 7, 'I'))
+
+
+class AcaSummaryReportChunkTests(TestCase):
+    """La Declaració ACA calcula els volums per trossos de factures: el resultat ha de ser el mateix
+    que amb totes les factures de cop."""
+
+    def setUp(self):
+        for token, value in (
+            ('invoice_type_invoice_token', 'F'),
+            ('invoice_status_cancelled_token', '-6'),
+            ('invoice_status_pending_token', '1'),
+            ('invoice_status_payoff_token', '-2'),
+            ('invoice_status_paid_token', '-1'),
+            ('token_product_aca', 'ACA'),
+            ('contract_keeper_use_type_token', 'RAMADER'),
+            ('tarifa_social', 'tarifa_social'),
+        ):
+            ConfigProject.objects.create(token=token, value=value)
+        self.paid = InvoiceStatus.objects.create(token='0', name='Confirmada')
+        self.product = Product.objects.create(token='ACA')
+        self.fixed = LineItemType.objects.create(article=ArticleCode.objects.create(token='part_fixa', name='Part fixa'))
+        self.variable_article = ArticleCode.objects.create(token='part_variable', name='Part variable')
+        self.domestic = LineItemType.objects.create(name='CANON DOMESTIC', article=self.variable_article)
+        self.general = LineItemType.objects.create(name='GRAVAMEN GENERAL INDUSTRIAL', article=self.variable_article)
+        self.exploitation = Exploitation.objects.create(name='MUNICIPI A', code='080001')
+
+    def invoice(self, number, used_aca, consumption, lines):
+        invoice = Invoice.objects.create(
+            serie_final=number, token=number, issue_date=datetime.date(2026, 6, 10), type_final='F',
+            status=self.paid, used_aca=used_aca, real_consumption=consumption, exploitation=self.exploitation,
+        )
+        Payment.objects.create(invoice=invoice, amount=Decimal('1'))
+        InvoiceLineItem.objects.create(invoice=invoice, product=self.product, line_item_type=self.fixed, price=1, units=1)
+        for line_type, units, price_unit, interval in lines:
+            InvoiceLineItem.objects.create(
+                invoice=invoice, product=self.product, line_item_type=line_type, units=units,
+                price_unit=price_unit, price=units * price_unit, interval=interval,
+            )
+
+    def report_cells(self, chunk_size):
+        from io import BytesIO
+        from unittest import mock
+
+        import openpyxl
+
+        from statistics.utils import report_billing_service
+
+        request = SimpleNamespace(data={'date_range': ['2026-06-01T00:00:00.000Z', '2026-06-30T23:59:59.000Z']})
+        with mock.patch.object(report_billing_service, 'ACA_VOLUMES_CHUNK_SIZE', chunk_size), \
+                mock.patch.object(report_billing_service, 'save_report', return_value=None):
+            response, _document_id, _ = report_billing_service.generate_aca_summary_report(request)
+        workbook = openpyxl.load_workbook(BytesIO(response.content))
+        return {
+            sheet.title: [[cell.value for cell in row] for row in sheet.iter_rows()]
+            for sheet in workbook.worksheets
+        }
+
+    def test_volums_per_trossos_iguals_que_de_cop(self):
+        self.invoice('FC/1', 'D', 30, [(self.domestic, 10, 0.5, 1), (self.domestic, 8, 1.0, 2)])
+        self.invoice('FC/2', 'D', 12, [(self.domestic, 12, 0.5, 1)])
+        self.invoice('FC/3', 'I', 7, [(self.general, 7, 0.1, None)])
+
+        all_at_once = self.report_cells(1000)
+        self.assertEqual(self.report_cells(1), all_at_once)
+        invoices_sheet = list(all_at_once.values())[1]
+        self.assertEqual(sorted(row[0] for row in invoices_sheet[1:]), ['FC/1', 'FC/2', 'FC/3'])
+        # Volums consumits domèstic i industrial del resum
+        summary = {row[0]: row[1:] for row in list(all_at_once.values())[0]}
+        self.assertEqual(summary["Vol. consumit d'ús domèstic"], [42])

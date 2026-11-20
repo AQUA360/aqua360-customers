@@ -1,4 +1,4 @@
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { exportToXlsx, type XlsxColumn, type XlsxSummaryRow } from '~/utils/xlsx-export';
 import { useExportJobsStore } from '~/stores/useExportJobs';
@@ -52,7 +52,17 @@ export function useServerExport() {
     const { t } = useI18n();
     const { $apiManager, $DocumentManagerApiService } = useNuxtApp();
 
-    const exporting = ref(false);
+    const requesting = ref(false);
+    // Job of the downloads queue launched from this instance: while it is still
+    // pending/running the export counts as in progress, so the button stays
+    // disabled and repeated clicks don't queue (and later download) duplicates.
+    const trackedJobId = ref<number | null>(null);
+    const exportJobs = useExportJobsStore();
+    const exporting = computed(() => {
+        if (requesting.value) return true;
+        if (trackedJobId.value === null) return false;
+        return exportJobs.activeJobs.some(job => job.id === trackedJobId.value);
+    });
     let pollingInterval: ReturnType<typeof setInterval> | null = null;
 
     const stopPolling = () => {
@@ -123,7 +133,7 @@ export function useServerExport() {
         }
 
         // Always let the server build the full, filter-aware export.
-        exporting.value = true;
+        requesting.value = true;
         const name = exportName || (sheetName !== 'Sheet1' ? sheetName : null) || currentPageTitle() || fileName;
         try {
             const columnKeys = columns.map(c => c.key).filter(Boolean);
@@ -135,7 +145,8 @@ export function useServerExport() {
                 $apiManager.pendingExportName = null;
             }
             if (response?.export_job_id) {
-                useExportJobsStore().track(response.export_job_id, name);
+                exportJobs.track(response.export_job_id, name);
+                trackedJobId.value = response.export_job_id;
             } else if (response?.task_id) {
                 await pollTask(response.task_id);
             } else if (response?.document_id) {
@@ -145,7 +156,7 @@ export function useServerExport() {
                 throw new Error('missing task_id');
             }
         } finally {
-            exporting.value = false;
+            requesting.value = false;
         }
     };
 

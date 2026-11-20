@@ -17,6 +17,9 @@ from service.models import SupplyPoint
 from statistics.utils.daily_document_service import execute_available_report, generate_daily_document
 from statistics.utils.billing_amount_average import seasonal_amounts
 from .models import ContractConsumption, BillingConsumption, DailyDocument, DailyDocumentStatus, DailyDocumentTemplate
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class ReportWarning(Exception):
@@ -161,6 +164,15 @@ def update_billing_consumption(invoice_id):
                 if is_anomaly_long_period or is_anomaly_short_period:
                     is_active_stat = False
 
+        # --- Barra del gràfic de consum (mateix càlcul que el PDF) ---
+        # Si falla, el consum es desa igualment sense la barra (el backfill la tornarà a provar)
+        from billing.utils.charts_service import invoice_chart_bar
+        try:
+            chart_date, chart_consumption = invoice_chart_bar(invoice)
+        except Exception:
+            logger.exception("No s'ha pogut calcular la barra del gràfic de la factura %s", invoice_id)
+            chart_date, chart_consumption = None, None
+
         # --- Crear o actualitzar el consum ---
         BillingConsumption.objects.update_or_create(
             invoice=invoice,
@@ -176,6 +188,8 @@ def update_billing_consumption(invoice_id):
                 'total_amount_avg': avg_amount,
                 'tax_amount': tax_amount,
                 'net_amount': net_amount,
+                'chart_date': chart_date,
+                'chart_consumption': chart_consumption,
                 'is_active': is_active_stat,
             }
         )
@@ -216,9 +230,50 @@ def backfill_billing_consumption():
             if i % 500 == 0:
                 print(f"Progress {i}/{total}")
 
-        return f"Backfilled billing consumption for {total} invoices"
+        chart_filled = fill_billing_consumption_chart()
+        return f"Backfilled billing consumption for {total} invoices ({chart_filled} chart bars)"
     except Exception as e:
         return f"Error backfilling billing consumption: {e}"
+
+BILLING_CONSUMPTION_CHART_BATCH_SIZE = 500
+
+
+def fill_billing_consumption_chart(batch_size=BILLING_CONSUMPTION_CHART_BATCH_SIZE):
+    """
+    Omple la barra del gràfic (`chart_date`, `chart_consumption`) dels consums que no en tenen,
+    amb les lectures precarregades per trossos. Les factures sense lectures no en tenen barra i es
+    tornen a mirar a cada execució (són poques i és una sola consulta per tros).
+    Retorna quantes n'ha omplert.
+    """
+    from django.db.models import Case, DateField, FloatField, Value, When
+    from billing.utils.charts_service import ChartHistory, invoice_chart_bar
+
+    pending_ids = list(
+        BillingConsumption.objects.filter(chart_date__isnull=True).order_by('id').values_list('id', flat=True)
+    )
+    filled = 0
+    for start in range(0, len(pending_ids), batch_size):
+        rows = list(
+            BillingConsumption.objects.filter(id__in=pending_ids[start:start + batch_size]).select_related('invoice')
+        )
+        history = ChartHistory([row.invoice for row in rows], bars_only=True)
+        bars = {}
+        for row in rows:
+            chart_date, chart_consumption = invoice_chart_bar(row.invoice, history)
+            if chart_date is not None:
+                bars[row.id] = (chart_date, chart_consumption)
+        if not bars:
+            continue
+        # Només les files que encara no en tenen: si mentrestant s'ha recalculat el consum
+        # d'alguna factura, la barra bona és la que ha desat aquell càlcul
+        filled += BillingConsumption.objects.filter(id__in=bars, chart_date__isnull=True).update(
+            chart_date=Case(*[When(id=row_id, then=Value(bar[0])) for row_id, bar in bars.items()],
+                            output_field=DateField()),
+            chart_consumption=Case(*[When(id=row_id, then=Value(bar[1])) for row_id, bar in bars.items()],
+                                   output_field=FloatField()),
+        )
+    return filled
+
 
 def prefill_invoice_periods():
     qs = Invoice.objects.filter(
@@ -505,7 +560,29 @@ def run_report_task(self, generator_func_name, report_data, queue_item_id=None):
         if q_item.report.section_id:
           report_data['type_id'] = q_item.report.section_id
 
-    document_id, filename = execute_report(generator_func_name, report_data, task=self)
+    # Versió PDF de presentació: només si l'informe la té activada.
+    wants_pdf = (
+      str(report_data.get('output_format') or '').lower() == 'pdf'
+      and q_item is not None and q_item.report is not None
+      and q_item.report.allow_pdf_export
+    )
+    if wants_pdf:
+      from django.utils.translation import gettext
+      from statistics.utils.report_pdf_service import pdf_export, ReportTooLargeForPdf
+      with override(settings.LANGUAGE_CODE):
+        pdf_title = gettext(q_item.report.name) if q_item.report.name else None
+      with pdf_export(title=pdf_title, filters_display=q_item.filters_display) as pdf_options:
+        try:
+          document_id, filename = execute_report(generator_func_name, report_data, task=self)
+        except Exception:
+          pdf_error = pdf_options.get('error')
+          if isinstance(pdf_error, ReportTooLargeForPdf):
+            raise ReportWarning(str(pdf_error))
+          if pdf_error is not None:
+            raise Exception(str(pdf_error))
+          raise
+    else:
+      document_id, filename = execute_report(generator_func_name, report_data, task=self)
 
     if q_item:
       from django.utils import timezone
@@ -800,8 +877,10 @@ def generate_daily_documents(self):
     current_time = datetime.now()
     pending_status_token = ConfigProject.objects.get(token='daily_document_status_pending_token').value
     pending_status = DailyDocumentStatus.objects.get(token=pending_status_token)
+    cancelled_status_token = ConfigProject.objects.get(token='daily_document_status_cancelled_token').value
+    cancelled_status = DailyDocumentStatus.objects.get(token=cancelled_status_token)
     for template in available_templates:
-      generate_daily_document(template, current_time, pending_status)
+      generate_daily_document(template, current_time, pending_status, cancelled_status)
     
   except Exception as e:
     print(f"Error while generating daily documents: {e}")
@@ -809,6 +888,8 @@ def generate_daily_documents(self):
 @shared_task
 def regenerate_daily_document(daily_document_id):
   try:
+    from statistics.utils.daily_document_service import compute_period_range
+
     daily_document = DailyDocument.objects.get(id=daily_document_id)
     current_time = daily_document.document_date
     if not daily_document.template:
@@ -816,11 +897,24 @@ def regenerate_daily_document(daily_document_id):
     document = None
     error_message = None
     no_data_found = False
+
+    period_start = daily_document.period_start_date
+    period_end = daily_document.period_end_date
+    if not period_start or not period_end:
+      period_start, period_end = compute_period_range(daily_document.template, current_time)
+      daily_document.period_start_date = period_start
+      daily_document.period_end_date = period_end
+
+    if period_start == period_end:
+      period_label = period_end.strftime('%Y/%m/%d')
+    else:
+      period_label = f"{period_start.strftime('%Y/%m/%d')} - {period_end.strftime('%Y/%m/%d')}"
+
     try:
       document = execute_available_report(daily_document.template.available_report, {
-        'start_date': current_time.strftime('%Y-%m-%d'),
-        'end_date': current_time.strftime('%Y-%m-%d'),
-        'name': f"{daily_document.template.name} {current_time.strftime('%Y/%m/%d')}",
+        'start_date': period_start.strftime('%Y-%m-%d'),
+        'end_date': period_end.strftime('%Y-%m-%d'),
+        'name': f"{daily_document.template.name} {period_label}",
       })
     except ReportNoData:
       no_data_found = True
