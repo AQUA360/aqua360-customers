@@ -79,6 +79,7 @@ from billing.utils.pending_termination_service import (
   get_terminated_contract_warning,
   pending_termination_warning_for,
 )
+from billing.utils.terminated_contract_billing import billable_readings, terminated_contract_ids_to_skip
 from billing.utils.billing_process_errors import (
   QUEUE_TASK_FAILED_MESSAGE, QUEUE_TASK_START_FAILED_MESSAGE, BillingProcessError, build_contract_error, classify_billing_error, dedupe_contract_readings,
   no_invoice_generated_error, remove_billing_process_errors, upsert_billing_process_error,
@@ -2375,29 +2376,14 @@ def _process_billing_batch(self, billing_id, queue_item_id=None):
   period_days = PERIOD_MONTHS_MAP[period_type]
   period_months = period_days / 30
   
-  contract_active_token = ConfigProject.objects.get(token='contract_active_token').value
   contract_terminated_token = ConfigProject.objects.get(token='contract_terminated_status').value
-  contract_termination_completed_token = ConfigProject.objects.get(token="contract_termination_completed_token").value
 
-  readings_qs = (
-    billing.readings.filter(is_control=False, is_active=True, is_close=False)
-    .filter(contract__block_billing=False)
-    .filter(
-        Q(contract__status__token=contract_active_token) |
-        (
-            Q(contract__status__token=contract_terminated_token) &
-            Q(contract__contractterminationrequest__status__token=contract_termination_completed_token) &
-            (
-                Q(contract__contractterminationrequest__approved_at__date__gte=F('reading_date')) |
-                Q(contract__contractterminationrequest__approved_at__isnull=True, contract__contractterminationrequest__created_at__date__gte=F('reading_date'))
-            )
-        )
-    ).exclude(
-      Q(invoices__type_final='F') | Q(invoices__type_final='P'),
-    ).values_list('contract_id', flat=True).distinct()
-  )
-  
+  readings_qs = billable_readings(billing).values_list('contract_id', flat=True).distinct()
+
   contract_ids = list(readings_qs)
+  # Contractes de baixa: només els que l'usuari ha triat en confirmar la facturació.
+  skipped_terminated_ids = terminated_contract_ids_to_skip(billing, contract_ids)
+  contract_ids = [cid for cid in contract_ids if cid not in skipped_terminated_ids]
   
   name = billing.name
 
@@ -2506,19 +2492,13 @@ def _process_billing_batch(self, billing_id, queue_item_id=None):
             # Baixa iniciada (canvi de titular...): té prioritat, potser la factura és de la nova alta.
             if contract.id in pending_termination_contract_ids:
               warning = pending_termination_warning or warning
-            update_fields = []
-            # Contracte de baixa: la factura neix exclosa i només s'emet si l'usuari
-            # la torna a incloure expressament.
+            # Contracte de baixa (l'usuari l'ha triat per facturar): que es vegi a la revisió.
             if contract.status_id and contract.status.token == contract_terminated_token:
               warning = terminated_contract_warning or warning
-              invoice.is_excluded = True
-              update_fields.append('is_excluded')
 
             if warning:
               invoice.warning = warning
-              update_fields.append('warning')
-            if update_fields:
-              invoice.save(update_fields=update_fields)
+              invoice.save(update_fields=['warning'])
           invoices.append(invoice)
         except Exception as exc:
           logger.exception("No s'ha pogut facturar el contracte %s", contract.id)

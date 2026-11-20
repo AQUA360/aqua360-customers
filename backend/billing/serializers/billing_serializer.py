@@ -32,7 +32,7 @@ class BillingListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Billing
         fields = '__all__'
-        read_only_fields = ['metrics_snapshot', 'process_errors']
+        read_only_fields = ['metrics_snapshot', 'process_errors', 'terminated_contract_ids_to_bill']
 
     def to_representation(self, instance):
         return add_company_name(instance, pop_metrics_snapshot(super().to_representation(instance)))
@@ -58,7 +58,7 @@ class BillingSerializer(serializers.ModelSerializer):
     class Meta:
         model = Billing
         fields = '__all__'
-        read_only_fields = ['metrics_snapshot', 'process_errors']
+        read_only_fields = ['metrics_snapshot', 'process_errors', 'terminated_contract_ids_to_bill']
 
     def validate_token(self, value):
         # Evita codis duplicats també en editar (a la creació ja ho valida
