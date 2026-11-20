@@ -1,5 +1,6 @@
 from django.conf import settings
 from rest_framework import serializers
+from ov.invoice_visibility import exclude_future_invoices
 from contract.models import (
     Contract,
     ContractDataChange,
@@ -32,6 +33,7 @@ from coredata.models import (
     PersonAddress,
     PersonBank,
     PersonContact,
+    StreetNumberType,
 )
 from coredata.utils.iban_validator_utils import validate_iban as is_valid_iban
 from django.utils import timezone
@@ -41,6 +43,7 @@ from django.db import transaction
 from django.db.models import Count, Value
 from django.db.models.functions import Replace, Upper
 from django.utils.dateparse import parse_date
+import copy
 import logging
 import re
 from decimal import Decimal
@@ -104,7 +107,9 @@ class ContractSerializer(serializers.ModelSerializer):
         return None
 
     def get_last_invoice_date(self, obj):
-        last_invoice = obj.invoices.order_by("-created_at").first()
+        last_invoice = (
+            exclude_future_invoices(obj.invoices).order_by("-created_at").first()
+        )
         if last_invoice:
             return last_invoice.created_at
         return None
@@ -557,7 +562,44 @@ class UpdateBillingDataOVIBANSerializer(serializers.Serializer):
             )
 
 
-class BillingContractInvoicesOVSerializer(serializers.Serializer):
+def ov_pdf_from_date():
+    """Data a partir de la qual l'OV ofereix el PDF de les factures
+    (`ConfigProject` `ov_pdf_from`). `None` si no està configurada o no és una
+    data vàlida: llavors tots els PDF es consideren disponibles."""
+    from coredata.models import ConfigProject
+
+    value = (
+        ConfigProject.objects.filter(token="ov_pdf_from")
+        .values_list("value", flat=True)
+        .first()
+    )
+    if not value:
+        return None
+    try:
+        return parse_date(value)
+    except ValueError:
+        return None
+
+
+class OVPdfAvailableMixin:
+    """`pdf_available` amb una sola consulta a `ConfigProject` per petició: la
+    data es desa al context del serialitzador arrel, que comparteixen tots
+    els elements d'un `many=True`."""
+
+    def _ov_pdf_from(self):
+        context = self.context
+        if "ov_pdf_from" not in context:
+            context["ov_pdf_from"] = ov_pdf_from_date()
+        return context["ov_pdf_from"]
+
+    def get_pdf_available(self, obj) -> bool:
+        pdf_from_date = self._ov_pdf_from()
+        if pdf_from_date and obj.issue_date and obj.issue_date < pdf_from_date:
+            return False
+        return True
+
+
+class BillingContractInvoicesOVSerializer(OVPdfAvailableMixin, serializers.Serializer):
 
     contract_number = serializers.CharField(source="contract.token", read_only=True)
     invoice_number = serializers.CharField(source="serie_final", read_only=True)
@@ -592,18 +634,41 @@ class BillingContractInvoicesOVSerializer(serializers.Serializer):
             return None
         return {"token": obj.status.token, "name": obj.status.name}
 
-    def get_pdf_available(self, obj) -> bool:
-        from coredata.models import ConfigProject
 
-        date_str = ConfigProject.objects.filter(token="ov_pdf_from").first()
-        if not date_str or not date_str.value:
-            return True  # If config not set, assume all PDFs are available
-        else:
-            value = date_str.value
-            pdf_from_date = parse_date(value)
-            if obj.issue_date < pdf_from_date:
-                return False
-            return True
+class PersonInvoiceOVSerializer(OVPdfAvailableMixin, serializers.Serializer):
+    """Una factura de `GET /ov/person-invoices/`. A diferència de
+    `/ov/invoices/`, `invoice_amount` és el total i el pendent va a
+    `pending_amount`. `is_holder`/`is_payer` es calculen amb el DNI ja
+    normalitzat del context (`dni`) contra les dades congelades a la factura;
+    si la factura no té pagador, el pagador és el titular."""
+
+    invoice_number = serializers.CharField(source="serie_final", read_only=True)
+    invoice_token = serializers.CharField(source="token", read_only=True)
+    invoice_date = serializers.DateField(source="issue_date", read_only=True)
+    invoice_amount = serializers.FloatField(source="total_final", read_only=True)
+    pending_amount = serializers.FloatField(source="left_to_pay", read_only=True)
+    invoice_status = serializers.SerializerMethodField()
+    status = serializers.SerializerMethodField()
+    pdf_available = serializers.SerializerMethodField()
+    is_holder = serializers.SerializerMethodField()
+    is_payer = serializers.SerializerMethodField()
+
+    def get_invoice_status(self, obj):
+        return obj.status.name if obj.status else None
+
+    def get_status(self, obj):
+        if not obj.status:
+            return None
+        return {"token": obj.status.token, "name": obj.status.name}
+
+    def get_is_holder(self, obj):
+        return bool(obj.customer_token_final) and (
+            obj.customer_token_final == self.context.get("dni")
+        )
+
+    def get_is_payer(self, obj):
+        payer = obj.payer_token_final or obj.customer_token_final
+        return bool(payer) and payer == self.context.get("dni")
 
 
 class InvoiceConsumptionSerializer(serializers.ModelSerializer):
@@ -671,7 +736,7 @@ class InvoicePaidSerializer(serializers.Serializer):
         print("--------------------------------")
         #invoice type invoice to avoid getting budgets
         invoice_type_invoice_token = ConfigProject.objects.get(token="invoice_type_invoice_token").value
-        invoice: Invoice = Invoice.objects.filter(
+        invoice: Invoice = exclude_future_invoices(Invoice.objects).filter(
             token=validated_data["invoice_token"],
             contract__token=validated_data["contract_token"],
             type_final=invoice_type_invoice_token
@@ -1032,7 +1097,9 @@ class ContractFullDetailSerializer(serializers.ModelSerializer):
         return None
 
     def get_last_invoice_date(self, obj):
-        last_invoice = obj.invoices.order_by("-created_at").first()
+        last_invoice = (
+            exclude_future_invoices(obj.invoices).order_by("-created_at").first()
+        )
         if last_invoice:
             return last_invoice.created_at
         return None
@@ -1909,6 +1976,94 @@ class PropertyItemSerializer(serializers.Serializer):
 
     def get_city(self, obj):
         return obj.address_city.name if obj.address_city else None
+
+
+def _supply_point_address_text(address):
+    """Adreça formatada (`Address.__str__`) sense perdre el sufix del número.
+
+    Els números de tipus «N» (o sense tipus) i «S/N» no mostren el sufix, i
+    llavors «21» i «21A» (o els portals i escales guardats com a sufix) es
+    veuen iguals. Aquí es formaten com els de tipus «S» (`21-A`, `S/N-A`)
+    sobre una còpia en memòria, sense tocar ni desar l'adreça.
+    """
+    number = address.street_number
+    number_type = number.number_type.type if number and number.number_type else None
+    if not number or not number.number_suffix or number_type not in (None, "N", "SN"):
+        return str(address)
+    number_copy = copy.copy(number)
+    number_copy.number_type = StreetNumberType(type="S")
+    if number_type == "SN":
+        # El tipus «S» sense número mostra només el sufix
+        number_copy.number = None
+        number_copy.number_suffix = f"S/N-{number.number_suffix}"
+    address_copy = copy.copy(address)
+    address_copy.street_number = number_copy
+    return str(address_copy)
+
+
+class SupplyPointAddressItemSerializer(serializers.Serializer):
+    """Adreça d'un punt de subministrament per a l'autocompletat de l'OV.
+
+    Retorna l'adreça completa formatada (amb el sufix del número, escala, pis
+    i porta), els seus camps atòmics i els punts que la fan servir, amb el
+    token del punt i el de la seva finca (els que demanen els tràmits). La
+    vista hi deixa els punts a `grouped_supply_points`.
+    """
+
+    address = serializers.SerializerMethodField()
+    street_type = serializers.SerializerMethodField()
+    street_name = serializers.SerializerMethodField()
+    street_number = serializers.SerializerMethodField()
+    street_number_suffix = serializers.SerializerMethodField()
+    stair = serializers.CharField(allow_null=True)
+    building = serializers.CharField(allow_null=True)
+    floor = serializers.CharField(allow_null=True)
+    door = serializers.CharField(allow_null=True)
+    address_extra = serializers.CharField(allow_null=True)
+    postal_code = serializers.CharField(allow_null=True)
+    city = serializers.SerializerMethodField()
+    supply_points = serializers.SerializerMethodField()
+
+    def get_address(self, obj):
+        return _supply_point_address_text(obj)
+
+    def get_street_type(self, obj):
+        return (
+            obj.street.type.abbreviation
+            if obj.street and obj.street.type
+            else None
+        )
+
+    def get_street_name(self, obj):
+        return obj.street.name if obj.street else None
+
+    def get_street_number(self, obj):
+        number = obj.street_number
+        if not number:
+            return None
+        # Un S/N no mostra el número (i l'agrupació no el té en compte)
+        if number.number_type and number.number_type.type == "SN":
+            return None
+        return number.number
+
+    def get_street_number_suffix(self, obj):
+        return (obj.street_number.number_suffix or None) if obj.street_number else None
+
+    def get_city(self, obj):
+        return obj.city.name if obj.city else obj.city_name
+
+    def get_supply_points(self, obj):
+        return [
+            {
+                "token": supply_point.token,
+                "property_token": (
+                    supply_point.property.token
+                    if supply_point.property
+                    else None
+                ),
+            }
+            for supply_point in getattr(obj, "grouped_supply_points", [])
+        ]
 
 
 def _property_address(property):
