@@ -1,7 +1,7 @@
 # FOR WALLET REPORTS EXPORTATION
 import datetime
 import os
-from django.db.models import Q, OuterRef, Subquery
+from django.db.models import Q, OuterRef, Subquery, Min, Max
 from django.http import HttpResponse, JsonResponse
 import openpyxl
 from openpyxl.styles import Alignment, PatternFill
@@ -1743,13 +1743,16 @@ def generate_sgt_txt_report(request, black_fill=None, white_bold_font=None, task
         exploitation = None
         if exploitation_id:
             exploitation = Exploitation.objects.get(id=exploitation_id)
+
+        # Rang de dates de l'informe (per filtrar IBAN nous); també pot anar amb lot
+        if date_range:
+            start_date = datetime.datetime.strptime(date_range[0], '%Y-%m-%dT%H:%M:%S.%fZ')
+            end_date = datetime.datetime.strptime(date_range[1], '%Y-%m-%dT%H:%M:%S.%fZ')
         
         if billing_ids:
             invoices = Invoice.objects.filter(billing_id__in=billing_ids)
             invoices = filter_pending_invoices(invoices, request)
         elif date_range:
-            start_date = datetime.datetime.strptime(date_range[0], '%Y-%m-%dT%H:%M:%S.%fZ')
-            end_date = datetime.datetime.strptime(date_range[1], '%Y-%m-%dT%H:%M:%S.%fZ')
             invoice_type = ConfigProject.objects.get(token="invoice_type_invoice_token").value
             invoices = Invoice.objects.filter(issue_date__range=(start_date.date(), end_date.date()), type_final=invoice_type, payments__is_active=True, exploitation__isnull=False).distinct()
             invoices = filter_pending_invoices(invoices, request)
@@ -1772,8 +1775,17 @@ def generate_sgt_txt_report(request, black_fill=None, white_bold_font=None, task
         if multi_q:
             invoices = invoices.filter(multi_q).distinct()
 
+        # Sense date_range (p.ex. només lot), el període per l'IBAN surt de les factures
+        if start_date is None or end_date is None:
+            period = invoices.aggregate(min_d=Min('issue_date'), max_d=Max('issue_date'))
+            if start_date is None:
+                start_date = period['min_d']
+            if end_date is None:
+                end_date = period['max_d']
+
         content_file, file_name = generate_sgt_txt_content(
             None, invoices, progress_callback=lambda current, total: report_progress(task, current, total),
+            start_date=start_date, end_date=end_date,
         )
 
         response = HttpResponse(content_file.getvalue(), content_type="text/plain")
