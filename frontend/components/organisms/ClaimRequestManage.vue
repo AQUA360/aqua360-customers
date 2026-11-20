@@ -49,6 +49,9 @@ const regionDetailId = ref(null);
 const showContractSelection = ref(false);
 const showContractList = ref(false);
 const showInvoiceList = ref(false);
+// Canvia cada vegada que s'obre una llista: força a muntar-la de nou perquè no conservi
+// un detall obert d'abans (la regió es pot tancar sense desmuntar-la)
+const listKey = ref(0);
 const showOrders = ref(false);
 const showTerminations = ref(false);
 const orders = ref([]);
@@ -425,6 +428,7 @@ const handleShowOrders = async (orderType) => {
 };
 
 const handleShowInvoiceList = () => {
+  listKey.value++;
   showInvoiceList.value = true;
   showContractList.value = false;
   showRegion.value = true;
@@ -434,6 +438,7 @@ const handleShowInvoiceList = () => {
 };
 
 const handleShowContractList = () => {
+  listKey.value++;
   showContractList.value = true;
   showInvoiceList.value = false;
   showRegion.value = true;
@@ -777,9 +782,9 @@ const handleFinishStep = async () => {
           :request="requestData" :selectedContracts="selectedRemoveMeterContracts"
           :title="('claim_block.select_remove_contracts')" highlightColor="bg-red-100" :isVulnerabilityContext="false"
           @update:selectedContracts="selectedRemoveMeterContracts = $event" @close="toggleRegion(false)" />
-        <ClaimRequestContractListRegion v-if="showContractList" :request="requestData" :contracts="contracts"
+        <ClaimRequestContractListRegion v-if="showContractList" :key="listKey" :request="requestData" :contracts="contracts"
           @show-detail="handleSubRegionEvent" @close="toggleRegion(false)" @change="handleContractChange" />
-        <ClaimRequestInvoiceListRegion v-if="showInvoiceList" :request="requestData"
+        <ClaimRequestInvoiceListRegion v-if="showInvoiceList" :key="listKey" :request="requestData"
           @show-detail="handleSubRegionEvent" @close="toggleRegion(false)" />
         <ClaimRequestOrdersRegion v-if="showRegionDetailComponent === 'OrdersRegion'"
           @show-subregion="handleSubRegionEvent" :request="requestData" :orderType="currentOrderType"

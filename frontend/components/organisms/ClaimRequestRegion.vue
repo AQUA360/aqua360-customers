@@ -179,7 +179,7 @@ const openClaimRequest = () => {
           </span>
         </div>
 
-        <div class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div class="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
         <table class="min-w-full divide-y divide-slate-200">
           <thead class="bg-slate-50">
             <tr class="divide-x divide-slate-200">

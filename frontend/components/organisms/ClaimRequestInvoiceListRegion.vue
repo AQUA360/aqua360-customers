@@ -62,7 +62,11 @@ const invoices = computed(() =>
   )
 );
 
-const excludedCount = computed(() => invoices.value.filter(invoice => invoice.is_excluded).length);
+// Cada fila és un pagament reclamat i una factura pot tenir-ne més d'un: els comptadors compten
+// factures distintes (mateix criteri que affected_invoices_count / excluded_invoices_count del backend)
+const countDistinctInvoices = (rows) => new Set(rows.filter(row => row.invoice_id).map(row => row.invoice_id)).size;
+const affectedInvoicesCount = computed(() => countDistinctInvoices(invoices.value.filter(invoice => !invoice.is_excluded)));
+const excludedInvoicesCount = computed(() => countDistinctInvoices(invoices.value.filter(invoice => invoice.is_excluded)));
 
 const filteredInvoices = computed(() => {
   let result = invoices.value;
@@ -217,10 +221,10 @@ onMounted(async () => {
 
       <div class="flex gap-3 items-center mb-4 text-sm text-gray-700" v-if="!loading">
         <div>
-          {{ $t('billing_block.affected_invoices_title') }}: {{ invoices.length - excludedCount }}
+          {{ $t('billing_block.affected_invoices_title') }}: {{ affectedInvoicesCount }}
         </div>
         <div>
-          {{ $t('billing_block.excluded_invoices') }}: {{ excludedCount }}
+          {{ $t('billing_block.excluded_invoices') }}: {{ excludedInvoicesCount }}
         </div>
       </div>
 
