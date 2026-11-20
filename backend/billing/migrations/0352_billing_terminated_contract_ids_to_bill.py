@@ -27,7 +27,7 @@ def restore_warning_description(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('billing', '0350_add_terminated_contract_warning'),
+        ('billing', '0351_billing_pdf_parallel_workers_config'),
     ]
 
     operations = [
