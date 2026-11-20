@@ -66,7 +66,8 @@ class TestCompanyBankIssues(TestCase):
 
 
 class TestRemittanceGenerationBlocked(TestCase):
-    """No es genera cap fitxer amb un compte sense les dades que calen."""
+    """No es genera cap fitxer de transferències amb un compte sense les dades
+    que calen. Les remeses de rebuts SEPA no es comproven."""
 
     def setUp(self):
         company = Company.objects.create(name='Empresa', alias='Empresa', vat='B00000000')
@@ -78,7 +79,7 @@ class TestRemittanceGenerationBlocked(TestCase):
         self.client.force_authenticate(user)
 
     @mock.patch('billing.tasks.generate_sepa_document.apply_async')
-    def test_generar_la_remesa(self, apply_async):
+    def test_generar_la_remesa_de_transferencies(self, apply_async):
         response = self.client.put(
             '/billing/sepa-document-generate/',
             {'create_doc': True, 'selected_bank': self.bank.id, 'payments_type': 'return'},
@@ -91,16 +92,44 @@ class TestRemittanceGenerationBlocked(TestCase):
         self.assertIn('IBAN', data['error'])
         apply_async.assert_not_called()
 
-    @mock.patch('billing.tasks.regenerate_sepa_file.delay')
-    def test_regenerar_el_fitxer(self, delay):
-        status = PaymentRemittanceStatus.objects.create(token='check_pending', is_default=True)
-        ConfigProject.objects.update_or_create(
-            token='payment_remittance_status_sent_token', defaults={'value': 'check_sent'})
-        remittance = PaymentRemittance.objects.create(company_bank=self.bank, status=status)
+    @mock.patch('billing.tasks.generate_sepa_document.apply_async')
+    def test_la_remesa_de_rebuts_no_es_comprova(self, apply_async):
+        apply_async.return_value = mock.Mock(id='task')
+        response = self.client.put(
+            '/billing/sepa-document-generate/',
+            {'create_doc': True, 'selected_bank': self.bank.id, 'payments_type': 'invoice'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 202)
+        apply_async.assert_called_once()
+
+    def remittance(self, is_return):
+        status, _ = PaymentRemittanceStatus.objects.get_or_create(token='check_pending', defaults={'is_default': True})
+        for token, value in (
+            ('payment_remittance_status_sent_token', 'check_sent'),
+            ('payment_remittance_status_processing_token', 'check_pending'),
+        ):
+            ConfigProject.objects.update_or_create(token=token, defaults={'value': value})
+        remittance = PaymentRemittance.objects.create(company_bank=self.bank, status=status, is_return=is_return)
         remittance.payments.add(Payment.objects.create(amount=10))
+        return remittance
+
+    @mock.patch('billing.tasks.regenerate_sepa_file.delay')
+    def test_regenerar_el_fitxer_de_transferencies(self, delay):
+        remittance = self.remittance(is_return=True)
 
         response = self.client.post(f'/billing/payment-remittance/{remittance.id}/sepa-document-generate/', {})
 
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()['bank_issues'][0]['issues'], [ISSUE_IBAN])
         delay.assert_not_called()
+
+    @mock.patch('billing.tasks.regenerate_sepa_file.delay')
+    def test_regenerar_el_fitxer_de_rebuts_no_es_comprova(self, delay):
+        delay.return_value = mock.Mock(id='task')
+        remittance = self.remittance(is_return=False)
+
+        response = self.client.post(f'/billing/payment-remittance/{remittance.id}/sepa-document-generate/', {})
+
+        self.assertEqual(response.status_code, 202)
+        delay.assert_called_once()

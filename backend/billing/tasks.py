@@ -5,6 +5,7 @@ from decimal import Decimal
 from html import escape
 from io import BytesIO, StringIO
 import itertools
+import os
 import time
 import uuid
 import base64
@@ -2750,6 +2751,271 @@ def create_billings():
           if not billings:
             print(f"Biller {biller.id} splits by company but has no water supplier companies")
           
+# PDF de les facturacions en paral·lel: la confirmació (numeració, Verifactu) es fa en sèrie
+# i només els PDF es reparteixen entre subtasques. Cada PDF és d'una sola factura (fitxer i
+# versions per id de factura), així que les subtasques no es trepitgen.
+# Subtasques en paral·lel: ConfigProject (es pot canviar sense reiniciar; 1 = en sèrie)
+BILLING_PDF_PARALLEL_WORKERS_TOKEN = 'billing_pdf_parallel_workers'
+BILLING_PDF_PARALLEL_WORKERS_DEFAULT = 4
+# Màxim de subtasques: el kill revoca sempre aquests ids, encara que el valor canviï mentre corre
+BILLING_PDF_MAX_SUBTASKS = 16
+# Per sota d'aquestes factures per subtasca no surt a compte repartir
+BILLING_PDF_MIN_INVOICES_PER_WORKER = 20
+BILLING_PDF_POLL_SECONDS = 5
+# Una subtasca que no ha arrencat en aquest temps (worker sense processos lliures) la fa la tasca principal
+BILLING_PDF_START_TIMEOUT_SECONDS = 600
+# Tasques de la cua que reparteixen els PDF en subtasques
+BILLING_PDF_TASK_TYPES = ('DEFINITIVE_INVOICE', 'REGENERATE_PDFS')
+
+
+def billing_pdf_subtask_ids(task_id):
+  """
+  Ids de les subtasques de PDF d'una tasca de la cua. Són fixos (derivats del de la tasca)
+  perquè el kill/restart les pugui revocar sense haver-los de desar enlloc.
+  """
+  if not task_id:
+    return []
+  return [f"{task_id}-pdf-{index}" for index in range(BILLING_PDF_MAX_SUBTASKS)]
+
+
+def billing_pdf_parallel_setting():
+  """Subtasques de PDF configurades (entre 1 i BILLING_PDF_MAX_SUBTASKS); si el valor no és vàlid, el per defecte."""
+  value = ConfigProject.objects.filter(token=BILLING_PDF_PARALLEL_WORKERS_TOKEN).values_list('value', flat=True).first()
+  try:
+    workers = int(str(value).strip())
+  except (TypeError, ValueError):
+    workers = BILLING_PDF_PARALLEL_WORKERS_DEFAULT
+  return max(1, min(workers, BILLING_PDF_MAX_SUBTASKS))
+
+
+def _billing_pdf_workers(task, total):
+  # Cridada directament (comanda en mode síncron) o en eager no hi ha worker que reculli les subtasques
+  if task.request.called_directly or task.request.is_eager:
+    return 1
+  # La tasca principal ocupa un procés mentre espera: les subtasques han de cabre a la resta
+  pool_size = task.app.conf.worker_concurrency or os.cpu_count() or 1
+  return max(1, min(billing_pdf_parallel_setting(), pool_size - 1, total // BILLING_PDF_MIN_INVOICES_PER_WORKER))
+
+
+def _billing_queue_item_is_current(queue_item_id, task_id):
+  from billing.models import BillingQueue
+  return BillingQueue.objects.filter(id=queue_item_id, status='running', task_id=task_id).exists()
+
+
+def _count_generated_pdf(queue_item_id):
+  from billing.models import BillingQueue
+  BillingQueue.objects.filter(id=queue_item_id).update(documents_generated=F('documents_generated') + 1)
+
+
+def _generate_invoice_pdf(invoice_id, config_cache=None):
+  """Genera el PDF d'una factura. Retorna si s'ha generat: un error no atura la resta."""
+  try:
+    close_old_connections()
+    invoice = Invoice.objects.get(id=invoice_id)
+    generate_report_invoice_pdf(invoice, config_cache=config_cache)
+    return True
+  except Exception:
+    logger.exception("Error generant el PDF de la factura %s", invoice_id)
+    return False
+  finally:
+    close_old_connections()
+
+
+# Factures per tros amb l'historial del gràfic de consum precarregat
+CHART_HISTORY_BATCH_SIZE = 200
+
+
+def _with_chart_history(invoice_ids):
+  """
+  Recorre `invoice_ids` amb l'historial del gràfic de consum precarregat per trossos: el gràfic
+  fa poques consultes per tros en lloc de desenes per factura. Si cap plantilla té gràfic o la
+  precàrrega falla, es recorren sense (el gràfic consulta factura a factura, com abans).
+  """
+  import contextlib
+  from billing.models import Message
+  from billing.utils.charts_service import chart_history_scope
+
+  preload = Message.objects.filter(message_type='GRAPHIC').exists()
+  for start in range(0, len(invoice_ids), CHART_HISTORY_BATCH_SIZE):
+    batch = invoice_ids[start:start + CHART_HISTORY_BATCH_SIZE]
+    scope = contextlib.nullcontext()
+    if preload:
+      try:
+        scope = chart_history_scope(
+          Invoice.objects.filter(id__in=batch).select_related('contract', 'contract_termination__contract')
+        )
+        scope.__enter__()
+      except Exception:
+        logger.exception("No s'ha pogut precarregar l'historial del gràfic: es consulta factura a factura")
+        scope = contextlib.nullcontext()
+        scope.__enter__()
+    else:
+      scope.__enter__()
+    try:
+      yield from batch
+    finally:
+      scope.__exit__(None, None, None)
+
+
+def _generate_invoice_pdfs_in_process(invoice_ids, config_cache, on_progress, queue_item_id=None, done_offset=0):
+  """
+  Genera els PDF en aquest procés. Sense `queue_item_id` informa el total de generats a
+  `on_progress`; amb, el compta a la cua atòmicament (hi ha subtasques comptant alhora).
+  """
+  generated = 0
+  for done, invoice_id in enumerate(_with_chart_history(invoice_ids), start=1):
+    if _generate_invoice_pdf(invoice_id, config_cache):
+      generated += 1
+      if queue_item_id:
+        _count_generated_pdf(queue_item_id)
+    if done % 10 == 0 or done == len(invoice_ids):
+      on_progress(done_offset + done, None if queue_item_id else generated)
+  return generated
+
+
+@shared_task(bind=True)
+def generate_billing_pdfs_chunk(self, invoice_ids, config_cache=None, queue_item_id=None, parent_task_id=None):
+  """Subtasca de `generate_billing_pdfs`: els PDF d'un tros de factures."""
+  progress_recorder = ProgressRecorder(self)
+  total = len(invoice_ids)
+  generated = 0
+  for done, invoice_id in enumerate(_with_chart_history(invoice_ids), start=1):
+    # La tasca principal pot haver estat aturada o reiniciada mentre aquesta era a la cua
+    if queue_item_id and (done == 1 or done % 50 == 0) and not _billing_queue_item_is_current(queue_item_id, parent_task_id):
+      return {'generated': generated, 'stopped': True}
+    if _generate_invoice_pdf(invoice_id, config_cache):
+      generated += 1
+      if queue_item_id:
+        _count_generated_pdf(queue_item_id)
+    if done % 5 == 0 or done == total:
+      progress_recorder.set_progress(done, total)
+  return {'generated': generated, 'stopped': False}
+
+
+def _invoices_without_new_pdf(invoice_ids, last_document_id):
+  """Factures de `invoice_ids` sense cap PDF desat després del document `last_document_id`."""
+  with_new_pdf = set(
+    Invoice.objects.filter(id__in=invoice_ids, invoice_file_id__gt=last_document_id).values_list('id', flat=True)
+  )
+  return [invoice_id for invoice_id in invoice_ids if invoice_id not in with_new_pdf]
+
+
+def generate_billing_pdfs(task, invoice_ids, config_cache, queue_item_id, on_progress):
+  """
+  Genera els PDF de les factures repartits en subtasques i n'espera el final.
+
+  `on_progress(done, generated)` rep els PDF fets (amb error o sense) i els generats; amb
+  subtasques i un item de cua, `generated` és None: el comptador de la cua el porten les
+  subtasques amb F(). Retorna `(generated, completed)`; `completed` és False si mentre
+  s'esperava l'item de la cua ha deixat de ser d'aquesta tasca (kill, skip o restart).
+  """
+  from celery.result import AsyncResult
+  from customers.queue_utils import revoke_queue_task
+
+  total = len(invoice_ids)
+  workers = _billing_pdf_workers(task, total)
+  if workers <= 1:
+    generated = _generate_invoice_pdfs_in_process(invoice_ids, config_cache, on_progress, queue_item_id=queue_item_id)
+    return generated, True
+
+  from documentmanager.models import Document
+
+  parent_task_id = task.request.id
+  # Cada PDF desat crea un document nou: si una subtasca falla, es refan només les factures
+  # del seu tros que no en tenen cap de posterior a aquest
+  last_document_id = Document.objects.aggregate(last=Max('id'))['last'] or 0
+  # Repartiment intercalat: factures de mida semblant a cada tros
+  chunks = [invoice_ids[index::workers] for index in range(workers)]
+  subtasks = {}
+  local_chunks = []
+  for subtask_id, chunk in zip(billing_pdf_subtask_ids(parent_task_id), chunks):
+    try:
+      generate_billing_pdfs_chunk.apply_async(
+        args=[chunk, config_cache],
+        kwargs={'queue_item_id': queue_item_id, 'parent_task_id': parent_task_id},
+        task_id=subtask_id,
+      )
+      subtasks[subtask_id] = chunk
+    except Exception:
+      # p. ex. el broker no respon: aquest tros el fa la tasca principal
+      logger.exception("No s'ha pogut encuar una subtasca de PDF (%s factures)", len(chunk))
+      local_chunks.append(chunk)
+
+  local_done = 0
+  local_generated = 0
+
+  def _run_locally(chunk, done_before, to_generate=None):
+    nonlocal local_done, local_generated
+    to_generate = chunk if to_generate is None else to_generate
+    skipped = len(chunk) - len(to_generate)
+    def _local_progress(done, _generated):
+      on_progress(done_before + skipped + done, None)
+    if not queue_item_id:
+      # Sense cua no se sap quants n'havia comptat la subtasca fallida: els que ja tenen PDF nou
+      local_generated += skipped
+    if to_generate:
+      local_generated += _generate_invoice_pdfs_in_process(
+        to_generate, config_cache, _local_progress, queue_item_id=queue_item_id,
+      )
+    local_done += len(chunk)
+
+  for chunk in local_chunks:
+    _run_locally(chunk, local_done)
+
+  dispatched_at = time.monotonic()
+  results = {}
+  while True:
+    done = local_done
+    pending_ids = []
+    failed_ids = []
+    for subtask_id, chunk in subtasks.items():
+      result = AsyncResult(subtask_id)
+      if result.ready():
+        done += len(chunk)
+        if subtask_id not in results:
+          if result.successful() and isinstance(result.result, dict):
+            results[subtask_id] = result.result
+          else:
+            failed_ids.append(subtask_id)
+      else:
+        if result.state == 'PROGRESS' and isinstance(result.info, dict):
+          done += result.info.get('current', 0)
+        elif result.state == 'PENDING':
+          pending_ids.append(subtask_id)
+    on_progress(done, None)
+    # Abans de donar-ho per acabat: si l'han aturada, les subtasques també han plegat
+    if queue_item_id and not _billing_queue_item_is_current(queue_item_id, parent_task_id):
+      return 0, False
+    for subtask_id in failed_ids:
+      chunk = subtasks.pop(subtask_id)
+      missing = _invoices_without_new_pdf(chunk, last_document_id)
+      logger.warning("Una subtasca de PDF ha fallat: la tasca principal en refà %s de %s factures", len(missing), len(chunk))
+      _run_locally(chunk, done - len(chunk), missing)
+    if len(results) == len(subtasks):
+      break
+    if pending_ids and time.monotonic() - dispatched_at > BILLING_PDF_START_TIMEOUT_SECONDS:
+      for subtask_id in pending_ids:
+        try:
+          revoke_queue_task(subtask_id)
+        except Exception:
+          continue
+        chunk = subtasks.pop(subtask_id)
+        logger.warning("Una subtasca de PDF no ha arrencat (%s factures): la fa la tasca principal", len(chunk))
+        _run_locally(chunk, done)
+      continue
+    time.sleep(BILLING_PDF_POLL_SECONDS)
+
+  # Pot haver canviat mentre es refeien trossos fallits: una tasca antiga no ha de tancar la facturació
+  if queue_item_id and not _billing_queue_item_is_current(queue_item_id, parent_task_id):
+    return 0, False
+  if queue_item_id:
+    from billing.models import BillingQueue
+    generated = BillingQueue.objects.filter(id=queue_item_id).values_list('documents_generated', flat=True).first() or 0
+  else:
+    generated = local_generated + sum(result.get('generated', 0) for result in results.values())
+  return generated, True
+
+
 @shared_task(bind=True)
 def process_invoice_documents(self, billing_id, invoice_ids, context, issue_date, end_date, send_at, queue_item_id=None):
   progress_recorder = ProgressRecorder(self)
@@ -2857,25 +3123,27 @@ def process_invoice_documents(self, billing_id, invoice_ids, context, issue_date
     except BillingQueue.DoesNotExist:
       pass
 
-  def _report_progress(invoices_processed, documents_generated):
+  def _report_progress(invoices_processed, documents_done, documents_generated=None):
     # Combina les dues fases (confirmació de factures i generació de PDF) en un
     # únic percentatge sobre `total_invoices`, ponderant cadascuna al 50%.
+    # El progrés va pels PDF fets (també els que han fallat); el comptador de
+    # generats, només pels que s'han generat. Amb subtasques (documents_generated
+    # None) aquest comptador el porten elles a la cua.
     phase1 = (invoices_processed / total_invoices) if total_invoices else 0.0
-    phase2 = (documents_generated / invoices_needing_pdf_count) if invoices_needing_pdf_count else 1.0
+    phase2 = (documents_done / invoices_needing_pdf_count) if invoices_needing_pdf_count else 1.0
     percent = round(((phase1 + phase2) / 2) * 100, 2)
     current = round(((phase1 + phase2) / 2) * total_invoices)
     progress_recorder.set_progress(current, total_invoices)
     if queue_item_id:
-      BillingQueue.objects.filter(id=queue_item_id).update(
-        invoices_processed=invoices_processed,
-        documents_generated=documents_generated,
-        processed_items=current,
-      )
+      fields = {'invoices_processed': invoices_processed, 'processed_items': current}
+      if documents_generated is not None:
+        fields['documents_generated'] = documents_generated
+      BillingQueue.objects.filter(id=queue_item_id).update(**fields)
     return percent
 
   invoices_processed = 0
   documents_generated = 0
-  _report_progress(invoices_processed, documents_generated)
+  _report_progress(invoices_processed, 0, documents_generated)
 
   invoices_needing_pdf = []
   confirmed_invoice_ids = []
@@ -2906,7 +3174,7 @@ def process_invoice_documents(self, billing_id, invoice_ids, context, issue_date
 
     invoices_processed += 1
     if invoices_processed % 10 == 0 or invoices_processed == total_invoices:
-      _report_progress(invoices_processed, documents_generated)
+      _report_progress(invoices_processed, 0, documents_generated)
 
   if confirmed_invoice_ids:
     from statistics.tasks import update_billing_consumption_batch
@@ -2916,21 +3184,15 @@ def process_invoice_documents(self, billing_id, invoice_ids, context, issue_date
       update_billing_consumption_batch.delay(batch_ids)
 
   if invoices_needing_pdf:
-    from django.db import close_old_connections
-    from billing.views.invoice_pdf_view import generate_report_invoice_pdf
+    def _report_pdf_progress(documents_done, generated):
+      _report_progress(invoices_processed, documents_done, generated)
 
-    for invoice_id in invoices_needing_pdf:
-      try:
-        close_old_connections()
-        invoice = Invoice.objects.get(id=invoice_id)
-        generate_report_invoice_pdf(invoice, config_cache=config_cache)
-      except Exception as e:
-        print(f"Error generating PDF for invoice {invoice_id}: {e}")
-      finally:
-        close_old_connections()
-        documents_generated += 1
-        if documents_generated % 10 == 0 or documents_generated == invoices_needing_pdf_count:
-          _report_progress(invoices_processed, documents_generated)
+    documents_generated, pdf_completed = generate_billing_pdfs(
+      self, invoices_needing_pdf, config_cache, queue_item_id, _report_pdf_progress,
+    )
+    if not pdf_completed:
+      # L'han aturada o reiniciada des de la cua mentre esperava els PDF: no es tanca res
+      return {'id': billing_id, 'stopped': True}
 
   if config('VERIFACTU_ENABLED', default=False, cast=bool):
     notify_verifactu_unsent_batches()
@@ -3234,7 +3496,9 @@ def regenerate_billing_pdfs(self, billing_id, queue_item_id=None):
 
     if q_item:
       q_item.total_items = total
-      q_item.save(update_fields=['total_items'])
+      # Les subtasques de PDF hi sumen els generats: comença de zero (també en un restart)
+      q_item.documents_generated = 0
+      q_item.save(update_fields=['total_items', 'documents_generated'])
 
     if total == 0:
       if q_item:
@@ -3242,19 +3506,15 @@ def regenerate_billing_pdfs(self, billing_id, queue_item_id=None):
       return {'billing_id': billing_id, 'total': 0, 'generated': 0}
 
     progress_recorder.set_progress(0, total)
-    generated = 0
 
-    for i, invoice_id in enumerate(invoice_ids):
-      try:
-        close_old_connections()
-        invoice = Invoice.objects.get(id=invoice_id)
-        generate_report_invoice_pdf(invoice)
-        generated += 1
-      except Exception as e:
-        print(f"Error regenerating PDF for invoice {invoice_id}: {e}")
-      finally:
-        close_old_connections()
-        progress_recorder.set_progress(i + 1, total)
+    def _report_pdf_progress(done, _generated):
+      progress_recorder.set_progress(done, total)
+
+    generated, pdf_completed = generate_billing_pdfs(
+      self, invoice_ids, None, q_item.id if q_item else None, _report_pdf_progress,
+    )
+    if not pdf_completed:
+      return {'billing_id': billing_id, 'total': total, 'stopped': True}
 
     if q_item:
       _close_billing_queue_item(q_item.id, self.request.id, status='completed', completed_at=timezone.now(), processed_items=generated)
@@ -3642,10 +3902,10 @@ def generate_sepa_document(self, request_data):
     if not plan:
       raise ValueError("No payments found to generate SEPA documents.")
 
-    # Es torna a comprovar aquí: els comptes poden haver canviat mentre la
-    # tasca era a la cua.
+    # A les transferències de retorn es torna a comprovar aquí: els comptes
+    # poden haver canviat mentre la tasca era a la cua.
     from billing.utils.remittance_bank_check import check_company_banks
-    check_company_banks(list({step[0].id: step[0] for step in plan}.values()))
+    check_company_banks(list({step[0].id: step[0] for step in plan if step[3]}.values()))
 
     payments_counter = 0
 
@@ -3747,8 +4007,9 @@ def regenerate_sepa_file(self, payment_remittance_id, payment_ids, send_date):
     if not payment_remittance.company_bank:
       raise ValueError("PaymentRemittance has no company_bank.")
 
-    from billing.utils.remittance_bank_check import check_company_banks
-    check_company_banks([payment_remittance.company_bank])
+    if payment_remittance.is_return:
+      from billing.utils.remittance_bank_check import check_company_banks
+      check_company_banks([payment_remittance.company_bank])
 
     # Mark it as processing for UI consistency.
     payment_remittance.status = processing_status
@@ -4384,7 +4645,10 @@ def apply_billing_queue_action(queue_item, action):
 
   previous_status = queue_item.status
   if previous_status == 'running':
-    revoke_queue_task(queue_item.task_id)
+    # Amb els PDF en paral·lel, també les subtasques (amb la mateixa ordre: si no, la
+    # principal podria veure-les acabades i tancar la facturació abans de morir)
+    related_task_ids = billing_pdf_subtask_ids(queue_item.task_id) if queue_item.task_type in BILLING_PDF_TASK_TYPES else ()
+    revoke_queue_task(queue_item.task_id, related_task_ids)
 
   now = timezone.now()
   if action == 'kill':

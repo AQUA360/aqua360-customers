@@ -348,6 +348,12 @@ CELERY_TASK_TRACK_STARTED = True
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_ACCEPT_CONTENT = ["json"]
+# Processos del worker. Sense valor, Celery en posa tants com CPU. Configurar-ho aquí (i no amb
+# `-c` a la línia d'ordres) fa que les subtasques de PDF de la facturació en sàpiguen el nombre.
+CELERY_WORKER_CONCURRENCY = config("CELERY_WORKER_CONCURRENCY", cast=lambda value: int(value) if str(value).strip() else None, default="")
+# Memòria (KB) a partir de la qual un procés del worker es recicla en acabar la tasca: un
+# informe gran no deixa el procés inflat per a les següents. No talla la tasca que corre.
+CELERY_WORKER_MAX_MEMORY_PER_CHILD = config("CELERY_WORKER_MAX_MEMORY_PER_CHILD", cast=int, default=2 * 1024 * 1024)
 
 # Database
 # https://docs.djangoproject.com/en/5.0/ref/settings/#databases
