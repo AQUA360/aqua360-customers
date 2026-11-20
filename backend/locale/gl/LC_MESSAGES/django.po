@@ -5137,3 +5137,47 @@ msgstr "Non se puido xerar a factura da nova alta."
 #: billing/views/invoice_view.py
 msgid "An unexpected error has occurred."
 msgstr "Produciuse un erro inesperado."
+
+#: billing/utils/remittance_bank_check.py
+msgid "bank account"
+msgstr "conta bancaria"
+
+#: billing/utils/remittance_bank_check.py
+msgid "company name"
+msgstr "nome da empresa"
+
+#: billing/utils/remittance_bank_check.py
+msgid "company tax ID (NIF)"
+msgstr "NIF da empresa"
+
+#: billing/utils/remittance_bank_check.py
+msgid "IBAN"
+msgstr "IBAN"
+
+#: billing/utils/remittance_bank_check.py
+msgid "BIC/SWIFT"
+msgstr "BIC/SWIFT"
+
+#: billing/utils/remittance_bank_check.py
+msgid "SEPA creditor identifier"
+msgstr "identificador de acredor SEPA"
+
+#: billing/utils/remittance_bank_check.py
+msgid "a valid IBAN (the current one is not correct)"
+msgstr "un IBAN válido (o actual non é correcto)"
+
+#: billing/utils/remittance_bank_check.py
+msgid "a valid BIC/SWIFT (the current one is not correct)"
+msgstr "un BIC/SWIFT válido (o actual non é correcto)"
+
+#: billing/utils/remittance_bank_check.py
+msgid "The account {account} is not linked to any company. Assign it to a company before generating the remittance."
+msgstr "A conta {account} non está asignada a ningunha empresa. Asígnea a unha empresa antes de xerar a remesa."
+
+#: billing/utils/remittance_bank_check.py
+msgid "The account {account} of {company} is missing: {fields}. Fill it in in the company's bank details and search again."
+msgstr "Á conta {account} de {company} fáltalle: {fields}. Complételo nos datos bancarios da empresa e volva buscar."
+
+#: billing/views/sepa_payment_document_generate_view.py
+msgid "The bank accounts selected for the remittance are not valid. Search again and check them."
+msgstr "As contas seleccionadas para a remesa non son válidas. Volva buscar e revíseas."

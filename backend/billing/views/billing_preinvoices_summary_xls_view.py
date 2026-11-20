@@ -47,7 +47,7 @@ class BillingPreInvoicesSummaryXLSViewSet(views.APIView):
                 return Response({"error": "billing id is required."}, status=status.HTTP_400_BAD_REQUEST)
             billing = get_object_or_404(Billing, id=id)
 
-            invoices = Invoice.objects.filter(billing = billing)
+            invoices = Invoice.objects.filter(billing=billing, is_excluded=False)
             
             payment_type_counts = invoices.values('payment_type_final').annotate(count=Count('id')).order_by()
             payment_type_dict = {item['payment_type_final']: item['count'] for item in payment_type_counts}

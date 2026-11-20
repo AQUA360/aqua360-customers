@@ -2623,6 +2623,7 @@ export default {
     edit_bank_name: 'Nom de l\'entitat al catàleg (editable)',
     info_default_not_chosen: 'El compte per defecte no l\'ha triat ningú: és el primer compte actiu. Marca\'n un a la fila «Per defecte».',
     routing_warnings: 'Avisos de l\'encaminament',
+    remittance_bank_issues: 'Falten dades als comptes de l\'empresa: no es pot generar la remesa',
     routing_warning_company_without_default_bank: 'rebuts d\'una empresa sense compte per defecte: van al primer compte actiu, que no l\'ha triat ningú.',
     routing_warning_payment_without_iban: 'rebuts sense IBAN: cap regla els encamina i van al compte per defecte.',
     routing_warning_payment_from_other_company: 'rebuts d\'una empresa que no has seleccionat.',
@@ -2833,6 +2834,11 @@ export default {
     confirm_bulk_payment: 'Confirmar pagament en massa',
     affected_invoices: 'factures afectades',
     total_affected_invoices: 'Total factures afectades',
+    excluded_invoices: 'Factures excloses',
+    contracts_and_invoices: 'Contractes i factures',
+    affected_invoices_title: 'Factures afectades',
+    invoice_list: 'Llista de factures',
+    only_paid_invoices: 'Només les cobrades',
     total_to_pay: 'Total a pagar',
     total_paid: 'Total pagat',
     leak: 'Fuita',
@@ -3605,6 +3611,7 @@ export default {
     detail: 'Detall'
   },
   reports_block:   {
+    collected: 'Cobrat | Cobrats',
     download_pdf_hint: "Descarregar en PDF (versió per presentar)",
     error_queue_action: 'Error en gestionar la tasca de la cua.',
     report_completed_success: 'Informe "{name}" generat correctament.',

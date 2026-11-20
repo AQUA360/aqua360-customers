@@ -99,8 +99,6 @@ const selectedCustomInvoice = ref(null);
 const showRegionDetailComponent = ref(null);
 const regionDetailId = ref(null);
 const showRegion = ref(false);
-// Regions de resum que es mostren en un panell lateral més estret
-const narrowRegion = computed(() => showRegionDetailComponent.value === 'ClaimRequestRegion');
 const isSubRegionOpen = ref(false);
 
 const isChecked = ref(false);
@@ -559,7 +557,7 @@ const setActiveTab = (tab) => {
       <AppLoading :text="$t('common.loading')" />
     </div>
     <div v-else-if="objectPermissions?.can_view" class="pr-2 relative pb-24 transition-all duration-500 ease"
-      :class="{ 'h-full overflow-y-auto': !isSubRegion, 'mr-[48vw]': showRegion && !narrowRegion, 'mr-[max(36vw,480px)]': showRegion && narrowRegion }">
+      :class="{ 'h-full overflow-y-auto': !isSubRegion, 'mr-[48vw]': showRegion }">
         <TypedConfirmationModal v-model:open="showConfirmationModal"
             :message="t('confirmation_text_block.confirm_delete_contract')"
             :expected-phrase="t('confirmation_phrase_block.delete_contract')" @confirm="deleteContract" />
@@ -713,10 +711,8 @@ const setActiveTab = (tab) => {
         </div>
     </div>
     <div v-if="showRegion == true" role="region" id="subregion"
-        class="h-full border-l border-gray-100 transition-all duration-500 ease text-base bg-white flex flex-col overflow-hidden fixed top-0 right-0 z-50"
+        class="h-full border-l border-gray-100 transition-all duration-500 ease text-base bg-white flex flex-col overflow-hidden fixed top-0 right-0 w-[48vw] z-50"
         :class="{
-            'w-[36vw] min-w-[480px]': narrowRegion,
-            'w-[48vw]': !narrowRegion,
             'translate-x-0': showRegion,
             'translate-x-full': !showRegion,
         }">

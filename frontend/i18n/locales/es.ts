@@ -2623,6 +2623,7 @@ export default {
     edit_bank_name: 'Nombre de la entidad en el catálogo (editable)',
     info_default_not_chosen: 'La cuenta por defecto no la ha elegido nadie: es la primera cuenta activa. Marca una en la fila «Por defecto».',
     routing_warnings: 'Avisos del encaminamiento',
+    remittance_bank_issues: 'Faltan datos en las cuentas de la empresa: no se puede generar la remesa',
     routing_warning_company_without_default_bank: 'recibos de una empresa sin cuenta por defecto: van a la primera cuenta activa, que no la ha elegido nadie.',
     routing_warning_payment_without_iban: 'recibos sin IBAN: ninguna regla los encamina y van a la cuenta por defecto.',
     routing_warning_payment_from_other_company: 'recibos de una empresa que no has seleccionado.',
@@ -2833,6 +2834,11 @@ export default {
     confirm_bulk_payment: 'Confirmar pago en masa',
     affected_invoices: 'Facturas afectadas',
     total_affected_invoices: 'Total facturas afectadas',
+    excluded_invoices: 'Facturas excluidas',
+    contracts_and_invoices: 'Contratos y facturas',
+    affected_invoices_title: 'Facturas afectadas',
+    invoice_list: 'Lista de facturas',
+    only_paid_invoices: 'Solo las cobradas',
     total_to_pay: 'Total a pagar',
     total_paid: 'Total pagado',
     leak: 'Fuga',
@@ -3605,6 +3611,7 @@ export default {
     detail: 'Detalle'
   },
   reports_block:   {
+    collected: 'Cobrado | Cobrados',
     download_pdf_hint: "Descargar en PDF (versión para presentar)",
     error_queue_action: 'Error al gestionar la tarea de la cola.',
     report_completed_success: 'Informe "{name}" generado correctamente.',

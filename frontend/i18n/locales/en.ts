@@ -2563,6 +2563,7 @@ export default {
     edit_bank_name: 'Entity name in the catalogue (editable)',
     info_default_not_chosen: 'Nobody picked the default account: it is just the first active one. Set one in the «Default» row.',
     routing_warnings: 'Routing warnings',
+    remittance_bank_issues: 'Company bank accounts are missing data: the remittance cannot be generated',
     routing_warning_company_without_default_bank: 'payments from a company with no default account: they go to the first active account, which nobody picked.',
     routing_warning_payment_without_iban: 'payments without IBAN: no rule routes them and they go to the default account.',
     routing_warning_payment_from_other_company: 'payments from a company you have not selected.',
@@ -2771,6 +2772,11 @@ export default {
     confirm_bulk_payment: 'Confirm bulk payment',
     affected_invoices: 'Affected invoices',
     total_affected_invoices: 'Total affected invoices',
+    excluded_invoices: 'Excluded invoices',
+    contracts_and_invoices: 'Contracts and invoices',
+    affected_invoices_title: 'Affected invoices',
+    invoice_list: 'Invoice list',
+    only_paid_invoices: 'Only collected',
     total_to_pay: 'Total to pay',
     total_paid: 'Total paid',
     leak: 'Leak',
@@ -3484,6 +3490,7 @@ export default {
     detail: 'Detail'
   },
   reports_block:   {
+    collected: 'Collected',
     download_pdf_hint: "Download as PDF (presentation version)",
     error_queue_action: 'Error managing the queue task.',
     report_completed_success: 'Report "{name}" generated successfully.',

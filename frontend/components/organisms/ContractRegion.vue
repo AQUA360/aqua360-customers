@@ -483,9 +483,6 @@ const showSubRegion = function () {
 const showRegionDetailComponent = ref(null);
 const regionDetailId = ref(null);
 
-// Regions de resum que es mostren en un panell lateral més estret
-const narrowSubRegion = computed(() => showRegionDetailComponent.value === 'ClaimRequestRegion');
-
 const showDetail = function (component, id) {
   showRegionDetailComponent.value = component.id ? component.component : component;
   regionDetailId.value = component.id ? component.id : id;
@@ -651,7 +648,7 @@ const addWalletBalance = () => {
       </button>
     </div>
     <div v-else-if="objectPermissions?.can_view" class="pr-2 relative pb-24 transition-all duration-500 ease"
-      :class="{ 'h-full overflow-y-auto': !isSubRegion, 'mr-[48vw]': SubRegion && !narrowSubRegion, 'mr-[max(36vw,480px)]': SubRegion && narrowSubRegion }">
+      :class="{ 'h-full overflow-y-auto': !isSubRegion, 'mr-[48vw]': SubRegion }">
       <div v-if="show_important_observations"
         class="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto">
         <div class="bg-white rounded-lg shadow-xl p-6 max-w-lg w-full mx-4 my-auto relative">
@@ -804,8 +801,8 @@ const addWalletBalance = () => {
     </div><!-- end if pending -->
 
     <div v-if="SubRegion == true" role="region" id="subregion"
-      class="h-full border-l border-gray-100 text-base bg-white flex flex-col overflow-hidden fixed top-0 z-50 transition-[right] duration-500 ease"
-      :class="[narrowSubRegion ? 'w-[36vw] min-w-[480px]' : 'w-[48vw]', SubRegion ? 'right-0' : (narrowSubRegion ? 'right-[-36vw]' : 'right-[-48vw]')]">
+      class="h-full border-l border-gray-100 text-base bg-white flex flex-col overflow-hidden fixed top-0 w-[48vw] z-50 transition-[right] duration-500 ease"
+      :class="SubRegion ? 'right-0' : 'right-[-48vw]'">
       <div id="region_nav" class="mb-3 px-3">
         <button @click="closeSubRegion()" class="px-2 py-1 text-sky-500 hover:bg-slate-200 active:bg-slate-300">
           <Icon name="fa6-solid:angles-right" class="text-slate-500" />
