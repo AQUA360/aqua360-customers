@@ -2623,6 +2623,7 @@ export default {
     edit_bank_name: 'Nombre de la entidad en el catálogo (editable)',
     info_default_not_chosen: 'La cuenta por defecto no la ha elegido nadie: es la primera cuenta activa. Marca una en la fila «Por defecto».',
     routing_warnings: 'Avisos del encaminamiento',
+    remittance_bank_issues: 'Faltan datos en las cuentas de la empresa: no se puede generar la remesa',
     routing_warning_company_without_default_bank: 'recibos de una empresa sin cuenta por defecto: van a la primera cuenta activa, que no la ha elegido nadie.',
     routing_warning_payment_without_iban: 'recibos sin IBAN: ninguna regla los encamina y van a la cuenta por defecto.',
     routing_warning_payment_from_other_company: 'recibos de una empresa que no has seleccionado.',

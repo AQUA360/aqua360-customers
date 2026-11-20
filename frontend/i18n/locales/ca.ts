@@ -2623,6 +2623,7 @@ export default {
     edit_bank_name: 'Nom de l\'entitat al catàleg (editable)',
     info_default_not_chosen: 'El compte per defecte no l\'ha triat ningú: és el primer compte actiu. Marca\'n un a la fila «Per defecte».',
     routing_warnings: 'Avisos de l\'encaminament',
+    remittance_bank_issues: 'Falten dades als comptes de l\'empresa: no es pot generar la remesa',
     routing_warning_company_without_default_bank: 'rebuts d\'una empresa sense compte per defecte: van al primer compte actiu, que no l\'ha triat ningú.',
     routing_warning_payment_without_iban: 'rebuts sense IBAN: cap regla els encamina i van al compte per defecte.',
     routing_warning_payment_from_other_company: 'rebuts d\'una empresa que no has seleccionat.',
