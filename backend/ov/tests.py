@@ -4,7 +4,7 @@ import os
 import shutil
 import tempfile
 import zipfile
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from io import BytesIO, StringIO
 from unittest.mock import patch
@@ -17,7 +17,7 @@ from django.db import connection
 from django.test import TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
 from django.urls import resolve, reverse
-from django.utils import translation
+from django.utils import timezone, translation
 from rest_framework.test import APIClient
 
 from billing.models import (
@@ -6548,6 +6548,173 @@ class ContractChangeProcedureOVTests(TestCase):
         )
 
 
+class FutureInvoiceVisibilityOVTests(TestCase):
+    """Les factures amb data d'emissió futura no es veuen a l'OV fins aquell
+    dia: ni al llistat ni en cap endpoint que les busqui per token o número.
+    Les que no tenen data es continuen mostrant."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(
+            username="ov-future-invoices-test", password="not-used"
+        )
+        for token, value in (
+            ("contract_termination_completed_token", "3"),
+            ("contract_terminated_status", "-1"),
+            ("invoice_type_invoice_token", "F"),
+            ("invoice_status_paid_token", "0"),
+            ("invoice_status_cancelled_token", "-6"),
+        ):
+            ConfigProject.objects.update_or_create(
+                token=token, defaults={"value": value}
+            )
+        cls.contract = Contract.objects.create(token="FUT-CONTRACT")
+        cls.sent_status = InvoiceStatus.objects.create(token="3", name="Enviada")
+        today = timezone.localdate()
+        cls.invoices = {}
+        for key, issue_date in (
+            ("today", today),
+            ("past", today - timedelta(days=1)),
+            ("future", today + timedelta(days=1)),
+            ("no_date", None),
+        ):
+            cls.invoices[key] = Invoice.objects.create(
+                token=f"FUT-INV-{key}",
+                serie_final=f"FC/FUT/{key}",
+                contract=cls.contract,
+                status=cls.sent_status,
+                type_final="F",
+                issue_date=issue_date,
+                total_final=Decimal("10.00"),
+                left_to_pay=Decimal("10.00"),
+            )
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def _tokens(self, data):
+        return {item["invoice_token"] for item in data}
+
+    def test_list_hides_future_invoices(self):
+        response = self.client.get(
+            reverse("invoices-ov"), {"contract_token": self.contract.token}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            self._tokens(response.data),
+            {"FUT-INV-today", "FUT-INV-past", "FUT-INV-no_date"},
+        )
+
+    def test_unpayed_hides_future_invoices(self):
+        response = self.client.get(
+            reverse("unpayed-invoices-ov"),
+            {"contract_token": self.contract.token, "statuses": "3"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("FUT-INV-future", self._tokens(response.data))
+        self.assertIn("FUT-INV-today", self._tokens(response.data))
+
+    def test_invoice_detail_hides_future_invoice(self):
+        for key, expected in (("today", 200), ("future", 400)):
+            with self.subTest(key=key):
+                response = self.client.get(
+                    reverse("invoice-ov"),
+                    {
+                        "contract_token": self.contract.token,
+                        "invoice_token": self.invoices[key].token,
+                    },
+                )
+                self.assertEqual(response.status_code, expected)
+
+    def test_full_detail_hides_future_invoice(self):
+        response = self.client.get(
+            reverse(
+                "invoice-detail-by-token-ov",
+                kwargs={"token": self.invoices["future"].token},
+            )
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_pdf_hides_future_invoice_by_token_and_number(self):
+        future = self.invoices["future"]
+        with patch("ov.views.generate_report_invoice_pdf") as generate:
+            for invoice_token in (future.token, future.serie_final):
+                with self.subTest(invoice_token=invoice_token):
+                    response = self.client.get(
+                        reverse("invoice-pdf-ov"),
+                        {
+                            "contract_token": self.contract.token,
+                            "invoice_token": invoice_token,
+                        },
+                    )
+                    self.assertEqual(response.status_code, 404)
+        generate.assert_not_called()
+
+    def test_batch_download_rejects_future_invoice(self):
+        url = (
+            reverse("batch-invoice-download-ov")
+            + f"?contract_token={self.contract.token}"
+        )
+        response = self.client.post(
+            url,
+            {"invoice_tokens": [self.invoices["future"].token]},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("invoice_tokens", response.data)
+
+    def test_quick_pay_does_not_find_future_invoice(self):
+        response = self.client.post(
+            reverse("quick-pay-ov"),
+            {
+                "contract_number": self.contract.token,
+                "invoice_number": self.invoices["future"].serie_final,
+                "amount": "10.00",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_invoice_paid_does_not_find_future_invoice(self):
+        response = self.client.post(
+            reverse("invoice-paid-ov"),
+            {
+                "contract_token": self.contract.token,
+                "invoice_token": self.invoices["future"].token,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.invoices["future"].refresh_from_db()
+        self.assertEqual(self.invoices["future"].status, self.sent_status)
+
+    def test_last_invoice_date_ignores_future_invoices(self):
+        from ov.serializers import ContractSerializer
+
+        Invoice.objects.filter(pk=self.invoices["future"].pk).update(
+            created_at=timezone.now() + timedelta(minutes=5)
+        )
+        expected = (
+            Invoice.objects.filter(contract=self.contract)
+            .exclude(pk=self.invoices["future"].pk)
+            .order_by("-created_at")
+            .values_list("created_at", flat=True)
+            .first()
+        )
+
+        last_invoice_date = ContractSerializer().get_last_invoice_date(self.contract)
+
+        self.assertIsNotNone(last_invoice_date)
+        self.assertEqual(last_invoice_date, expected)
+
+
 class PersonInvoicesOVTests(TestCase):
     """`GET /ov/person-invoices/?dni=` — factures on la persona ha estat
     titular o pagadora segons les dades congelades a la factura, agrupades per
@@ -6727,6 +6894,29 @@ class PersonInvoicesOVTests(TestCase):
 
     def test_preinvoices_are_excluded(self):
         self.assertNotIn("PINV-6", self._invoices(self._get(dni=self.DNI)))
+
+    def test_future_dated_invoices_are_hidden(self):
+        future = Invoice.objects.create(
+            token="PINV-FUTURE",
+            serie_final="F-PINV-FUTURE",
+            contract=self.contract,
+            status=self.invoice_status,
+            issue_date=timezone.localdate() + timedelta(days=1),
+            customer_token_final=self.DNI,
+        )
+        today = Invoice.objects.create(
+            token="PINV-TODAY",
+            serie_final="F-PINV-TODAY",
+            contract=self.contract,
+            status=self.invoice_status,
+            issue_date=timezone.localdate(),
+            customer_token_final=self.DNI,
+        )
+
+        invoices = self._invoices(self._get(dni=self.DNI))
+
+        self.assertNotIn(future.token, invoices)
+        self.assertIn(today.token, invoices)
 
     def test_invoices_without_contract_are_grouped(self):
         group = self._group(self._get(dni=self.DNI), None)

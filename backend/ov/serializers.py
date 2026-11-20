@@ -1,5 +1,6 @@
 from django.conf import settings
 from rest_framework import serializers
+from ov.invoice_visibility import exclude_future_invoices
 from contract.models import (
     Contract,
     ContractDataChange,
@@ -104,7 +105,9 @@ class ContractSerializer(serializers.ModelSerializer):
         return None
 
     def get_last_invoice_date(self, obj):
-        last_invoice = obj.invoices.order_by("-created_at").first()
+        last_invoice = (
+            exclude_future_invoices(obj.invoices).order_by("-created_at").first()
+        )
         if last_invoice:
             return last_invoice.created_at
         return None
@@ -731,7 +734,7 @@ class InvoicePaidSerializer(serializers.Serializer):
         print("--------------------------------")
         #invoice type invoice to avoid getting budgets
         invoice_type_invoice_token = ConfigProject.objects.get(token="invoice_type_invoice_token").value
-        invoice: Invoice = Invoice.objects.filter(
+        invoice: Invoice = exclude_future_invoices(Invoice.objects).filter(
             token=validated_data["invoice_token"],
             contract__token=validated_data["contract_token"],
             type_final=invoice_type_invoice_token
@@ -1092,7 +1095,9 @@ class ContractFullDetailSerializer(serializers.ModelSerializer):
         return None
 
     def get_last_invoice_date(self, obj):
-        last_invoice = obj.invoices.order_by("-created_at").first()
+        last_invoice = (
+            exclude_future_invoices(obj.invoices).order_by("-created_at").first()
+        )
         if last_invoice:
             return last_invoice.created_at
         return None

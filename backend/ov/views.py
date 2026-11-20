@@ -62,6 +62,7 @@ from documentmanager.utils.main_utils import download_document, upload_document
 from pricing.models import PriceRate, Product
 from service.models import Property, SupplyPoint
 from service.utils.route_scope import effective_route
+from ov.invoice_visibility import exclude_future_invoices
 from ov.serializers import (
     _normalize_person_dni,
     _normalized_dni_expression,
@@ -299,7 +300,7 @@ class BillingContractInvoicesOVView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        invoices = (
+        invoices = exclude_future_invoices(
             Invoice.objects.filter(contract=contract)
             .exclude(status__token="1")  # excluïm les factures de pre-factura
             .select_related("status", "contract", "payment_type")
@@ -323,7 +324,7 @@ class BillingContractInvoiceOVView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        invoice = self.queryset.filter(
+        invoice = exclude_future_invoices(self.queryset).filter(
             token=invoice_token, contract__token=contract_token
         ).first()
 
@@ -418,7 +419,7 @@ class UnpayedInvoicesOVView(APIView):
             )
 
         # optional payment type exclusion
-        invoices_queryset = Invoice.objects.filter(
+        invoices_queryset = exclude_future_invoices(Invoice.objects).filter(
             contract=contract, status__in=statuses
         ).exclude(
             status__token="1"
@@ -461,7 +462,7 @@ class BilledConsumptionsOVView(APIView):
                 {"error": "Contract not found"}, status=status.HTTP_400_BAD_REQUEST
             )
 
-        invoices = Invoice.objects.filter(contract=contract)
+        invoices = exclude_future_invoices(Invoice.objects.filter(contract=contract))
         serilizer = BilledConsumptionsOVSerializer(invoices, many=True)
 
         return Response(serilizer.data, status=status.HTTP_200_OK)
@@ -521,14 +522,15 @@ class InvoicePDFView(APIView):
                 {"error": "Invoice not found"}, status=status.HTTP_404_NOT_FOUND
             )
         file_type_value = invoice_type_config.value
-        invoice: Invoice = self.queryset.filter(
+        visible_invoices = exclude_future_invoices(self.queryset)
+        invoice: Invoice = visible_invoices.filter(
             token=invoice_token,
             contract__token=contract_token,
             type_final=file_type_value,
         ).first()
 
         if not invoice:
-            invoice = self.queryset.filter(
+            invoice = visible_invoices.filter(
                 serie_final=invoice_token,
                 contract__token=contract_token,
                 type_final=file_type_value,
@@ -792,7 +794,7 @@ class InvoiceDetailByTokenOVView(RetrieveAPIView):
     def get_queryset(self):
         cfg = ConfigProject.objects.filter(token="invoice_type_invoice_token").first()
         invoice_type_token = cfg.value if cfg and cfg.value else None
-        queryset = (
+        queryset = exclude_future_invoices(
             Invoice.objects.exclude(status__token="1")
             .select_related("contract", "status")
             .prefetch_related("readings__previous_reading")
@@ -1464,7 +1466,7 @@ class BatchInvoiceDownloadView(APIView):
         ).first().value
         tokens = serializer.validated_data["invoice_tokens"]
 
-        invoices = Invoice.objects.filter(
+        invoices = exclude_future_invoices(Invoice.objects).filter(
             token__in=tokens,
             contract__token=contract_token,
             type_final=file_type_value,
@@ -2042,7 +2044,7 @@ class QuickPayOVView(APIView):
         )
 
         invoice = (
-            Invoice.objects.select_related("contract", "status")
+            exclude_future_invoices(Invoice.objects.select_related("contract", "status"))
             .filter(
                 contract__token=data["contract_number"],
                 serie_final=data["invoice_number"],
@@ -2341,7 +2343,7 @@ class InvoiceReturnRequestOVView(APIView):
             )
 
         invoice = (
-            Invoice.objects.select_related("contract", "status")
+            exclude_future_invoices(Invoice.objects.select_related("contract", "status"))
             .filter(
                 token=invoice_token,
                 contract__token=contract_token,
