@@ -33,8 +33,8 @@ Qualsevol variable del `.env` (p. ex. `EMAIL_*`, `MSGRAPH_*`, `DOMAIN_MEDIA`, `C
 Abans d’arrencar Compose, tant en un servidor nou com en una instal·lació existent, prepara els volums des del directori del projecte. Executa aquestes ordres com a root (o amb `sudo`); el backend s’executa amb UID/GID `1001:1001`. El canvi recursiu de propietari també cobreix fitxers i subdirectoris creats pels contenidors antics que s’executaven com a root.
 
 ```bash
-sudo mkdir -p docker-data/media docker-data/static
-sudo chown -R 1001 docker-data/media docker-data/static
+sudo mkdir -p docker-data/media docker-data/static docker-data/sync-control
+sudo chown -R 1001 docker-data/media docker-data/static docker-data/sync-control
 ```
 
 Primera vegada o després de canvis als Dockerfiles o dependències:
@@ -133,8 +133,8 @@ docker compose down -v
 
 ```bash
 git pull
-sudo mkdir -p docker-data/media docker-data/static
-sudo chown -R 1001 docker-data/media docker-data/static
+sudo mkdir -p docker-data/media docker-data/static docker-data/sync-control
+sudo chown -R 1001 docker-data/media docker-data/static docker-data/sync-control
 docker compose build frontend backend celery-worker celery-beat gmao-consumer
 docker compose up -d backend
 docker compose exec backend python manage.py migrate --noinput
@@ -151,8 +151,8 @@ Per fer servir una versió sense construir res al servidor, posar-la al `.env` i
 ```bash
 # .env: CUSTOMERS_VERSION=v1.135.00
 docker compose pull
-sudo mkdir -p docker-data/media docker-data/static
-sudo chown -R 1001 docker-data/media docker-data/static
+sudo mkdir -p docker-data/media docker-data/static docker-data/sync-control
+sudo chown -R 1001 docker-data/media docker-data/static docker-data/sync-control
 docker compose up -d
 ```
 
