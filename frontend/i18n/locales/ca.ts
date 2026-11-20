@@ -2831,6 +2831,11 @@ export default {
     confirm_bulk_payment: 'Confirmar pagament en massa',
     affected_invoices: 'factures afectades',
     total_affected_invoices: 'Total factures afectades',
+    excluded_invoices: 'Factures excloses',
+    contracts_and_invoices: 'Contractes i factures',
+    affected_invoices_title: 'Factures afectades',
+    invoice_list: 'Llista de factures',
+    only_paid_invoices: 'Només les cobrades',
     total_to_pay: 'Total a pagar',
     total_paid: 'Total pagat',
     leak: 'Fuita',
@@ -3579,6 +3584,7 @@ export default {
     detail: 'Detall'
   },
   reports_block:   {
+    collected: 'Cobrat | Cobrats',
     download_pdf_hint: "Descarregar en PDF (versió per presentar)",
     error_queue_action: 'Error en gestionar la tasca de la cua.',
     report_completed_success: 'Informe "{name}" generat correctament.',

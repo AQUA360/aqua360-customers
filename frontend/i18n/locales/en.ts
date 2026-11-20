@@ -2769,6 +2769,11 @@ export default {
     confirm_bulk_payment: 'Confirm bulk payment',
     affected_invoices: 'Affected invoices',
     total_affected_invoices: 'Total affected invoices',
+    excluded_invoices: 'Excluded invoices',
+    contracts_and_invoices: 'Contracts and invoices',
+    affected_invoices_title: 'Affected invoices',
+    invoice_list: 'Invoice list',
+    only_paid_invoices: 'Only collected',
     total_to_pay: 'Total to pay',
     total_paid: 'Total paid',
     leak: 'Leak',
@@ -3458,6 +3463,7 @@ export default {
     detail: 'Detail'
   },
   reports_block:   {
+    collected: 'Collected',
     download_pdf_hint: "Download as PDF (presentation version)",
     error_queue_action: 'Error managing the queue task.',
     report_completed_success: 'Report "{name}" generated successfully.',
