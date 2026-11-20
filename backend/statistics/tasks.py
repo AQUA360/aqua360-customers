@@ -245,6 +245,7 @@ def fill_billing_consumption_chart(batch_size=BILLING_CONSUMPTION_CHART_BATCH_SI
     tornen a mirar a cada execució (són poques i és una sola consulta per tros).
     Retorna quantes n'ha omplert.
     """
+    from django.db.models import Case, DateField, FloatField, Value, When
     from billing.utils.charts_service import ChartHistory, invoice_chart_bar
 
     pending_ids = list(
@@ -256,13 +257,21 @@ def fill_billing_consumption_chart(batch_size=BILLING_CONSUMPTION_CHART_BATCH_SI
             BillingConsumption.objects.filter(id__in=pending_ids[start:start + batch_size]).select_related('invoice')
         )
         history = ChartHistory([row.invoice for row in rows], bars_only=True)
-        to_update = []
+        bars = {}
         for row in rows:
-            row.chart_date, row.chart_consumption = invoice_chart_bar(row.invoice, history)
-            if row.chart_date is not None:
-                to_update.append(row)
-        BillingConsumption.objects.bulk_update(to_update, ['chart_date', 'chart_consumption'])
-        filled += len(to_update)
+            chart_date, chart_consumption = invoice_chart_bar(row.invoice, history)
+            if chart_date is not None:
+                bars[row.id] = (chart_date, chart_consumption)
+        if not bars:
+            continue
+        # Només les files que encara no en tenen: si mentrestant s'ha recalculat el consum
+        # d'alguna factura, la barra bona és la que ha desat aquell càlcul
+        filled += BillingConsumption.objects.filter(id__in=bars, chart_date__isnull=True).update(
+            chart_date=Case(*[When(id=row_id, then=Value(bar[0])) for row_id, bar in bars.items()],
+                            output_field=DateField()),
+            chart_consumption=Case(*[When(id=row_id, then=Value(bar[1])) for row_id, bar in bars.items()],
+                                   output_field=FloatField()),
+        )
     return filled
 
 

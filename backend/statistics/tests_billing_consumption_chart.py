@@ -1,4 +1,5 @@
 import datetime
+from unittest import mock
 
 from django.test import TestCase
 
@@ -55,3 +56,21 @@ class BillingConsumptionChartTests(TestCase):
             (datetime.date(2026, 1, 10), 4.0),
         )
         self.assertIsNone(rows[without_readings.id].chart_date)
+
+    def test_el_backfill_no_sobreescriu_una_barra_desada_mentrestant(self):
+        invoice = self.invoice(4, [datetime.date(2026, 1, 10)])
+        row = BillingConsumption.objects.create(invoice=invoice, contract=self.contract)
+        from billing.utils import charts_service
+        real_bar = charts_service.invoice_chart_bar
+
+        def concurrent_update(invoice, history=None):
+            # Un recàlcul del consum desa la seva barra mentre el backfill calcula
+            BillingConsumption.objects.filter(id=row.id).update(
+                chart_date=datetime.date(2026, 1, 20), chart_consumption=9,
+            )
+            return real_bar(invoice, history)
+
+        with mock.patch('billing.utils.charts_service.invoice_chart_bar', side_effect=concurrent_update):
+            self.assertEqual(fill_billing_consumption_chart(), 0)
+        row.refresh_from_db()
+        self.assertEqual((row.chart_date, row.chart_consumption), (datetime.date(2026, 1, 20), 9.0))

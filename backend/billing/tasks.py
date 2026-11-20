@@ -2901,6 +2901,14 @@ def generate_billing_pdfs_chunk(self, invoice_ids, config_cache=None, queue_item
   return {'generated': generated, 'stopped': False}
 
 
+def _invoices_without_new_pdf(invoice_ids, last_document_id):
+  """Factures de `invoice_ids` sense cap PDF desat després del document `last_document_id`."""
+  with_new_pdf = set(
+    Invoice.objects.filter(id__in=invoice_ids, invoice_file_id__gt=last_document_id).values_list('id', flat=True)
+  )
+  return [invoice_id for invoice_id in invoice_ids if invoice_id not in with_new_pdf]
+
+
 def generate_billing_pdfs(task, invoice_ids, config_cache, queue_item_id, on_progress):
   """
   Genera els PDF de les factures repartits en subtasques i n'espera el final.
@@ -2916,9 +2924,15 @@ def generate_billing_pdfs(task, invoice_ids, config_cache, queue_item_id, on_pro
   total = len(invoice_ids)
   workers = _billing_pdf_workers(task, total)
   if workers <= 1:
-    return _generate_invoice_pdfs_in_process(invoice_ids, config_cache, on_progress), True
+    generated = _generate_invoice_pdfs_in_process(invoice_ids, config_cache, on_progress, queue_item_id=queue_item_id)
+    return generated, True
+
+  from documentmanager.models import Document
 
   parent_task_id = task.request.id
+  # Cada PDF desat crea un document nou: si una subtasca falla, es refan només les factures
+  # del seu tros que no en tenen cap de posterior a aquest
+  last_document_id = Document.objects.aggregate(last=Max('id'))['last'] or 0
   # Repartiment intercalat: factures de mida semblant a cada tros
   chunks = [invoice_ids[index::workers] for index in range(workers)]
   subtasks = {}
@@ -2939,13 +2953,16 @@ def generate_billing_pdfs(task, invoice_ids, config_cache, queue_item_id, on_pro
   local_done = 0
   local_generated = 0
 
-  def _run_locally(chunk, done_before):
+  def _run_locally(chunk, done_before, to_generate=None):
     nonlocal local_done, local_generated
+    to_generate = chunk if to_generate is None else to_generate
+    skipped = len(chunk) - len(to_generate)
     def _local_progress(done, _generated):
-      on_progress(done_before + done, None)
-    local_generated += _generate_invoice_pdfs_in_process(
-      chunk, config_cache, _local_progress, queue_item_id=queue_item_id,
-    )
+      on_progress(done_before + skipped + done, None)
+    if to_generate:
+      local_generated += _generate_invoice_pdfs_in_process(
+        to_generate, config_cache, _local_progress, queue_item_id=queue_item_id,
+      )
     local_done += len(chunk)
 
   for chunk in local_chunks:
@@ -2956,22 +2973,32 @@ def generate_billing_pdfs(task, invoice_ids, config_cache, queue_item_id, on_pro
   while True:
     done = local_done
     pending_ids = []
+    failed_ids = []
     for subtask_id, chunk in subtasks.items():
       result = AsyncResult(subtask_id)
       if result.ready():
         done += len(chunk)
         if subtask_id not in results:
-          results[subtask_id] = result.result if result.successful() and isinstance(result.result, dict) else {}
+          if result.successful() and isinstance(result.result, dict):
+            results[subtask_id] = result.result
+          else:
+            failed_ids.append(subtask_id)
       else:
         if result.state == 'PROGRESS' and isinstance(result.info, dict):
           done += result.info.get('current', 0)
         elif result.state == 'PENDING':
           pending_ids.append(subtask_id)
     on_progress(done, None)
-    if len(results) == len(subtasks):
-      break
+    # Abans de donar-ho per acabat: si l'han aturada, les subtasques també han plegat
     if queue_item_id and not _billing_queue_item_is_current(queue_item_id, parent_task_id):
       return 0, False
+    for subtask_id in failed_ids:
+      chunk = subtasks.pop(subtask_id)
+      missing = _invoices_without_new_pdf(chunk, last_document_id)
+      logger.warning("Una subtasca de PDF ha fallat: la tasca principal en refà %s de %s factures", len(missing), len(chunk))
+      _run_locally(chunk, done - len(chunk), missing)
+    if len(results) == len(subtasks):
+      break
     if pending_ids and time.monotonic() - dispatched_at > BILLING_PDF_START_TIMEOUT_SECONDS:
       for subtask_id in pending_ids:
         try:

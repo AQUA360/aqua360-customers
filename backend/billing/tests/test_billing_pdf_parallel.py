@@ -115,6 +115,19 @@ class BillingPdfParallelTests(TestCase):
         self.assertEqual((generated, completed), (20, True))
 
 
+class FailedResult(FinishedResult):
+    """AsyncResult d'una subtasca que ha petat."""
+    failed = set()
+
+    def __init__(self, task_id):
+        super().__init__(task_id)
+        if task_id in self.failed:
+            self.state, self.result = 'FAILURE', RuntimeError('ha petat')
+
+    def successful(self):
+        return self.state == 'SUCCESS'
+
+
 class BillingPdfChunkTests(TestCase):
     def setUp(self):
         statuses = {}
@@ -165,6 +178,59 @@ class BillingPdfChunkTests(TestCase):
             )
         self.assertFalse(completed)
         sleep.assert_not_called()
+
+    def test_en_serie_tambe_compta_a_la_cua(self):
+        with mock.patch(GENERATE_PDF, side_effect=lambda invoice_id, config_cache=None: invoice_id != 2):
+            generated, completed = billing_tasks.generate_billing_pdfs(
+                fake_task(called_directly=True), [1, 2, 3], {}, self.item.id, lambda done, generated: None,
+            )
+        self.item.refresh_from_db()
+        self.assertEqual((generated, completed, self.item.documents_generated), (2, True, 2))
+
+    def test_un_tros_fallit_el_refa_la_principal_nomes_amb_les_que_falten(self):
+        FinishedResult.results = {}
+        FailedResult.failed = {'T-pdf-1'}
+        chunks = {}
+        with mock.patch.object(billing_tasks, 'billing_pdf_parallel_setting', return_value=2), \
+                mock.patch.object(billing_tasks.generate_billing_pdfs_chunk, 'apply_async',
+                                  side_effect=lambda args, **kw: chunks.update({kw['task_id']: args[0]})), \
+                mock.patch('celery.result.AsyncResult', FailedResult), \
+                mock.patch.object(billing_tasks, '_invoices_without_new_pdf',
+                                  side_effect=lambda ids, last: ids[:3]) as missing, \
+                mock.patch(GENERATE_PDF, return_value=True) as generate:
+            generated, completed = billing_tasks.generate_billing_pdfs(
+                fake_task(), list(range(40)), {}, self.item.id, lambda done, generated: None,
+            )
+        self.assertTrue(completed)
+        missing.assert_called_once()
+        self.assertEqual(missing.call_args.args[0], chunks['T-pdf-1'])
+        self.assertEqual([call.args[0] for call in generate.call_args_list], chunks['T-pdf-1'][:3])
+        self.item.refresh_from_db()
+        self.assertEqual((generated, self.item.documents_generated), (3, 3))
+
+    def test_factures_sense_pdf_nou(self):
+        from billing.models import Invoice
+        from documentmanager.models import Document
+        old = Document.objects.create(entity_id=0, service='hdd')
+        # bulk_create: sense el save() de la factura, que demana configuració
+        done, pending, never = Invoice.objects.bulk_create([Invoice() for _ in range(3)])
+        Invoice.objects.filter(id=pending.id).update(invoice_file=old)
+        Invoice.objects.filter(id=done.id).update(invoice_file=Document.objects.create(entity_id=0, service='hdd'))
+        self.assertEqual(
+            billing_tasks._invoices_without_new_pdf([done.id, pending.id, never.id], old.id),
+            [pending.id, never.id],
+        )
+
+    def test_si_l_han_aturat_no_es_dona_per_acabada_encara_que_les_subtasques_hagin_plegat(self):
+        FinishedResult.results = {f'T-pdf-{index}': {'generated': 0, 'stopped': True} for index in range(2)}
+        BillingQueue.objects.filter(id=self.item.id).update(status='failed')
+        with mock.patch.object(billing_tasks, 'billing_pdf_parallel_setting', return_value=2), \
+                mock.patch.object(billing_tasks.generate_billing_pdfs_chunk, 'apply_async'), \
+                mock.patch('celery.result.AsyncResult', FinishedResult):
+            generated, completed = billing_tasks.generate_billing_pdfs(
+                fake_task(), list(range(40)), {}, self.item.id, lambda done, generated: None,
+            )
+        self.assertFalse(completed)
 
     def test_kill_revoca_tambe_les_subtasques_de_pdf(self):
         with mock.patch(REVOKE) as revoke, mock.patch('billing.tasks.process_next_queue_item'):
