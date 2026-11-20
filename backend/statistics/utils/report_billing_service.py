@@ -6,6 +6,7 @@ from django.core.files.base import ContentFile
 from django.db.models import F, Count, Sum, Q, Max, Case, When, Value, BooleanField, CharField, DecimalField, Subquery
 from decimal import Decimal
 from collections import defaultdict
+from types import SimpleNamespace
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.db.models import Window
@@ -40,6 +41,9 @@ from statistics.utils.aca_declaration_service import aca_declaration_selection
 import logging
 
 logger = logging.getLogger(__name__)
+
+# Factures per tros en calcular els volums de la Declaració ACA (limita la memòria)
+ACA_VOLUMES_CHUNK_SIZE = 2000
 
 
 def _get_aca_part_tokens():
@@ -987,7 +991,9 @@ def generate_aca_summary_report(request, black_fill=None, white_bold_font=None, 
             report_progress(task, idx_exploitation, len(unique_exploitations), every=1)
             print(f"exploitation: {exploitation}")
             try:
-                aca_line_items_ex = aca_line_items_qs.filter(invoice__exploitation__name=exploitation).distinct().annotate(
+                # Sense els prefetch de la consulta base (línies, ajustos i lectures de cada factura): aquí no
+                # es fan servir i, amb molts mesos, eren el que esgotava la memòria
+                aca_line_items_ex = aca_line_items_qs.prefetch_related(None).filter(invoice__exploitation__name=exploitation).distinct().annotate(
                     effective_use_aca=_aca_effective_use_annotation()
                 )
                 agricultural_invoice_ids = agricultural_invoices.filter(exploitation__name=exploitation).values('id')
@@ -1003,26 +1009,34 @@ def generate_aca_summary_report(request, black_fill=None, white_bold_font=None, 
 
                 # Volums (m³) amb el mateix càlcul que el FACTDETA en baixa, sobre les mateixes línies:
                 # el consumit és el real de la factura i cada factura va al tipus de tarifa amb què es declara
-                volume_lines = defaultdict(list)
-                for line in aca_line_items_ex.select_related(
-                    'line_item_type__article', 'line_item_type__quantity',
-                ).prefetch_related('adjustments__adjustment__conditions'):
-                    volume_lines[line.invoice_id].append(line)
-                volume_invoices = invoices_exploitation.select_related(
-                    'contract', 'contract_termination__contract',
-                )
-                volumes = factdeta_invoice_volumes(volume_invoices, volume_lines, part_fixa_token, tarifa_social_token)
                 # El full de factures surt amb els mateixos volums i tipus de tarifa que el resum
-                volumes_by_invoice = {volume.invoice.id: volume for volume in volumes}
+                volumes_by_invoice = {}
                 consumed_by_tariff, billed_by_tariff = defaultdict(Decimal), defaultdict(Decimal)
                 dom_not_social, dom_social = [Decimal(0)] * 4, [Decimal(0)] * 4
                 dom_social_0 = Decimal(0)
-                for volume in volumes:
-                    consumed_by_tariff[volume.tariff_type] += volume.consumed
-                    billed_by_tariff[volume.tariff_type] += volume.billed
-                    dom_not_social = [total + tram for total, tram in zip(dom_not_social, volume.trams)]
-                    dom_social = [total + tram for total, tram in zip(dom_social, volume.social_trams)]
-                    dom_social_0 += volume.social_zero
+                # Per trossos de factures, guardant només les xifres: amb tot el període de cop
+                # (línies amb ajustos i condicions) no hi cabia a la memòria
+                volume_invoice_ids = list(invoices_exploitation.order_by('id').values_list('id', flat=True))
+                for chunk_start in range(0, len(volume_invoice_ids), ACA_VOLUMES_CHUNK_SIZE):
+                    chunk_ids = volume_invoice_ids[chunk_start:chunk_start + ACA_VOLUMES_CHUNK_SIZE]
+                    volume_lines = defaultdict(list)
+                    for line in aca_line_items_ex.filter(invoice_id__in=chunk_ids).prefetch_related(
+                        'adjustments__adjustment__conditions',
+                    ):
+                        volume_lines[line.invoice_id].append(line)
+                    volume_invoices = Invoice.objects.filter(id__in=chunk_ids).select_related(
+                        'status', 'contract', 'contract_termination__contract',
+                    )
+                    for volume in factdeta_invoice_volumes(volume_invoices, volume_lines, part_fixa_token, tarifa_social_token):
+                        volumes_by_invoice[volume.invoice.id] = SimpleNamespace(
+                            tariff_type=volume.tariff_type, consumed=volume.consumed, billed=volume.billed,
+                        )
+                        consumed_by_tariff[volume.tariff_type] += volume.consumed
+                        billed_by_tariff[volume.tariff_type] += volume.billed
+                        dom_not_social = [total + tram for total, tram in zip(dom_not_social, volume.trams)]
+                        dom_social = [total + tram for total, tram in zip(dom_social, volume.social_trams)]
+                        dom_social_0 += volume.social_zero
+                    del volume_lines, volume_invoices
 
                 written_invoice_ids = set()
                 empty_effective_use_q = Q(effective_use_aca__isnull=True) | Q(effective_use_aca='')
@@ -1254,31 +1268,33 @@ def _add_invoices_to_sheet(sheet, row, invoices, aca_lines, part_fixa_token, for
     """Una fila per factura de les línies de cànon donades. Amb `include_invoices_without_lines`, també les
     factures d'`invoices` que no en tenen (usos agrícoles, que es declaren només amb el consumit)."""
     print(f"adding invoices to sheet, is_industrial: {is_industrial}")
-    aca_lines_list = list(aca_lines)
-    lines_by_invoice = {}
+    # Les línies es recorren sense guardar-les: per factura només se'n guarden els totals
+    # (i la factura un sol cop, no una còpia per línia)
+    totals_by_invoice = {}
     unique_invoices = {}
-    for line in aca_lines_list:
-        lines_by_invoice.setdefault(line.invoice_id, []).append(line)
-        unique_invoices[line.invoice_id] = line.invoice
+    for line in aca_lines.iterator(chunk_size=2000):
+        totals = totals_by_invoice.get(line.invoice_id)
+        if totals is None:
+            totals = totals_by_invoice[line.invoice_id] = [0, 0, 0, 0]
+            unique_invoices[line.invoice_id] = line.invoice
+        is_fixa = bool(line.line_item_type and line.line_item_type.article and line.line_item_type.article.token == part_fixa_token)
+        counts_units = not is_industrial or bool(
+            line.line_item_type and line.line_item_type.quantity and line.line_item_type.quantity.token == 'diferencia_fuita_consum'
+        )
+        if counts_units:
+            totals[1 if is_fixa else 0] += line.units or 0
+        totals[3 if is_fixa else 2] += line.price or 0
     if include_invoices_without_lines:
         for inv in invoices:
             unique_invoices.setdefault(inv.id, inv)
-        
+
     for inv in unique_invoices.values():
         if written_invoice_ids is not None:
             if inv.id in written_invoice_ids:
                 continue
             written_invoice_ids.add(inv.id)
-        inv_lines = lines_by_invoice.get(inv.id, [])
-        inv_lines_units = inv_lines
-        if is_industrial:
-            inv_lines_units = [l for l in inv_lines_units if l.line_item_type and l.line_item_type.quantity and l.line_item_type.quantity.token == 'diferencia_fuita_consum']
-            
-        units_ex_fixa = sum(l.units or 0 for l in inv_lines_units if not (l.line_item_type and l.line_item_type.article and l.line_item_type.article.token == part_fixa_token))
-        units_inc_fixa = sum(l.units or 0 for l in inv_lines_units if l.line_item_type and l.line_item_type.article and l.line_item_type.article.token == part_fixa_token)
-        price_ex_fixa = sum(l.price or 0 for l in inv_lines if not (l.line_item_type and l.line_item_type.article and l.line_item_type.article.token == part_fixa_token))
-        price_inc_fixa = sum(l.price or 0 for l in inv_lines if l.line_item_type and l.line_item_type.article and l.line_item_type.article.token == part_fixa_token)
-        
+        units_ex_fixa, units_inc_fixa, price_ex_fixa, price_inc_fixa = totals_by_invoice.get(inv.id, (0, 0, 0, 0))
+
         consumption_real = inv.real_consumption or 0
         if inv.status.token == "-2" and consumption_real > 0: # payoff_status_token , si és un abonament hem de posar el consum en negatiu
             consumption_real = -consumption_real
@@ -2193,6 +2209,16 @@ def generate_billing_summary_by_rates(request, black_fill=None, white_bold_font=
             row = add_row(sheet, 0, [_("No s'han trobat productes per a aquest període")], fill=black_fill, font=white_bold_font)
         else:
             products = list(products)
+            # Factures i titulars diferents per tipus de línia, comptats a la BD en una sola consulta
+            counts_by_line_item_type = {
+                item['line_item_type']: (item['invoices_count'], item['holders_count'])
+                for item in InvoiceLineItem.objects.filter(
+                    invoice__in=invoices.values('id'), line_item_type__isnull=False,
+                ).order_by().values('line_item_type').annotate(
+                    invoices_count=Count('invoice', distinct=True),
+                    holders_count=Count('invoice__contract__holder', distinct=True),
+                )
+            }
             # Cada producte és una tanda de consultes: el progrés es publica a cada un.
             for idx_product, product in enumerate(products, start=1):
                 report_progress(task, idx_product, len(products), every=1)
@@ -2208,17 +2234,10 @@ def generate_billing_summary_by_rates(request, black_fill=None, white_bold_font=
                 line_item_types = LineItemType.objects.filter(line_items__product=product).distinct()
                 
                 for line_item_type in line_item_types:
-                    filtered_invoices = invoices.filter(line_items__line_item_type=line_item_type)
-                    print(filtered_invoices.count())
-                    
-                    contracts = [invoice.contract for invoice in filtered_invoices]
-                    num_persons = Person.objects.filter(
-                        contracts_holder__in=contracts
-                    ).distinct().count()
-                    
+                    invoices_count, num_persons = counts_by_line_item_type.get(line_item_type.id, (0, 0))
                     info_row = [
                         line_item_type.name,
-                        filtered_invoices.count(),
+                        invoices_count,
                         num_persons
                     ]
                     row = add_row(sheet, row, info_row)
