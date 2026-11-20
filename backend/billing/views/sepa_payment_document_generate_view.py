@@ -655,9 +655,11 @@ class SEPAPaymentDocumentGenerateViewSet(APIView):
             # Enqueue background generation and return the Celery task id.
             from billing.tasks import generate_sepa_document
 
-            # Abans d'encuar es comprova que els comptes tenen les dades que
-            # demana el fitxer: si no, el fitxer sortiria buit d'aquells camps
-            # i el banc el rebutjaria sense dir què falta.
+            # A les transferències de retorn, abans d'encuar es comprova que els
+            # comptes tenen les dades que demana el fitxer: si no, el fitxer
+            # sortiria buit d'aquells camps i el banc el rebutjaria sense dir
+            # què falta.
+            is_return = request.data.get('payments_type') == 'return'
             try:
                 distribution = get_bank_distribution(request.data)
             except ValueError:
@@ -669,7 +671,7 @@ class SEPAPaymentDocumentGenerateViewSet(APIView):
             bank_issues = get_company_banks_issues(
                 CompanyBank.objects.filter(id__in=[bank_id for bank_id, _bank_data in distribution])
                 .select_related('bank', 'company').order_by('id')
-            )
+            ) if is_return else []
             if bank_issues:
                 return Response(
                     {"error": " ".join(item["message"] for item in bank_issues), "bank_issues": bank_issues},
@@ -721,7 +723,7 @@ class SEPAPaymentDocumentGenerateViewSet(APIView):
                 "total_sepa_files": len(bank_batches),
             })
 
-        bank_issues = get_company_banks_issues(company_banks.values())
+        bank_issues = get_company_banks_issues(company_banks.values()) if is_return else []
 
         response_data = {
             "total_invoices": len(payments),

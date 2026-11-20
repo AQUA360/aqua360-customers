@@ -1,11 +1,12 @@
 """
-Comprovació de les dades del compte de l'empresa abans de generar una remesa.
+Comprovació de les dades del compte de l'empresa abans de generar una remesa
+de transferència (retorns).
 
-El fitxer SEPA (rebuts i transferències de retorn) porta l'IBAN, el BIC i
-l'identificador de creditor del compte amb què es remesa, i el nom i el NIF de
-l'empresa titular. Si en falta alguna, el fitxer surt igualment però el banc el
-rebutja amb un error que no diu què falta. Per això es comprova abans de
-generar-lo i es diu a l'usuari què ha d'omplir i on.
+El fitxer de transferències porta l'IBAN, el BIC i l'identificador del compte
+des d'on s'emet, i el nom i el NIF de l'empresa ordenant. Si en falta alguna, el
+fitxer surt igualment però el banc el rebutja amb un error que no diu què
+falta. Per això es comprova abans de generar-lo i es diu a l'usuari què ha
+d'omplir i on. Les remeses de rebuts SEPA no es comproven.
 """
 import re
 
@@ -42,8 +43,8 @@ def normalize_account_code(value):
 def get_company_bank_issues(company_bank):
     """
     Torna la llista de codis del que falta o no és vàlid al compte
-    `company_bank` per poder generar el fitxer SEPA. Buida si tot és correcte.
-    Els rebuts i les transferències fan servir les mateixes dades del compte.
+    `company_bank` per poder generar el fitxer de transferències. Buida si tot
+    és correcte.
     """
     issues = []
     company = company_bank.company
