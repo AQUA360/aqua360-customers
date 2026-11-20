@@ -25,6 +25,9 @@ from django.db.models.functions import Abs
 from django.utils import translation
 from django.utils.translation import gettext as _
 from billing.permissions import BillingPermission
+from billing.utils.terminated_contract_billing import (
+    TERMINATED_CONTRACT_IDS_KEY, TerminatedContractSelectionError, resolve_terminated_contract_selection,
+)
 from billing.utils.billing_process_errors import QUEUE_TASK_FAILED_MESSAGE
 import logging
 
@@ -232,6 +235,17 @@ class BillingBatchSummaryView(views.APIView):
             billing_id = request.data.get('billing')
 
             billing = Billing.objects.get(id=billing_id)
+
+            # Contractes de baixa que l'usuari ha triat per facturar: van a l'element de la cua.
+            try:
+                terminated_contract_ids = resolve_terminated_contract_selection(
+                    billing, request.data.get('terminated_contract_ids'),
+                )
+            except TerminatedContractSelectionError:
+                return Response(
+                    {"error": "Invalid terminated contracts selection."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             
             pending_status_token = ConfigProject.objects.get(token='billing_batch_processing').value
             pending_status = BillingStatus.objects.get(token=pending_status_token)
@@ -241,7 +255,8 @@ class BillingBatchSummaryView(views.APIView):
                 billing=billing,
                 created_by=request.user,
                 task_type='PRE_INVOICE',
-                status='pending'
+                status='pending',
+                payload={TERMINATED_CONTRACT_IDS_KEY: terminated_contract_ids},
             )
             process_next_queue_item()
             queue_item.refresh_from_db()
