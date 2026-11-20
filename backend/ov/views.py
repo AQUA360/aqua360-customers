@@ -1,7 +1,23 @@
 from django.http import FileResponse
 from django.conf import settings
 from django.db import connection, transaction
-from django.db.models import Case, Count, F, Prefetch, Q, When
+from django.contrib.postgres.aggregates import ArrayAgg
+from django.db.models import (
+    Case,
+    CharField,
+    Count,
+    Exists,
+    F,
+    IntegerField,
+    Min,
+    OuterRef,
+    Prefetch,
+    Q,
+    TextField,
+    Value,
+    When,
+)
+from django.db.models.functions import Coalesce
 from django.utils import translation, timezone
 from django.utils.dateparse import parse_date
 from django.utils.translation import gettext as _
@@ -15,6 +31,7 @@ from billing.utils.biller_period_service import current_and_next_cycles
 from billing.views.invoice_pdf_view import generate_report_invoice_pdf
 from coredata.utils.pdf_utils import merge_pdfs
 from coredata.models import (
+    Address,
     ConfigProject,
     Person,
     PersonAddress,
@@ -92,6 +109,7 @@ from ov.serializers import (
     InvoiceStatusDictionarySerializer,
     ProcedureTariffDictionarySerializer,
     PropertyItemSerializer,
+    SupplyPointAddressItemSerializer,
     PersonDataSerializer,
     QuickPayRequestSerializer,
     QuickPayResponseSerializer,
@@ -107,6 +125,7 @@ from ov.serializers import (
     ContractTerminationProcedureResponseSerializer,
 )
 from pagination.ov_pagination import OVLimitPagination, OVConsumptionPagination
+from ov.permissions import IsOVUser
 from ov.throttles import (
     ContractProcedureThrottle,
     ContractTerminationProcedureThrottle,
@@ -1773,6 +1792,219 @@ class PropertiesOVView(APIView):
             )
 
         serializer = PropertyItemSerializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)
+
+
+# Número amb sufix enganxat o amb guió: «21A», «21-A», «21Po1»
+_ADDRESS_NUMBER_WITH_SUFFIX = re.compile(r"^(\d+)-?([^\d-].*)$")
+
+# Tipus de número que no es mostren igual que «N»: el rang porta el número
+# final i el «S/N» no mostra el número. Sense tipus, «N» i «S» es veuen igual
+# (el sufix sempre es mostra, vegeu `_supply_point_address_text`).
+_NUMBER_TYPE_RANGE = "R"
+_NUMBER_TYPE_NO_NUMBER = "SN"
+_NUMBER_TYPE = "street_number__number_type__type"
+
+# Camps que es veuen de l'adreça: dues files d'adreça amb els mateixos valors
+# són la mateixa adreça. Els buits i els NULL compten igual, i el que no es
+# mostra (tipus de número equivalents, número d'un S/N, final d'un número
+# que no és rang, `city_name` quan hi ha població) no separa adreces.
+_SUPPLY_POINT_ADDRESS_GROUP = {
+    "g_street": F("street_id"),
+    "g_number_type": Case(
+        When(
+            **{f"{_NUMBER_TYPE}__in": (_NUMBER_TYPE_RANGE, _NUMBER_TYPE_NO_NUMBER)},
+            then=F(_NUMBER_TYPE),
+        ),
+        default=Value("N"),
+        output_field=CharField(),
+    ),
+    "g_number": Case(
+        When(**{_NUMBER_TYPE: _NUMBER_TYPE_NO_NUMBER}, then=Value(None)),
+        default=F("street_number__number"),
+        output_field=IntegerField(),
+    ),
+    "g_number_suffix": Coalesce("street_number__number_suffix", Value("")),
+    "g_number_end": Case(
+        When(**{_NUMBER_TYPE: _NUMBER_TYPE_RANGE}, then=F("street_number__number_end")),
+        default=Value(None),
+        output_field=IntegerField(),
+    ),
+    "g_number_end_suffix": Case(
+        When(
+            **{_NUMBER_TYPE: _NUMBER_TYPE_RANGE},
+            then=Coalesce("street_number__number_end_suffix", Value("")),
+        ),
+        default=Value(""),
+        output_field=CharField(),
+    ),
+    "g_stair": Coalesce("stair", Value("")),
+    "g_building": Coalesce("building", Value("")),
+    "g_floor": Coalesce("floor", Value("")),
+    "g_door": Coalesce("door", Value("")),
+    "g_extra": Coalesce("address_extra", Value(""), output_field=TextField()),
+    "g_postal_code": Coalesce("postal_code", Value("")),
+    "g_city": Coalesce("city__name", "city_name", Value("")),
+    "g_country": F("country_id"),
+}
+
+
+def _supply_point_address_filters(token):
+    """Q d'una paraula de cerca: carrer, tipus, número (amb sufix), població,
+    codi postal, escala, pis o porta, sense distingir accents.
+
+    Només mira el que es veu de l'adreça i, per tant, forma part de la clau
+    d'agrupació: així un grup coincideix sencer o no coincideix, i no es
+    perden punts de les files del grup que no coincidirien soles. Per això
+    `city_name` només compta quan no hi ha població i el número d'un S/N no
+    es cerca.
+    """
+    filters = Q(city__isnull=True, city_name__unaccent__icontains=token)
+    for field in (
+        "street__name",
+        "street__name_2",
+        "street__type__abbreviation",
+        "street_number__number_suffix",
+        "city__name",
+        "postal_code",
+        "stair",
+        "floor",
+        "door",
+    ):
+        filters |= Q(**{f"{field}__unaccent__icontains": token})
+    number_shown = ~Q(**{_NUMBER_TYPE: _NUMBER_TYPE_NO_NUMBER})
+    if token.isdigit():
+        filters |= Q(street_number__number=int(token)) & number_shown
+    else:
+        match = _ADDRESS_NUMBER_WITH_SUFFIX.match(token)
+        if match:
+            filters |= (
+                Q(
+                    street_number__number=int(match.group(1)),
+                    street_number__number_suffix__unaccent__icontains=match.group(2),
+                )
+                & number_shown
+            )
+    return filters
+
+
+class AddressesOVView(APIView):
+    """GET /ov/addresses/?search=<text>[&page=<n>&limit=<n>]
+
+    Autocompletat d'adreces dels punts de subministrament, amb el detall de
+    l'habitatge o local (escala, pis i porta), que l'adreça de la finca de
+    `/ov/properties/` no té. Mateixes regles de cerca que `/ov/properties/`:
+    `search` obligatori de com a mínim 3 caràcters, la puntuació fa de
+    separador i cada paraula ha de coincidir (AND) amb el carrer, el tipus
+    de via, el número (també amb sufix: `21A`), la població, el codi postal,
+    l'escala, el pis o la porta. No distingeix accents.
+
+    No es filtra per l'estat del punt: també surten els de baixa, perquè
+    precisament es pot buscar l'adreça per tornar-lo a donar d'alta. Cada
+    adreça surt un sol cop encara que la tinguin diversos punts (amb la
+    mateixa fila d'adreça o amb files diferents i els mateixos valors); els
+    seus tokens (i el de la finca de cadascun) van a `supply_points`.
+    """
+
+    permission_classes = [IsOVUser]
+    pagination_class = OVLimitPagination
+    min_search_length = 3
+
+    def get(self, request):
+        search = (request.query_params.get("search") or "").strip()
+        if not search:
+            return Response(
+                {"error": "Search is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if len(search) < self.min_search_length:
+            return Response(
+                {"error": "Search must be at least 3 characters"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        tokens = _property_search_tokens(search)
+        if not tokens:
+            return Response(
+                {"error": "Search must contain at least one valid term"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        filters = Q()
+        for token in tokens:
+            filters &= _supply_point_address_filters(token)
+
+        # Agrupa per valors: una fila per adreça visible, amb les files
+        # d'adreça que la formen. La primera és la que es mostra.
+        groups = (
+            Address.objects.filter(
+                Exists(SupplyPoint.objects.filter(address=OuterRef("pk")))
+            )
+            .filter(filters)
+            .annotate(**_SUPPLY_POINT_ADDRESS_GROUP)
+            .values(*_SUPPLY_POINT_ADDRESS_GROUP)
+            .annotate(
+                first_id=Min("id"),
+                address_ids=ArrayAgg("id", ordering="id"),
+                street_name_order=Min("street__name"),
+            )
+            .order_by(
+                "street_name_order",
+                "g_street",
+                "g_number",
+                "g_number_suffix",
+                "g_stair",
+                "g_floor",
+                "g_door",
+                "first_id",
+            )
+        )
+
+        paginator = self.pagination_class()
+        try:
+            page = paginator.paginate_queryset(groups, request, view=self)
+        except NotFound:
+            return Response(
+                {"error": "Invalid page"}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        addresses = Address.objects.select_related(
+            "street__type",
+            "street_number__number_type",
+            "city",
+            "country",
+        ).in_bulk([group["first_id"] for group in page])
+        supply_points_by_address = {}
+        for supply_point in (
+            SupplyPoint.objects.filter(
+                address_id__in=[
+                    address_id
+                    for group in page
+                    for address_id in group["address_ids"]
+                ]
+            )
+            .select_related("property")
+            .order_by("token", "id")
+        ):
+            supply_points_by_address.setdefault(
+                supply_point.address_id, []
+            ).append(supply_point)
+
+        items = []
+        for group in page:
+            address = addresses[group["first_id"]]
+            address.grouped_supply_points = sorted(
+                (
+                    supply_point
+                    for address_id in group["address_ids"]
+                    for supply_point in supply_points_by_address.get(
+                        address_id, []
+                    )
+                ),
+                key=lambda supply_point: (supply_point.token or "", supply_point.id),
+            )
+            items.append(address)
+
+        serializer = SupplyPointAddressItemSerializer(items, many=True)
         return paginator.get_paginated_response(serializer.data)
 
 
