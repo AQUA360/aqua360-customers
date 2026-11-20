@@ -18,6 +18,10 @@ from billing.utils.barcode_service import generate_barcode, get_barcode_values
 from billing.utils.invoice_service import get_totals, reading_has_blocking_invoices
 from billing.utils.pdf_overlap import client_info_overlaps_header, count_pdf_pages
 from billing.utils.message_service import invoice_add_messages
+from billing.utils.connection_request_invoice import (
+    format_location, get_connection_request_billing_address,
+    get_connection_request_reference, get_connection_request_supply_address,
+)
 from contract.models import Contract, ContractRequest, ContractTerminationRequest
 from faker import Faker
 from django.db.models.signals import post_save
@@ -108,8 +112,15 @@ def update_invoice_data(invoice):
     if invoice.connection_request:
         invoice.customer_final = str(invoice.connection_request.person)
         invoice.customer_token_final = invoice.connection_request.person.token
-        invoice.address_final = get_address_complete_without_city(invoice.connection_request.address_billing.address) if invoice.connection_request and invoice.connection_request.address_billing else None
-        invoice.location_final = invoice.connection_request.address_billing.address.postal_code + ' ' + invoice.connection_request.address_billing.address.city.name if invoice.connection_request and invoice.connection_request.address_billing else None
+        # Si no troba cap adreça, es manté la de la factura en lloc de buidar-la
+        address_fields = get_connection_request_billing_address(invoice.connection_request)
+        if address_fields:
+            invoice.address_final = address_fields['address']
+            invoice.location_final = format_location(address_fields)
+            invoice.postal_code_final = address_fields['postal_code']
+            invoice.city_final = address_fields['city']
+            invoice.province_final = address_fields['province']
+            invoice.country_final = address_fields['country_iso']
         invoice.save()
     return invoice
 
@@ -417,18 +428,24 @@ def generate(context, invoice, exploitation, temporary=False):
             if not is_connection_request:
                 supply_address = AddressSerializer(contract.supply_point_default.address).data if contract.supply_point_default and contract.supply_point_default.address else None
             else:
-                supply_address = AddressSerializer(contract.address_billing.address).data if contract.address_billing and contract.address_billing.address else None
-                is_billing_address = True
+                # L'adreça de l'escomesa, no la de facturació
+                connection_supply_address = get_connection_request_supply_address(contract)
+                supply_address = {'address_complete': connection_supply_address} if connection_supply_address else None
         else:
             supply_address = None
         file_template = invoice_template.file_template if invoice_template else None
-        
+
         connection_address = ""
-        
+        # Número que identifica la factura: el del contracte o, per a una
+        # sol·licitud d'escomesa, el de l'escomesa (o el de la sol·licitud si encara no en té)
+        reference_type = 'contract' if contract else None
+        reference_number = contract.token if contract else None
+
         if is_connection_request:
             connection_address = f"{str(contract.address_street)}, {str(contract.address_street_number)}"
-        
-        if not physical_address and invoice.address_final:
+            reference_type, reference_number = get_connection_request_reference(contract)
+
+        if not physical_address and invoice.address_final and invoice.address_final != '-':
             physical_address = invoice.address_final
             physical_location = invoice.location_final
         if not is_connection_request and not physical_address and contract.supply_point_default and contract.supply_point_default.address:
@@ -613,6 +630,8 @@ def generate(context, invoice, exploitation, temporary=False):
             'publications_used': publications_used,
             'att_to': att_to,
             'connection_address': connection_address,
+            'reference_type': reference_type,
+            'reference_number': reference_number,
             'footer_text': company_obj.invoice_footer_text if company_obj and company_obj.invoice_footer_text else None,
             'data_protection_law_text': company_obj.data_protection_law_text if company_obj and company_obj.data_protection_law_text else None,
             'force_client_info_next_page': False

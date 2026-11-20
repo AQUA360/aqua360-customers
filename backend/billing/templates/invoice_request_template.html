@@ -148,16 +148,16 @@
                         <table style="font-size: 10px; ">
                             <tr style="font-weight: bold; font-family: 'OpenSansBold';">
                                 <td colspan="2">
-                                    <span>DADES DE CONTRACTE</span>
+                                    <span>{% if is_connection_request %}DADES D'ESCOMESA{% else %}DADES DE CONTRACTE{% endif %}</span>
                                 </td>
                             </tr>
-                            {% if contract %}
+                            {% if reference_number %}
                             <tr style="border-bottom: 0.01em solid rgba(0, 0, 0, 0.5);">
                                 <td style="color: rgb(107, 107, 109); width: 30%;">
-                                    <span>Núm. contracte</span>
+                                    <span>{% if reference_type == 'connection' %}Núm. escomesa{% elif reference_type == 'connection_request' %}Núm. sol·licitud{% else %}Núm. contracte{% endif %}</span>
                                 </td>
                                 <td style="text-align: right;">
-                                    <span> {{ contract.token }} </span>
+                                    <span> {{ reference_number }} </span>
                                 </td>
                             </tr>
                             {% endif %}
@@ -233,7 +233,7 @@
                             {% endif %}
                             <tr>
                                 <td style="color: rgb(107, 107, 109); vertical-align: top;">
-                                    <span>Adreça submn.</span>
+                                    <span>{% if is_connection_request %}Adreça escomesa{% else %}Adreça submn.{% endif %}</span>
                                 </td>
                                 <td style="text-align: right;">
                                     <span> {{ supply_address.address_complete }} </span>
@@ -556,7 +556,7 @@
                 <td colspan="2" style="width: 33%; text-align: center; border-right: 1px solid white;">
                     <p>
                         <span style="font-weight: bold;">
-                        {{ contract.token }}
+                        {{ reference_number|default_if_none:"" }}
                         </span>
                     </p>
                 </td>
