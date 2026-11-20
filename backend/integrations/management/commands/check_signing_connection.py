@@ -32,7 +32,7 @@ class Command(BaseCommand):
         self.stdout.write(f"SIGNING_CALLBACK_URL:  {callback_url or '(buit)'}")
         self.stdout.write(
             "SIGN_CALLBACK_API_KEY: "
-            + ("configurada " + _mask(callback_key) if callback_key else "(buit; el webhook no valida la clau)")
+            + ("configurada " + _mask(callback_key) if callback_key else "(buit; el callback ho rebutja tot)")
         )
         self.stdout.write(f"SIGNING_POLL_ENABLED:  {poll_enabled}")
         self.stdout.write(f"DOCUMENT_SIGN_ENABLED: {is_document_sign_enabled()}")
@@ -42,6 +42,13 @@ class Command(BaseCommand):
             self.stdout.write(
                 self.style.WARNING(
                     "SIGNING_CALLBACK_URL és buit: en crear una sessió caldrà passar callback_url."
+                )
+            )
+        if not callback_key:
+            self.stdout.write(
+                self.style.WARNING(
+                    "SIGN_CALLBACK_API_KEY és buit: el callback respon 403 a tot. Cal posar "
+                    "la mateixa clau aquí i al callback_api_key del client a Sign."
                 )
             )
         if not poll_enabled:
