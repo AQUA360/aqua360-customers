@@ -208,6 +208,39 @@ class BillingPdfChunkTests(TestCase):
         self.item.refresh_from_db()
         self.assertEqual((generated, self.item.documents_generated), (3, 3))
 
+    def test_sense_cua_compta_els_pdf_que_la_subtasca_fallida_ja_havia_fet(self):
+        FinishedResult.results = {'T-pdf-0': {'generated': 20}}
+        FailedResult.failed = {'T-pdf-1'}
+        with mock.patch.object(billing_tasks, 'billing_pdf_parallel_setting', return_value=2), \
+                mock.patch.object(billing_tasks.generate_billing_pdfs_chunk, 'apply_async'), \
+                mock.patch('celery.result.AsyncResult', FailedResult), \
+                mock.patch.object(billing_tasks, '_invoices_without_new_pdf', side_effect=lambda ids, last: ids[:1]), \
+                mock.patch(GENERATE_PDF, return_value=True) as generate:
+            generated, completed = billing_tasks.generate_billing_pdfs(
+                fake_task(), list(range(40)), {}, None, lambda done, generated: None,
+            )
+        self.assertEqual(generate.call_count, 1)
+        # 20 de la subtasca bona + 19 que la fallida ja havia desat + 1 refet
+        self.assertEqual((generated, completed), (40, True))
+
+    def test_si_l_aturen_mentre_refa_un_tros_fallit_no_tanca(self):
+        FinishedResult.results = {}
+        FailedResult.failed = {'T-pdf-1'}
+
+        def generate_and_stop(invoice_id, config_cache=None):
+            BillingQueue.objects.filter(id=self.item.id).update(status='failed')
+            return True
+
+        with mock.patch.object(billing_tasks, 'billing_pdf_parallel_setting', return_value=2), \
+                mock.patch.object(billing_tasks.generate_billing_pdfs_chunk, 'apply_async'), \
+                mock.patch('celery.result.AsyncResult', FailedResult), \
+                mock.patch.object(billing_tasks, '_invoices_without_new_pdf', side_effect=lambda ids, last: ids[:1]), \
+                mock.patch(GENERATE_PDF, side_effect=generate_and_stop):
+            generated, completed = billing_tasks.generate_billing_pdfs(
+                fake_task(), list(range(40)), {}, self.item.id, lambda done, generated: None,
+            )
+        self.assertEqual((generated, completed), (0, False))
+
     def test_factures_sense_pdf_nou(self):
         from billing.models import Invoice
         from documentmanager.models import Document

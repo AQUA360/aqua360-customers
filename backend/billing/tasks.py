@@ -2959,6 +2959,9 @@ def generate_billing_pdfs(task, invoice_ids, config_cache, queue_item_id, on_pro
     skipped = len(chunk) - len(to_generate)
     def _local_progress(done, _generated):
       on_progress(done_before + skipped + done, None)
+    if not queue_item_id:
+      # Sense cua no se sap quants n'havia comptat la subtasca fallida: els que ja tenen PDF nou
+      local_generated += skipped
     if to_generate:
       local_generated += _generate_invoice_pdfs_in_process(
         to_generate, config_cache, _local_progress, queue_item_id=queue_item_id,
@@ -3011,6 +3014,9 @@ def generate_billing_pdfs(task, invoice_ids, config_cache, queue_item_id, on_pro
       continue
     time.sleep(BILLING_PDF_POLL_SECONDS)
 
+  # Pot haver canviat mentre es refeien trossos fallits: una tasca antiga no ha de tancar la facturació
+  if queue_item_id and not _billing_queue_item_is_current(queue_item_id, parent_task_id):
+    return 0, False
   if queue_item_id:
     from billing.models import BillingQueue
     generated = BillingQueue.objects.filter(id=queue_item_id).values_list('documents_generated', flat=True).first() or 0
