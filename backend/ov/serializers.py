@@ -511,6 +511,7 @@ class UpdateBillingDataOVIBANSerializer(serializers.Serializer):
                     dni=validated_data["iban_holder_dni"],
                     is_active=True,
                     is_default=True,
+                    origin=PersonBank.ORIGIN_OV,
                     country=Country.objects.filter(
                         iso_code=validated_data["iban"][:2]
                     ).first(),

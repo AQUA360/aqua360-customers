@@ -39,7 +39,8 @@ class PersonAdmin(admin.ModelAdmin):
 
 @admin.register(PersonBank)
 class PersonBankAdmin(admin.ModelAdmin):
-    list_display = ('id','token', 'iban', 'country', 'role')
+    list_display = ('id','token', 'iban', 'origin', 'country', 'role')
+    list_filter = ('origin',)
 
 @admin.register(PersonAddress)
 class PersonAddressAdmin(admin.ModelAdmin):

@@ -822,8 +822,10 @@ def generate_daily_documents(self):
     current_time = datetime.now()
     pending_status_token = ConfigProject.objects.get(token='daily_document_status_pending_token').value
     pending_status = DailyDocumentStatus.objects.get(token=pending_status_token)
+    cancelled_status_token = ConfigProject.objects.get(token='daily_document_status_cancelled_token').value
+    cancelled_status = DailyDocumentStatus.objects.get(token=cancelled_status_token)
     for template in available_templates:
-      generate_daily_document(template, current_time, pending_status)
+      generate_daily_document(template, current_time, pending_status, cancelled_status)
     
   except Exception as e:
     print(f"Error while generating daily documents: {e}")

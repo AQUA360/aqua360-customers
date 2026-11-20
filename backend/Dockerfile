@@ -48,7 +48,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 COPY requirements.ubuntu.txt /app/requirements.txt
-RUN pip install --upgrade pip && pip install -r /app/requirements.txt
+# pip a una versió fixa (els paquets ja ho són a requirements): dues construccions del mateix commit
+# han de donar la mateixa imatge.
+RUN pip install pip==26.3 && pip install -r /app/requirements.txt
 
 COPY . /app/
 
@@ -84,6 +86,12 @@ RUN groupadd --system --gid 1001 app \
     && chown -R app:app /app/media /app/staticfiles /app/logs /app/locale /var/lib/celery
 
 USER app
+
+# Prova de salut per a qui aixequi la imatge sense la del docker-compose. La mateixa imatge corre el
+# backend, el celery i el consumidor del GMAO: l'script mira quin és el procés. Les migracions de
+# l'arrencada poden trigar: fins als 5 minuts els errors no compten.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=300s --retries=3 \
+    CMD ["python", "/app/docker-healthcheck.py"]
 
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
 
