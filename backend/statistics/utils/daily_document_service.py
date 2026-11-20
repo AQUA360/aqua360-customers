@@ -100,7 +100,7 @@ def _format_period_label(start, end):
     return f"{start.strftime('%Y/%m/%d')} - {end.strftime('%Y/%m/%d')}"
 
 
-def generate_daily_document(template, current_time, pending_status):
+def generate_daily_document(template, current_time, pending_status, cancelled_status=None):
     try:
         from statistics.tasks import ReportNoData
         from statistics.utils.submission_service import (
@@ -143,6 +143,9 @@ def generate_daily_document(template, current_time, pending_status):
             is_work_days=bool(template.is_work_days),
         )
 
+        # No report file → cancelled; otherwise pending.
+        status = cancelled_status if cancelled_status is not None and no_data_found else pending_status
+
         daily_document = DailyDocument.objects.create(
             token=f"{template.token}_{document_day.strftime('%Y%m%d')}",
             name=f"{template.name} {period_label}",
@@ -150,7 +153,7 @@ def generate_daily_document(template, current_time, pending_status):
             period_start_date=period_start,
             period_end_date=period_end,
             due_date=due_date,
-            status=pending_status,
+            status=status,
             template=template,
             document=document,
             creation_error=error_message,
