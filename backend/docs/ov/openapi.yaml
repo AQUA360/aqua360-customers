@@ -520,7 +520,8 @@ paths:
         factura no tiene pagador, el pagador es el titular. Una factura en
         la que es titular y pagadora a la vez aparece una sola vez con
         `is_holder` e `is_payer` a `true`. Se excluyen las pre-facturas
-        (estado token `1`).
+        (estado token `1`) y las facturas con fecha de emisión futura, que no
+        se muestran hasta ese día.
 
         Las facturas se agrupan por contrato y, dentro de cada grupo, se
         ordenan de la más reciente a la más antigua. Los grupos aparecen por

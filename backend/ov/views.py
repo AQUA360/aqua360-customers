@@ -1886,7 +1886,8 @@ class PersonInvoicesOVView(APIView):
     `payer_token_final`), no segons el titular o pagador actual del
     contracte: així només veu les del període en què hi va estar implicada.
     Si la factura no té pagador, el pagador és el titular. S'exclouen les
-    prefactures (estat token `1`) i s'inclouen les factures sense contracte.
+    prefactures (estat token `1`) i les factures amb data futura, i s'inclouen
+    les factures sense contracte.
 
     El DNI es normalitza com a `/ov/person-data/` (sense espais, guions ni
     punts, en majúscules) i es compara exactament amb els tokens de la
@@ -1929,10 +1930,10 @@ class PersonInvoicesOVView(APIView):
 
         # Una sola consulta amb OR: una factura on és titular i pagadora surt
         # un cop. El cas «sense pagador» ja hi és pel titular.
+        # Les factures amb data futura no es mostren a l'OV fins aquell dia.
         invoices = (
-            Invoice.objects.filter(
-                Q(customer_token_final=dni) | Q(payer_token_final=dni)
-            )
+            exclude_future_invoices(Invoice.objects)
+            .filter(Q(customer_token_final=dni) | Q(payer_token_final=dni))
             .exclude(status__token="1")  # excloem les prefactures
             .select_related(
                 "status",
