@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.db import transaction
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -14,6 +15,8 @@ from integrations.outbound.signing.services import save_signed_contract_file
 
 PROVIDER = "signing"
 CALLBACK_ENDPOINT = "/signing/callback/"
+EVENT_SIGNED = "session.signed"
+SESSION_MISMATCH = "La sessió no correspon a aquesta referència."
 
 
 class SigningCallbackError(Exception):
@@ -114,84 +117,94 @@ def _download_signed_pdf(session_id, payload):
 
 
 def handle_signing_callback(payload):
-    event = payload.get("event")
+    """
+    Processa un `session.signed` d'Aqua360 Sign. El `session_id` ha de ser una sessió
+    que hem creat nosaltres per a la referència que arriba: no es busca cap sessió
+    de reserva, perquè un avís amb una sessió aliena no pugui marcar res com a signat
+    ni penjar-hi el PDF d'una altra sessió.
+    """
+    if payload.get("event") != EVENT_SIGNED:
+        raise SigningCallbackError("Esdeveniment no suportat.", status_code=400)
+
     external_reference = (payload.get("external_reference") or "").strip()
     session_id = (payload.get("session_id") or "").strip()
-
-    if session_id:
-        existing = ContractSigningSession.objects.filter(session_id=session_id).first()
-        if existing and existing.status == ContractSigningSession.STATUS_SIGNED:
-            return {"ok": True, "already_processed": True}
+    if not external_reference or not session_id:
+        raise SigningCallbackError(
+            "external_reference i session_id són obligatoris.", status_code=400
+        )
 
     # Referència inequívoca de DocumentSign: es resol directament, sense passar
     # per ContractRequest (evita col·lisions quan ambdós comparteixen el mateix id numèric).
     if external_reference.startswith(DOCUMENT_SIGN_REFERENCE_PREFIX):
         document_sign = _resolve_document_sign(external_reference)
-        if document_sign:
-            if event == "session.expired":
-                return _handle_document_sign_expired(document_sign)
-            return _handle_document_sign_signed(document_sign, session_id, payload)
-        raise SigningCallbackError(
-            "No s'ha trobat cap document per firmar amb aquesta referència.",
-            status_code=404,
-        )
+        if not document_sign:
+            raise SigningCallbackError(
+                "No s'ha trobat cap document per firmar amb aquesta referència.",
+                status_code=404,
+            )
+        _check_document_sign_session(document_sign, session_id)
+        return _handle_document_sign_signed(document_sign, session_id, payload)
 
     contract_request = _resolve_contract_request(external_reference)
     if contract_request:
-        if event == "session.expired":
-            return _handle_contract_request_expired(contract_request, external_reference, session_id)
-        return _handle_contract_request_signed(contract_request, external_reference, session_id, payload)
+        session = ContractSigningSession.objects.filter(
+            contract_request=contract_request, session_id=session_id
+        ).first()
+        if session:
+            return _handle_contract_request_signed(contract_request, session, payload)
 
+    # Compatibilitat amb sessions de DocumentSign enviades abans del prefix `docsign-`.
     document_sign = _resolve_document_sign(external_reference)
-    if document_sign:
-        if event == "session.expired":
-            return _handle_document_sign_expired(document_sign)
+    if document_sign and document_sign.token == session_id:
         return _handle_document_sign_signed(document_sign, session_id, payload)
 
+    if contract_request or document_sign:
+        raise SigningCallbackError(SESSION_MISMATCH, status_code=400)
     raise SigningCallbackError(
         "No s'ha trobat cap sol·licitud de contracte ni document per firmar amb aquesta referència.",
         status_code=404,
     )
 
 
-def _handle_contract_request_signed(contract_request, external_reference, session_id, payload):
-    session = None
-    if session_id:
-        session = ContractSigningSession.objects.filter(session_id=session_id).first()
-    if not session:
-        session = (
-            ContractSigningSession.objects.filter(
-                contract_request=contract_request,
-                external_reference=external_reference,
-                status=ContractSigningSession.STATUS_PENDING,
-            )
-            .order_by("-created_at")
-            .first()
-        )
+def _check_document_sign_session(document_sign, session_id):
+    # `token` guarda l'id de la sessió remota creada per l'últim enviament.
+    if not document_sign.token or document_sign.token != session_id:
+        raise SigningCallbackError(SESSION_MISMATCH, status_code=400)
+
+
+def _handle_contract_request_signed(contract_request, session, payload):
+    if session.status == ContractSigningSession.STATUS_SIGNED:
+        return {"ok": True, "already_processed": True}
 
     signed_at = _parse_signed_at(payload.get("signed_at"))
-    contract_file_saved = False
 
-    pdf_bytes = _download_signed_pdf(session_id, payload)
-    if pdf_bytes:
-        save_signed_contract_file(contract_request, pdf_bytes)
-        contract_file_saved = True
+    # Sense PDF no es marca com a signada: així Sign (o el sondeig, que mira les
+    # sessions pendents) ho pot tornar a intentar.
+    pdf_bytes = _download_signed_pdf(session.session_id, payload)
+    if not pdf_bytes:
+        raise SigningCallbackError(
+            "No s'ha pogut descarregar el contracte firmat des d'Aqua360 Sign.",
+            status_code=400,
+        )
+    save_signed_contract_file(contract_request, pdf_bytes)
 
-    if session:
-        session.status = ContractSigningSession.STATUS_SIGNED
-        session.signed_at = signed_at
-        session.save(update_fields=["status", "signed_at", "updated_at"])
+    session.status = ContractSigningSession.STATUS_SIGNED
+    session.signed_at = signed_at
+    session.save(update_fields=["status", "signed_at", "updated_at"])
 
     return {
         "ok": True,
         "contract_request_id": contract_request.id,
         "contract_request_token": contract_request.token,
-        "session_id": session_id or None,
-        "contract_file_saved": contract_file_saved,
+        "session_id": session.session_id,
+        "contract_file_saved": True,
     }
 
 
 def _handle_document_sign_signed(document_sign, session_id, payload):
+    if document_sign.status == DocumentSign.STATUS_SIGNED and document_sign.contract_file_signed_id:
+        return {"ok": True, "already_processed": True}
+
     signed_at = _parse_signed_at(payload.get("signed_at"))
     pdf_bytes = _download_signed_pdf(session_id, payload)
 
@@ -201,55 +214,18 @@ def _handle_document_sign_signed(document_sign, session_id, payload):
             status_code=400,
         )
 
-    save_signed_document_sign_file(document_sign, pdf_bytes, signed_at)
+    # Mentre es baixava el PDF el document es pot haver tornat a enviar (token nou):
+    # es revalida la sessió amb la fila bloquejada abans de desar-lo.
+    with transaction.atomic():
+        document_sign = DocumentSign.objects.select_for_update().get(pk=document_sign.pk)
+        _check_document_sign_session(document_sign, session_id)
+        save_signed_document_sign_file(document_sign, pdf_bytes, signed_at)
 
     return {
         "ok": True,
         "document_sign_id": document_sign.id,
         "document_sign_token": document_sign.token,
         "contract_file_saved": True,
-    }
-
-
-def _handle_contract_request_expired(contract_request, external_reference, session_id):
-    session = None
-    if session_id:
-        session = ContractSigningSession.objects.filter(session_id=session_id).first()
-    if not session:
-        session = (
-            ContractSigningSession.objects.filter(
-                contract_request=contract_request,
-                external_reference=external_reference,
-                status=ContractSigningSession.STATUS_PENDING,
-            )
-            .order_by("-created_at")
-            .first()
-        )
-
-    if session and session.status != ContractSigningSession.STATUS_SIGNED:
-        session.status = ContractSigningSession.STATUS_EXPIRED
-        session.save(update_fields=["status", "updated_at"])
-
-    return {
-        "ok": True,
-        "contract_request_id": contract_request.id,
-        "contract_request_token": contract_request.token,
-        "session_id": session_id or None,
-        "status": ContractSigningSession.STATUS_EXPIRED,
-    }
-
-
-def _handle_document_sign_expired(document_sign):
-    if document_sign.status != DocumentSign.STATUS_SIGNED:
-        document_sign.status = DocumentSign.STATUS_EXPIRED
-        document_sign.error_report = None
-        document_sign.save(update_fields=["status", "error_report", "updated_at"])
-
-    return {
-        "ok": True,
-        "document_sign_id": document_sign.id,
-        "document_sign_token": document_sign.token,
-        "status": DocumentSign.STATUS_EXPIRED,
     }
 
 
