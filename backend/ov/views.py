@@ -111,6 +111,7 @@ from ov.serializers import (
     PropertyItemSerializer,
     SupplyPointAddressItemSerializer,
     PersonDataSerializer,
+    PersonInvoiceOVSerializer,
     QuickPayRequestSerializer,
     QuickPayResponseSerializer,
     ReturnRequestSerializer,
@@ -133,6 +134,7 @@ from ov.throttles import (
     DniEnumerationThrottle,
     PaymentReceiptThrottle,
     PersonDataThrottle,
+    PersonInvoicesThrottle,
     QuickPayThrottle,
     ReturnRequestThrottle,
 )
@@ -2091,6 +2093,129 @@ class PersonDataOVView(APIView):
         serializer = PersonDataSerializer(person)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
+
+
+_OV_ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _parse_ov_iso_date(value):
+    """Data `YYYY-MM-DD` d'un paràmetre de query; `None` si no és vàlida
+    (format diferent o data inexistent, com `2026-02-30`)."""
+    if not value or not _OV_ISO_DATE.match(value):
+        return None
+    try:
+        return parse_date(value)
+    except ValueError:
+        return None
+
+
+class PersonInvoicesOVView(APIView):
+    """GET /ov/person-invoices/?dni=<DNI>[&date_from=YYYY-MM-DD][&date_to=YYYY-MM-DD]
+
+    Totes les factures on la persona ha estat titular o pagadora, segons les
+    dades congelades a la mateixa factura (`customer_token_final` i
+    `payer_token_final`), no segons el titular o pagador actual del
+    contracte: així només veu les del període en què hi va estar implicada.
+    Si la factura no té pagador, el pagador és el titular. S'exclouen les
+    prefactures (estat token `1`) i les factures amb data futura, i s'inclouen
+    les factures sense contracte.
+
+    El DNI es normalitza com a `/ov/person-data/` (sense espais, guions ni
+    punts, en majúscules) i es compara exactament amb els tokens de la
+    factura, que es desen en majúscules: així es poden fer servir els índexs
+    dels dos camps.
+
+    La resposta (sense paginar) agrupa les factures per contracte, de més
+    nova a més antiga dins de cada grup; els grups surten per ordre de la
+    seva factura més recent. Les factures sense contracte van en un grup amb
+    `contract_number` a `null`. `date_from` i `date_to` filtren per
+    `issue_date`, tots dos opcionals i inclusius.
+    """
+
+    # Només el compte de servei de l'OV (i superusuaris): amb un DNI es veu
+    # tot l'historial de factures d'una persona.
+    permission_classes = [IsAuthenticated, IsOVUser]
+    throttle_classes = [PersonInvoicesThrottle]
+
+    def get(self, request):
+        dni = _normalize_person_dni(request.query_params.get("dni"))
+        if not dni:
+            return Response(
+                {"error": "DNI is required"}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        date_from_raw = request.query_params.get("date_from")
+        date_to_raw = request.query_params.get("date_to")
+        date_from = _parse_ov_iso_date(date_from_raw)
+        date_to = _parse_ov_iso_date(date_to_raw)
+        if (date_from_raw and not date_from) or (date_to_raw and not date_to):
+            return Response(
+                {"error": "Invalid date format (expected YYYY-MM-DD)"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if date_from and date_to and date_from > date_to:
+            return Response(
+                {"error": "date_from must be before or equal to date_to"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Una sola consulta amb OR: una factura on és titular i pagadora surt
+        # un cop. El cas «sense pagador» ja hi és pel titular.
+        # Les factures amb data futura no es mostren a l'OV fins aquell dia.
+        invoices = (
+            exclude_future_invoices(Invoice.objects)
+            .filter(Q(customer_token_final=dni) | Q(payer_token_final=dni))
+            .exclude(status__token="1")  # excloem les prefactures
+            .select_related(
+                "status",
+                "contract__status",
+                "contract__supply_point_default__address__street__type",
+                "contract__supply_point_default__address__street_number__number_type",
+                "contract__supply_point_default__address__city",
+                "contract__supply_point_default__address__country",
+            )
+            .order_by(F("issue_date").desc(nulls_last=True), "-id")
+        )
+        if date_from:
+            invoices = invoices.filter(issue_date__gte=date_from)
+        if date_to:
+            invoices = invoices.filter(issue_date__lte=date_to)
+
+        # Context compartit: el DNI per als indicadors i la data dels PDF,
+        # que es llegeix un sol cop per petició.
+        context = {"request": request, "dni": dni}
+        groups = {}
+        for invoice in invoices:
+            group = groups.get(invoice.contract_id)
+            if group is None:
+                group = groups[invoice.contract_id] = self._group(invoice.contract)
+            group["invoices"].append(
+                PersonInvoiceOVSerializer(invoice, context=context).data
+            )
+
+        return Response({"results": list(groups.values())}, status=status.HTTP_200_OK)
+
+    @staticmethod
+    def _group(contract):
+        if contract is None:
+            return {
+                "contract_number": None,
+                "contract_status": None,
+                "supply_address": None,
+                "invoices": [],
+            }
+        supply_point = contract.supply_point_default
+        address = supply_point.address if supply_point else None
+        return {
+            "contract_number": contract.token,
+            "contract_status": (
+                {"token": contract.status.token, "name": contract.status.name}
+                if contract.status
+                else None
+            ),
+            "supply_address": str(address) if address else None,
+            "invoices": [],
+        }
 
 QUICK_PAY_NON_PAYABLE_STATUS_CONFIG_TOKENS = [
     "invoice_status_paid_token",

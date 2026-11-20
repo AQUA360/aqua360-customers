@@ -15,6 +15,7 @@ info:
     | `/ov/billing-data/update-iban/` | POST | Actualización del IBAN |
     | `/ov/contact-data/` | GET | Consulta de la configuración del perfil (datos de facturación + dirección del titular) |
     | `/ov/person-data/` | GET | Datos de contacto de la persona por DNI (teléfonos, correos y direcciones, incluidas las inactivas) |
+    | `/ov/person-invoices/` | GET | Facturas de una persona por DNI como titular o pagadora, agrupadas por contrato (incluye contratos de baja y facturas sin contrato) |
     | `/ov/invoices/` | GET | Listado de facturas (excluye pre-facturas) |
     | `/ov/invoices/download/` | POST | Descarga en lote de facturas seleccionadas (ZIP) |
     | `/ov/invoice/` | GET | Detalle de una factura |
@@ -500,6 +501,127 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  /ov/person-invoices/:
+    get:
+      tags:
+        - Facturas
+      summary: Listar las facturas de una persona por DNI (titular y pagadora)
+      description: |
+        Devuelve todas las facturas en las que la persona identificada por
+        `dni` ha sido titular o pagadora, de contratos activos y de baja, y
+        también las facturas sin contrato (acometidas, reclamaciones, etc.).
+
+        Se usan los datos congelados en la propia factura
+        (`customer_token_final` y `payer_token_final`), no el titular o
+        pagador actual del contrato: tras un cambio de titular, cada persona
+        solo ve las facturas del período en que estuvo implicada. Si la
+        factura no tiene pagador, el pagador es el titular. Una factura en
+        la que es titular y pagadora a la vez aparece una sola vez con
+        `is_holder` e `is_payer` a `true`. Se excluyen las pre-facturas
+        (estado token `1`) y las facturas con fecha de emisión futura, que no
+        se muestran hasta ese día.
+
+        Las facturas se agrupan por contrato y, dentro de cada grupo, se
+        ordenan de la más reciente a la más antigua. Los grupos aparecen por
+        orden de su factura más reciente. Las facturas sin contrato van en un
+        grupo con `contract_number`, `contract_status` y `supply_address` a
+        `null`. Los contratos sin ninguna factura en el rango de fechas no
+        aparecen. La respuesta no está paginada.
+
+        A diferencia de `GET /ov/invoices/`, `invoice_amount` es el total de
+        la factura (`total_final`) y el pendiente va en `pending_amount`
+        (`left_to_pay`).
+
+        Responde `400` si falta el DNI, si una fecha no tiene formato
+        `YYYY-MM-DD` o si `date_from` es posterior a `date_to`. Un DNI sin
+        facturas devuelve `results` vacío. El endpoint está limitado a 35
+        peticiones por minuto y cuenta.
+
+        Solo lo puede llamar la cuenta de servicio de la OV (usuarios del
+        grupo `ov`) o un superusuario; cualquier otro usuario autenticado
+        recibe `403`.
+      operationId: listPersonInvoices
+      security:
+        - tokenAuth: []
+      parameters:
+        - name: dni
+          in: query
+          required: true
+          description: |
+            DNI/NIF de la persona. Se normaliza ignorando espacios, guiones y
+            puntos y pasando a mayúsculas, y se compara con el titular y el
+            pagador guardados en la factura.
+          schema:
+            type: string
+          example: "12345678A"
+        - name: date_from
+          in: query
+          required: false
+          description: Fecha de factura (`issue_date`) mínima, inclusiva.
+          schema:
+            type: string
+            format: date
+          example: "2026-01-01"
+        - name: date_to
+          in: query
+          required: false
+          description: Fecha de factura (`issue_date`) máxima, inclusiva.
+          schema:
+            type: string
+            format: date
+          example: "2026-12-31"
+      responses:
+        "200":
+          description: Facturas de la persona agrupadas por contrato
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonInvoicesResponse"
+              example:
+                results:
+                  - contract_number: CTR-001
+                    contract_status:
+                      token: "1"
+                      name: Alta
+                    supply_address: "C. Major, 123, Barcelona"
+                    invoices:
+                      - invoice_number: F-2026-0002
+                        invoice_token: INV-002
+                        invoice_date: "2026-02-15"
+                        invoice_amount: 45.50
+                        pending_amount: 0.0
+                        invoice_status: Cobrada
+                        status:
+                          token: "0"
+                          name: Cobrada
+                        pdf_available: true
+                        is_holder: true
+                        is_payer: true
+                  - contract_number: null
+                    contract_status: null
+                    supply_address: null
+                    invoices:
+                      - invoice_number: F-2026-0001
+                        invoice_token: INV-001
+                        invoice_date: "2026-01-10"
+                        invoice_amount: 120.00
+                        pending_amount: 120.00
+                        invoice_status: Enviada
+                        status:
+                          token: "3"
+                          name: Enviada
+                        pdf_available: true
+                        is_holder: true
+                        is_payer: true
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: El usuario autenticado no es la cuenta de servicio de la OV (grupo `ov`) ni superusuario
         "429":
           $ref: "#/components/responses/TooManyRequests"
 
@@ -3565,6 +3687,95 @@ components:
         data:
           $ref: "#/components/schemas/BillingData"
 
+    PersonInvoicesResponse:
+      type: object
+      required:
+        - results
+      properties:
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/PersonInvoicesGroup"
+    PersonInvoicesGroup:
+      type: object
+      description: |
+        Facturas de un contrato. Si `contract_number` es `null`, agrupa las
+        facturas sin contrato.
+      properties:
+        contract_number:
+          type: string
+          nullable: true
+          description: Token del contrato; `null` en el grupo de facturas sin contrato
+        contract_status:
+          type: object
+          nullable: true
+          description: Estado actual del contrato `{token, name}`
+          properties:
+            token:
+              type: string
+              nullable: true
+            name:
+              type: string
+              nullable: true
+        supply_address:
+          type: string
+          nullable: true
+          description: Dirección del punto de suministro por defecto del contrato
+        invoices:
+          type: array
+          items:
+            $ref: "#/components/schemas/PersonInvoiceItem"
+    PersonInvoiceItem:
+      type: object
+      properties:
+        invoice_number:
+          type: string
+          nullable: true
+          description: Serie/número de factura (`serie_final`)
+        invoice_token:
+          type: string
+          description: Token de la factura
+        invoice_date:
+          type: string
+          format: date
+          nullable: true
+          description: Fecha de emisión (`issue_date`)
+        invoice_amount:
+          type: number
+          format: double
+          nullable: true
+          description: Importe total de la factura (`total_final`)
+        pending_amount:
+          type: number
+          format: double
+          nullable: true
+          description: Importe pendiente de pago (`left_to_pay`)
+        invoice_status:
+          type: string
+          nullable: true
+          description: Nombre del estado de la factura
+        status:
+          type: object
+          nullable: true
+          description: Estado de la factura `{token, name}`; `null` si no tiene
+          properties:
+            token:
+              type: string
+              nullable: true
+            name:
+              type: string
+              nullable: true
+        pdf_available:
+          type: boolean
+          description: Indica si el PDF está disponible según la configuración `ov_pdf_from`
+        is_holder:
+          type: boolean
+          description: La persona es la titular guardada en la factura
+        is_payer:
+          type: boolean
+          description: |
+            La persona es la pagadora guardada en la factura (o la titular, si
+            la factura no tiene pagador)
     InvoiceSummary:
       type: object
       properties:
