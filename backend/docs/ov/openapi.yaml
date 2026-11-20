@@ -71,6 +71,9 @@ info:
     - Los IBAN devueltos en las respuestas aparecen enmascarados (8 primeros caracteres + asteriscos + 8 últimos). Excepción: `/ov/contract/{token}/` y `/ov/contract-detail/` devuelven el IBAN sin enmascarar cuando se envía el parámetro de consulta `dni` y este coincide con el titular de la cuenta de domiciliación (en ese caso `is_account_holder` es `true`); sin `dni`, las claves `is_account_holder`, `is_holder` e `is_payer` no aparecen en la respuesta.
     - Los campos booleanos expuestos como texto (`smart_metering`, `paper_invoice`) usan los valores `"true"` o `"false"`.
     - El listado de facturas (`/ov/invoices/`) excluye las pre-facturas (estado con token `1`).
+    - Las facturas con fecha de emisión (`issue_date`) posterior a hoy no se devuelven en ningún
+      endpoint de facturas (listado, impagadas, detalle, PDF, descarga, pago y devolución) hasta
+      que llega esa fecha: se responden como si no existieran. Las facturas sin fecha se devuelven.
   version: 1.0.0
   contact:
     name: Aqua360 — Programa de Abonados
@@ -506,7 +509,8 @@ paths:
       summary: Listar facturas del contrato
       description: |
         Devuelve todas las facturas del contrato excepto las pre-facturas
-        (facturas con estado token `1`).
+        (facturas con estado token `1`) y las que tienen fecha de emisión
+        posterior a hoy.
 
         El importe devuelto en `invoice_amount` corresponde al pendiente de pago (`left_to_pay`).
 
