@@ -25,7 +25,7 @@ def delete_config(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('billing', '0348_add_pending_termination_warning'),
+        ('billing', '0349_invoice_person_token_indexes'),
         ('coredata', '0001_initial'),
     ]
 
