@@ -511,7 +511,11 @@ class AccountingPricing(models.Model):
     declared_as = models.CharField(max_length=255, null=True, blank=True)
     # Optional title for returns/undeclares. When empty, declared_as / name is used.
     declared_as_return = models.CharField(max_length=255, null=True, blank=True)
-    
+    # Conditional overrides for the accounting concept token (account prefix).
+    # Ordered list of {field, op, value, concept_token, apply_to_return, position}.
+    # First match wins; matched invoices/payments split into a separate declaration line.
+    concept_token_rules = models.JSONField(default=list, blank=True)
+
     accounting_concept = models.ForeignKey(AccountingConcept, on_delete=models.SET_NULL, related_name='accounting_pricings', null=True, blank=True)
     accounting_cost_center = models.ForeignKey(AccountingCostCenter, on_delete=models.SET_NULL, related_name='accounting_pricings', null=True, blank=True)
     #invoices category
@@ -597,6 +601,9 @@ class AccountingPricing(models.Model):
     exploitation = models.ForeignKey(Exploitation, on_delete=models.SET_NULL, related_name='accounting_pricings', null=True, blank=True)
     
     is_default = models.BooleanField(default=False)
+    # Lineitem/payment: catch amounts not claimed by a more specific pricing
+    # in the same category. Relations (products, payment types, …) are optional.
+    covers_undeclared = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     
     def __str__(self):
