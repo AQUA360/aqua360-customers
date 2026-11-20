@@ -6573,3 +6573,7 @@ msgstr "El compte {account} no està assignat a cap empresa. Assigneu-lo a una e
 #: billing/utils/remittance_bank_check.py
 msgid "The account {account} of {company} is missing: {fields}. Fill it in in the company's bank details and search again."
 msgstr "Al compte {account} de {company} li falta: {fields}. Completeu-ho a les dades bancàries de l'empresa i torneu a cercar."
+
+#: billing/views/sepa_payment_document_generate_view.py
+msgid "The bank accounts selected for the remittance are not valid. Search again and check them."
+msgstr "Els comptes seleccionats per a la remesa no són vàlids. Torneu a cercar i reviseu-los."

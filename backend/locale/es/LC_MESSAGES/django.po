@@ -6617,3 +6617,7 @@ msgstr "La cuenta {account} no está asignada a ninguna empresa. Asígnela a una
 #: billing/utils/remittance_bank_check.py
 msgid "The account {account} of {company} is missing: {fields}. Fill it in in the company's bank details and search again."
 msgstr "A la cuenta {account} de {company} le falta: {fields}. Complételo en los datos bancarios de la empresa y vuelva a buscar."
+
+#: billing/views/sepa_payment_document_generate_view.py
+msgid "The bank accounts selected for the remittance are not valid. Search again and check them."
+msgstr "Las cuentas seleccionadas para la remesa no son válidas. Vuelva a buscar y revíselas."

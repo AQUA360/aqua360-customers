@@ -4597,3 +4597,7 @@ msgstr "The account {account} is not linked to any company. Assign it to a compa
 #: billing/utils/remittance_bank_check.py
 msgid "The account {account} of {company} is missing: {fields}. Fill it in in the company's bank details and search again."
 msgstr "The account {account} of {company} is missing: {fields}. Fill it in in the company's bank details and search again."
+
+#: billing/views/sepa_payment_document_generate_view.py
+msgid "The bank accounts selected for the remittance are not valid. Search again and check them."
+msgstr "The bank accounts selected for the remittance are not valid. Search again and check them."

@@ -6,6 +6,8 @@ import json
 from datetime import datetime, timedelta, date
 from django.conf import settings
 from django.utils import timezone
+from django.utils.translation import gettext
+import logging
 from django.http import FileResponse, JsonResponse
 from rest_framework import status
 from rest_framework.response import Response
@@ -22,9 +24,7 @@ from billing.utils.sepa_file_service import (
     build_payment_sepa_concept, generate_xml, generate_xml_payments, get_saved_concept_fields, normalize_concept_fields,
     save_concept_fields, SEPA_CONCEPT_FIELDS,
 )
-from billing.utils.remittance_bank_check import (
-    RemittanceBankDataError, check_company_banks, get_company_banks_issues,
-)
+from billing.utils.remittance_bank_check import get_company_banks_issues
 from coredata.models import Bank, ConfigProject
 from coredata.utils.iban_validator_utils import validate_iban
 from coredata.utils.validators_utils import validate_nif
@@ -35,6 +35,8 @@ from django.db.models.functions import Coalesce
 from faker import Faker
 fake = Faker()
 from rest_framework.pagination import PageNumberPagination
+
+logger = logging.getLogger(__name__)
 
 class StandardResultsSetPagination(PageNumberPagination):
     page_size = 50
@@ -658,17 +660,21 @@ class SEPAPaymentDocumentGenerateViewSet(APIView):
             # i el banc el rebutjaria sense dir què falta.
             try:
                 distribution = get_bank_distribution(request.data)
-                check_company_banks(
-                    CompanyBank.objects.filter(id__in=[bank_id for bank_id, _ in distribution])
-                    .select_related('bank', 'company').order_by('id')
-                )
-            except RemittanceBankDataError as error:
+            except ValueError:
+                logger.exception("Repartiment de la remesa entre comptes no vàlid")
                 return Response(
-                    {"error": str(error), "bank_issues": error.bank_issues},
+                    {"error": gettext("The bank accounts selected for the remittance are not valid. Search again and check them.")},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-            except ValueError as error:
-                return Response({"error": str(error)}, status=status.HTTP_400_BAD_REQUEST)
+            bank_issues = get_company_banks_issues(
+                CompanyBank.objects.filter(id__in=[bank_id for bank_id, _bank_data in distribution])
+                .select_related('bank', 'company').order_by('id')
+            )
+            if bank_issues:
+                return Response(
+                    {"error": " ".join(item["message"] for item in bank_issues), "bank_issues": bank_issues},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
             # Ensure payload is JSON serializable for Celery.
             payload = request.data.copy() if hasattr(request.data, "copy") else dict(request.data)
