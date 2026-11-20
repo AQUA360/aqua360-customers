@@ -131,7 +131,7 @@ watch(() => props.selectedContracts, (newValue) => {
     </div>
 
     <!-- Secció de contractes -->
-    <fieldset class="bg-white p-4 rounded-lg shadow">
+    <fieldset class="bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
       <legend class="flex items-center space-x-2">
         <span class="flex items-center justify-center w-6 h-6 rounded-full bg-gray-400 text-white font-medium">1</span>
         <h4 class="font-medium p-0 m-0">{{ $t('contract_block.affected_contracts') }}</h4>
@@ -145,7 +145,7 @@ watch(() => props.selectedContracts, (newValue) => {
     </fieldset>
 
     <!-- Secció de creació d'ordres -->
-    <fieldset class="bg-white p-4 rounded-lg shadow">
+    <fieldset class="bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
       <legend class="flex items-center space-x-2">
         <span class="flex items-center justify-center w-6 h-6 rounded-full bg-gray-400 text-white font-medium">2</span>
         <h4 class="font-medium p-0 m-0">{{ $t('claim_block.mng_supply_cuts_title') }}</h4>
@@ -168,7 +168,7 @@ watch(() => props.selectedContracts, (newValue) => {
     </fieldset>
 
     <!-- Secció de visualització d'ordres -->
-    <fieldset class="bg-white p-4 rounded-lg shadow">
+    <fieldset class="bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
       <legend class="flex items-center space-x-2">
         <span class="flex items-center justify-center w-6 h-6 rounded-full bg-gray-400 text-white font-medium">3</span>
         <h4 class="font-medium p-0 m-0">{{ $t('work_orders') }}</h4>

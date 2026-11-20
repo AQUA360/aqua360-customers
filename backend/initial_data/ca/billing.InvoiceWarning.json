@@ -96,5 +96,19 @@
             "position": 7,
             "is_default": false
         }
+    },
+    {
+        "model": "billing.invoicewarning",
+        "pk": 8,
+        "fields": {
+            "created_at": "2026-11-20T00:00:00.000Z",
+            "updated_at": "2026-11-20T00:00:00.000Z",
+            "token": "terminated_contract",
+            "name": "Contracte de baixa",
+            "color": "#ef4444",
+            "description": "El contracte està de baixa: la factura s'ha exclòs de la facturació. Torneu-la a incloure només si s'ha de facturar.",
+            "position": 8,
+            "is_default": false
+        }
     }
 ]

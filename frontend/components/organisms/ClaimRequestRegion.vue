@@ -89,84 +89,83 @@ const openClaimRequest = () => {
         </button>
       </div>
 
-      <!-- Capçalera -->
-      <dl class="claim-header mb-4">
-        <dt>{{ $t('common.status') }}</dt>
-        <dd><AtomsColorBadge :value="data.status_name" :color="data.status_color" /></dd>
+      <!-- Capçalera: tres parelles etiqueta / valor per fila -->
+      <dl class="claim-summary">
         <dt>{{ $t('billing_block.step') }}</dt>
-        <dd>{{ data.current_step_name || '-' }}</dd>
+        <dd class="span-3">{{ data.current_step_name || '-' }}</dd>
         <dt>{{ $t('billing_block.due_step') }}</dt>
         <dd>{{ data.current_step_due_date ? formatDate(data.current_step_due_date) : '-' }}</dd>
+        <dt class="row-start">{{ $t('common.status') }}</dt>
+        <dd><AtomsColorBadge :value="data.status_name" :color="data.status_color" /></dd>
         <template v-if="data.description">
-          <dt>{{ $t('common.description') }}</dt>
-          <dd>{{ data.description }}</dd>
+          <dt class="row-start">{{ $t('common.description') }}</dt>
+          <dd class="row-rest">{{ data.description }}</dd>
         </template>
       </dl>
 
-      <!-- Blocs de resum (mateixos comptadors que a la pàgina de la gestió) -->
-      <div class="flex flex-wrap gap-3">
-        <div class="flex flex-col border border-gray-200 rounded">
-          <div class="flex items-center bg-white px-2">
-            {{ $t('billing_block.pending_payments') }}:
-            <span class="px-2 py-1 font-bold">{{ data.pending_payments_count }}</span>
-          </div>
-          <div class="flex items-center bg-white px-2">
-            {{ $t('reports_block.paid_payments') }}:
-            <span class="px-2 py-1 font-bold">{{ data.paid_payments_count }}</span>
-          </div>
-          <div class="flex items-center bg-white px-2">
-            {{ $t('common.amount') }}:
-            <span class="px-2 py-1 font-bold">{{ formatMoneyWithCurrency(data.amount) }}</span>
-          </div>
-        </div>
+      <!-- Resum en caixes amb el mateix estil que les de la fitxa del contracte (Pagament, Comunicació).
+           Mateixos comptadors que ClaimRequestManage -->
+      <hr class="my-4" />
 
-        <div class="flex flex-col border border-gray-200 rounded">
-          <div class="flex items-center bg-white px-2">
-            {{ $t('contract_block.affected_contracts') }}:
-            <span class="px-2 py-1 font-bold">{{ data.total_contracts - data.excluded_payments_count }}</span>
-          </div>
-          <div class="flex items-center bg-white px-2">
-            {{ $t('contract_block.excluded_contracts') }}:
-            <span class="px-2 py-1 font-bold">{{ data.excluded_payments_count }}</span>
-          </div>
-          <div v-if="data.contract_termination_requests?.length" class="flex items-center bg-white px-2">
-            {{ $t('common.contract_terminations') }}:
-            <span class="px-2 py-1 font-bold">{{ data.contract_termination_requests.length }}</span>
-          </div>
-        </div>
+      <div class="grid grid-cols-3 gap-3">
+        <fieldset class="claim-box">
+          <legend>{{ $t('billing_block.payments') }}</legend>
+          <dl class="claim-box-list">
+            <dt>{{ $t('billing_block.pending_payments') }}</dt>
+            <dd>{{ data.pending_payments_count }}</dd>
+            <dt>{{ $t('reports_block.paid_payments') }}</dt>
+            <dd>{{ data.paid_payments_count }}</dd>
+            <dt>{{ $t('common.amount') }}</dt>
+            <dd>{{ formatMoneyWithCurrency(data.amount) }}</dd>
+          </dl>
+        </fieldset>
 
-        <div v-if="data.vulnerable_requests_count > 0" class="flex flex-col border border-gray-200 rounded">
-          <div class="flex items-center bg-white px-2">
-            {{ $t('common.vulnerable_reqs') }}:
-            <span class="px-2 py-1 font-bold">{{ data.vulnerable_requests_count }}</span>
-          </div>
-          <div class="flex items-center bg-white px-2">
-            {{ $t('common.accepted_requests') }}:
-            <span class="px-2 py-1 font-bold">{{ data.vulnerable_accepted_requests_count }}</span>
-          </div>
-          <div class="flex items-center bg-white px-2">
-            {{ $t('common.pending_requests') }}:
-            <span class="px-2 py-1 font-bold">{{ data.vulnerable_pending_requests_count }}</span>
-          </div>
-        </div>
+        <fieldset class="claim-box">
+          <legend>{{ $t('billing_block.contracts_and_invoices') }}</legend>
+          <dl class="claim-box-list">
+            <dt>{{ $t('contract_block.affected_contracts') }}</dt>
+            <dd>{{ data.total_contracts - data.excluded_contracts_count }}</dd>
+            <template v-if="data.contract_termination_requests?.length">
+              <dt>{{ $t('common.contract_terminations') }}</dt>
+              <dd>{{ data.contract_termination_requests.length }}</dd>
+            </template>
+            <dt>{{ $t('billing_block.affected_invoices_title') }}</dt>
+            <dd>{{ data.affected_invoices_count }}</dd>
+            <dt>{{ $t('billing_block.excluded_invoices') }}</dt>
+            <dd>{{ data.excluded_invoices_count }}</dd>
+          </dl>
+        </fieldset>
 
-        <div class="flex flex-col border border-gray-200 rounded">
-          <div class="flex items-center bg-white px-2">
-            {{ $t('order_block.cut_orders') }}:
-            <span class="px-2 py-1 font-bold">{{ data.cut_suply_orders?.length || 0 }}</span>
-          </div>
-          <div class="flex items-center bg-white px-2">
-            {{ $t('order_block.remove_orders') }}:
-            <span class="px-2 py-1 font-bold">{{ data.remove_meter_orders?.length || 0 }}</span>
-          </div>
-        </div>
+        <fieldset class="claim-box">
+          <legend>{{ $t('common.orders') }}</legend>
+          <dl class="claim-box-list">
+            <dt>{{ $t('order_block.cut_orders') }}</dt>
+            <dd>{{ data.cut_suply_orders?.length || 0 }}</dd>
+            <dt>{{ $t('order_block.remove_orders') }}</dt>
+            <dd>{{ data.remove_meter_orders?.length || 0 }}</dd>
+          </dl>
+        </fieldset>
+
+        <!-- Vulnerabilitat (només si n'hi ha) -->
+        <fieldset v-if="data.vulnerable_requests_count > 0" class="claim-box">
+          <legend>{{ $t('contract_block.vulnerability') }}</legend>
+          <dl class="claim-box-list">
+            <dt>{{ $t('common.vulnerable_reqs') }}</dt>
+            <dd>{{ data.vulnerable_requests_count }}</dd>
+            <dt>{{ $t('common.accepted_requests') }}</dt>
+            <dd>{{ data.vulnerable_accepted_requests_count }}</dd>
+            <dt>{{ $t('common.pending_requests') }}</dt>
+            <dd>{{ data.vulnerable_pending_requests_count }}</dd>
+          </dl>
+        </fieldset>
       </div>
 
       <!-- Factures d'aquest contracte dins la gestió -->
-      <div v-if="contractData" class="mt-6">
-        <div class="flex flex-wrap items-center gap-2 mb-2">
-          <span class="text-slate-500 font-bold">{{ $t('contract') }} {{ contractData.token }}</span>
-          <span class="text-sm text-slate-500">
+      <hr v-if="contractData" class="my-4" />
+      <div v-if="contractData">
+        <div class="flex flex-wrap items-center gap-2 mb-1.5">
+          <span class="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{{ $t('contract') }} {{ contractData.token }}</span>
+          <span class="text-xs text-slate-500">
             · {{ contractData.pending_payments_count }} {{ (contractData.pending_payments_count === 1 ? $t('billing_block.payment') : $t('billing_block.payments')).toLowerCase() }}
             · <span class="font-bold text-slate-700">{{ formatMoneyWithCurrency(contractData.pending_payments_amount) }}</span>
           </span>
@@ -180,52 +179,56 @@ const openClaimRequest = () => {
           </span>
         </div>
 
-        <table class="min-w-full divide-y divide-gray-200 border border-gray-200 rounded">
-          <thead class="bg-gray-50">
-            <tr>
-              <th class="px-3 py-1 text-left text-xs font-medium text-gray-500 uppercase">{{ $t('invoice') }}</th>
-              <th class="px-3 py-1 text-left text-xs font-medium text-gray-500 uppercase">{{ $t('common.due_date') }}</th>
-              <th class="px-3 py-1 text-right text-xs font-medium text-gray-500 uppercase">{{ $t('common.amount') }}</th>
-              <th class="px-3 py-1 text-left text-xs font-medium text-gray-500 uppercase">{{ $t('common.status') }}</th>
+        <div class="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+        <table class="min-w-full divide-y divide-slate-200">
+          <thead class="bg-slate-50">
+            <tr class="divide-x divide-slate-200">
+              <th class="px-3 py-1.5 text-left text-[11px] font-medium text-slate-500">{{ $t('invoice') }}</th>
+              <th class="px-3 py-1.5 text-left text-[11px] font-medium text-slate-500">{{ $t('common.due_date') }}</th>
+              <th class="px-3 py-1.5 text-left text-[11px] font-medium text-slate-500">{{ $t('common.amount') }}</th>
+              <th class="px-3 py-1.5 text-left text-[11px] font-medium text-slate-500">{{ $t('common.status') }}</th>
             </tr>
           </thead>
-          <tbody class="bg-white divide-y divide-gray-200">
-            <tr v-for="claimPayment in contractData.claim_payments" :key="claimPayment.id" class="text-sm" :class="{
+          <tbody class="divide-y divide-slate-200">
+            <tr v-for="claimPayment in contractData.claim_payments" :key="claimPayment.id"
+              class="divide-x divide-slate-200 text-xs" :class="{
               'bg-emerald-50': isClaimPaymentPaid(claimPayment),
               'text-gray-400 line-through': claimPayment.is_excluded,
+              'text-slate-800': !claimPayment.is_excluded,
             }">
-              <td class="px-3 py-1 whitespace-nowrap">{{ claimPayment.payment?.invoice_serie_final || '-' }}</td>
-              <td class="px-3 py-1 whitespace-nowrap">
+              <td class="px-3 py-1.5 whitespace-nowrap">{{ claimPayment.payment?.invoice_serie_final || '-' }}</td>
+              <td class="px-3 py-1.5 whitespace-nowrap">
                 {{ claimPayment.payment?.due_date ? formatDate(claimPayment.payment.due_date) : '-' }}
               </td>
-              <td class="px-3 py-1 whitespace-nowrap text-right">
+              <td class="px-3 py-1.5 whitespace-nowrap">
                 {{ formatMoneyWithCurrency(claimPayment.payment?.amount ?? 0) }}
               </td>
-              <td class="px-3 py-1 whitespace-nowrap">
+              <td class="px-3 py-1.5 whitespace-nowrap">
                 <AtomsColorBadge :color="claimPayment.payment?.status?.color || 'gray'"
                   :value="claimPayment.payment?.status?.name || '-'" />
               </td>
             </tr>
           </tbody>
         </table>
+        </div>
 
-        <!-- Ordres i baixes d'aquest contracte generades per la gestió -->
+        <!-- Ordres i baixes d'aquest contracte generades per la gestió (mateix format que la capçalera) -->
         <dl v-if="contractCutOrders.length || contractRemoveOrders.length || contractTerminations.length"
-          class="claim-header mt-3 text-sm">
+          class="claim-header mt-3">
           <template v-if="contractCutOrders.length">
             <dt>{{ $t('order_block.cut_orders') }}</dt>
-            <dd class="font-medium">{{ contractCutOrders.map(o => o.token).join(', ') }}</dd>
+            <dd>{{ contractCutOrders.map(o => o.token).join(', ') }}</dd>
           </template>
           <template v-if="contractRemoveOrders.length">
             <dt>{{ $t('order_block.remove_orders') }}</dt>
-            <dd class="font-medium">{{ contractRemoveOrders.map(o => o.token).join(', ') }}</dd>
+            <dd>{{ contractRemoveOrders.map(o => o.token).join(', ') }}</dd>
           </template>
           <template v-if="contractTerminations.length">
             <dt>{{ $t('common.contract_terminations') }}</dt>
             <dd class="flex flex-wrap items-center gap-2">
               <span v-for="termination in contractTerminations" :key="termination.id"
                 class="inline-flex items-center gap-1">
-                <span class="font-medium">{{ termination.token }}</span>
+                <span>{{ termination.token }}</span>
                 <AtomsColorBadge v-if="termination.status" :value="termination.status.name"
                   :color="termination.status.color" />
               </span>
@@ -240,13 +243,80 @@ const openClaimRequest = () => {
 <style scoped>
 .claim-header {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  /* Amplada fixa de l'etiqueta perquè totes les llistes de la regió quedin alineades */
+  grid-template-columns: 10rem minmax(0, 1fr);
   column-gap: 1.5rem;
   row-gap: 0.25rem;
   align-items: center;
 }
 
 .claim-header dt {
+  color: rgb(71 85 105);
+}
+
+/* Resum: tres parelles etiqueta / valor per fila. Les columnes d'etiqueta s'ajusten a
+   l'etiqueta més llarga de la columna i les de valor es reparteixen l'espai restant,
+   així els tres blocs queden repartits per tota l'amplada i alineats entre files */
+.claim-summary {
+  display: grid;
+  grid-template-columns: repeat(3, max-content minmax(0, 1fr));
+  column-gap: 1rem;
+  row-gap: 0.25rem;
+  align-items: center;
+}
+
+.claim-summary dt {
+  color: rgb(71 85 105);
+}
+
+.claim-summary dd {
+  padding-right: 1rem;
+}
+
+/* Força que la parella comenci una fila nova */
+.claim-summary .row-start {
+  grid-column-start: 1;
+}
+
+/* Valor que ocupa tres columnes (el nom del pas), perquè la parella següent quedi a la tercera columna */
+.claim-summary .span-3 {
+  grid-column: span 3;
+}
+
+/* Valor que ocupa la resta de la fila */
+.claim-summary .row-rest {
+  grid-column: span 5;
+}
+
+/* Caixa de resum: fons blau de les caixes de la fitxa del contracte, amb les vores arrodonides
+   i el títol sobre la vora com les seccions de la gestió (ClaimRequestManage) */
+.claim-box {
+  min-width: 0;
+  border: 1px solid rgb(226 232 240);
+  border-radius: 0.75rem;
+  background-color: rgb(240 249 255);
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  padding: 0.25rem 1rem 0.75rem;
+}
+
+/* Títol dins d'un requadre blanc arrodonit perquè el text no quedi sobre el fons blau */
+.claim-box legend {
+  padding: 0.125rem 0.625rem;
+  font-weight: 500;
+  background-color: #fff;
+  border: 1px solid rgb(226 232 240);
+  border-radius: 0.5rem;
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+}
+
+.claim-box-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 1rem;
+  row-gap: 0.25rem;
+}
+
+.claim-box-list dt {
   color: rgb(71 85 105);
 }
 </style>

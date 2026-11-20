@@ -140,6 +140,10 @@ const total_sepa_files = ref(0);
 // Avisos de l'encaminament (rebuts sense IBAN, empreses sense compte per
 // defecte...). No bloquegen mai la generació, només informen.
 const routingWarnings = ref([]);
+// Comptes de l'empresa sense les dades que demana el fitxer SEPA (IBAN, BIC,
+// identificador de creditor...). A diferència dels avisos, bloquegen la
+// generació fins que es completen.
+const bankIssues = ref([]);
 
 // Empresa que s'està revisant a la region d'encaminament. Es pot obrir des
 // d'aquí mateix per repassar o retocar el mapa abans de generar la remesa.
@@ -328,6 +332,7 @@ const search = async (applyPendingInvoicesExclusion = true) => {
     total_excluded.value = result.total_excluded || 0;
     total_sepa_files.value = result.total_sepa_files || 0;
     routingWarnings.value = result.routing_warnings || [];
+    bankIssues.value = result.bank_issues || [];
     
     lastSearchData.value = { ...searchData };
 
@@ -423,6 +428,7 @@ const clickFinalize = async () => {
     const result = await $PaymentApiService.getSEPADocData(searchData)
     
     if (result){
+      bankIssues.value = [];
       // console.log("result", result);
       // console.log("result.document_ids", result.document_ids);
       // await downloadSEPADocument(result.document_ids);
@@ -433,6 +439,10 @@ const clickFinalize = async () => {
 
   } catch (error) {
     console.error(error);
+    // El servidor torna a comprovar els comptes: si n'hi ha cap sense dades,
+    // es mostra què falta de forma persistent (el missatge ja surt en un toast).
+    const issues = error?.response?._data?.bank_issues;
+    if (Array.isArray(issues)) bankIssues.value = issues;
   }
   finally {
     saving.value = false;
@@ -821,6 +831,7 @@ const resetFilters = (reset_all = true) => {
   total_invoices.value = 0;
   total_sepa_files.value = 0;
   routingWarnings.value = [];
+  bankIssues.value = [];
   lastSearchData.value = null;
 }
 
@@ -1038,6 +1049,20 @@ watch(selectedContracts, () => {
             </div>
           </div>
         </div>
+      </div>
+
+      <!-- Comptes sense les dades del fitxer SEPA: impedeixen generar -->
+      <div v-if="bankIssues.length"
+        class="mb-4 rounded border border-red-200 bg-red-50 px-3 py-2">
+        <p class="text-xs font-semibold text-red-900 uppercase tracking-wide mb-1">
+          {{ $t('billing_block.remittance_bank_issues') }}
+        </p>
+        <ul class="text-sm text-red-900 space-y-0.5">
+          <li v-for="issue in bankIssues" :key="issue.bank" class="flex items-start gap-2">
+            <Icon name="fa6-solid:circle-exclamation" class="text-xs mt-1 shrink-0" />
+            <span>{{ issue.message }}</span>
+          </li>
+        </ul>
       </div>
 
       <!-- Avisos de l'encaminament: informatius, no impedeixen generar -->
@@ -1523,8 +1548,8 @@ watch(selectedContracts, () => {
             &nbsp; {{ $t('dashboard.search') }}
           </button>
         </abbr>
-        <abbr >
-          <button v-if="!taskId" @click="clickFinalize" :disabled="!hasRemittanceTarget || !selectedSendDate || total_invoices === 0"
+        <abbr :title="bankIssues.length ? $t('billing_block.remittance_bank_issues') : ''">
+          <button v-if="!taskId" @click="clickFinalize" :disabled="!hasRemittanceTarget || !selectedSendDate || total_invoices === 0 || bankIssues.length > 0"
             class="button-secondary">
             <Icon name="fa6-solid:circle-check" />&nbsp; {{ $t('common.finish') }}
           </button>

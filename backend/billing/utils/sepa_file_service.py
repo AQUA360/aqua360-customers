@@ -11,6 +11,7 @@ from django.utils.translation import gettext as _
 from coredata.models import Bank, ConfigProject
 from coredata.utils.address_utils import get_address_complete_without_city
 from coredata.utils.iban_validator_utils import get_spanish_bic
+from billing.utils.remittance_bank_check import normalize_account_code
 from pricing.models import ProductOrigin
 from service.models import Exploitation
 from service.serializers.company_serializer import CompanySerializer
@@ -641,11 +642,11 @@ def generate_xml_payments(payments, bank_instance, send_date, is_return=False, c
 
             cdtr_acct = ET.SubElement(pmtInf, "CdtrAcct")
             cdtr_acct_id = ET.SubElement(cdtr_acct, "Id")
-            ET.SubElement(cdtr_acct_id, "IBAN").text = bank.iban
+            ET.SubElement(cdtr_acct_id, "IBAN").text = normalize_account_code(bank.iban)
 
             cdtr_agt = ET.SubElement(pmtInf, "CdtrAgt")
             fin_instn_id = ET.SubElement(cdtr_agt, "FinInstnId")
-            ET.SubElement(fin_instn_id, "BIC").text = bank.swift
+            ET.SubElement(fin_instn_id, "BIC").text = normalize_account_code(bank.swift)
 
             chrg_br = ET.SubElement(pmtInf, "ChrgBr")
             chrg_br.text = "SLEV"
@@ -670,11 +671,11 @@ def generate_xml_payments(payments, bank_instance, send_date, is_return=False, c
             
             dbtr_acct = ET.SubElement(pmtInf, "DbtrAcct")
             dbtr_acct_id = ET.SubElement(dbtr_acct, "Id")
-            ET.SubElement(dbtr_acct_id, "IBAN").text = bank.iban
+            ET.SubElement(dbtr_acct_id, "IBAN").text = normalize_account_code(bank.iban)
             
             dbtr_agt = ET.SubElement(pmtInf, "DbtrAgt")
             fin_instn_id = ET.SubElement(dbtr_agt, "FinInstnId")
-            ET.SubElement(fin_instn_id, "BIC").text = bank.swift
+            ET.SubElement(fin_instn_id, "BIC").text = normalize_account_code(bank.swift)
             
             ET.SubElement(pmtInf, "ChrgBr").text = "SLEV"
             
