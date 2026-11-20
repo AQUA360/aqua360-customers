@@ -1,4 +1,5 @@
 <script setup>
+import AppLoading from '~/components/atoms/AppLoading.vue';
 // components/molecules/ContractRequestSetup.vue
 import { ref, onMounted, watch, computed } from 'vue';
 import { useI18n } from 'vue-i18n';
@@ -387,13 +388,18 @@ const applyChangeOfNamePrefill = async () => {
   }
 };
 
+const initialLoading = ref(true);
 onMounted(async () => {
-  await getSupplyPointPermissions();
-  await loadContractRequestTypes();
-  await loadData();
-  await loadCompanyOptionsData();
-  if (props.prefillContractId && !props.request?.id) {
-    await applyChangeOfNamePrefill();
+  try {
+    await getSupplyPointPermissions();
+    await loadContractRequestTypes();
+    await loadData();
+    await loadCompanyOptionsData();
+    if (props.prefillContractId && !props.request?.id) {
+      await applyChangeOfNamePrefill();
+    }
+  } finally {
+    initialLoading.value = false;
   }
 });
 
@@ -441,7 +447,11 @@ const showDetail = async function (component, id) {
 </script>
 
 <template>
-  <div id="wrapper" class="text-base">
+  <div id="wrapper" class="text-base relative" :class="{ 'min-h-[260px]': initialLoading }">
+    <!-- Animació de càrrega fins que s'han carregat totes les dades del pas -->
+    <div v-if="initialLoading" class="absolute inset-0 z-20 bg-white flex justify-center items-start pt-10">
+      <AppLoading :text="$t('common.loading')" />
+    </div>
     <h2 class="text-xl font-semibold mb-4">{{ $t('contract_block.request_setup_title') }}</h2>
 
     <div v-if="requireCompany" class="mb-4">

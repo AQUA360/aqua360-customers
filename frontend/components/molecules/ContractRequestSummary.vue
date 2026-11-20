@@ -1,4 +1,5 @@
 <script setup>
+import AppLoading from '~/components/atoms/AppLoading.vue';
 // components/molecules/ContractRequestOrderBilling.vue
 import { ref, onMounted, watch, computed } from 'vue';
 import { useI18n } from 'vue-i18n';
@@ -203,9 +204,14 @@ const fetchInvoiceData = async () => {
 }
 
 
+const initialLoading = ref(true);
 onMounted(async () => {
-  await getInvoicePermissions();
-  loadData();
+  try {
+    await getInvoicePermissions();
+    await loadData();
+  } finally {
+    initialLoading.value = false;
+  }
 });
 
 // Observa canvis en la sol·licitud per recarregar les dades si cal
@@ -449,7 +455,11 @@ const denyPolicyToken = () => {
 </script>
 
 <template>
-  <div id="wrapper" class="text-base">
+  <div id="wrapper" class="text-base relative" :class="{ 'min-h-[260px]': initialLoading }">
+    <!-- Animació de càrrega fins que s'han carregat totes les dades del pas -->
+    <div v-if="initialLoading" class="absolute inset-0 z-20 bg-white flex justify-center items-start pt-10">
+      <AppLoading :text="$t('common.loading')" />
+    </div>
     <!-- Títol del Component -->
     <h2 class="text-xl font-semibold mb-4">{{ $t('common.summary') }} {{ t('common.and') }} {{ t('contract') }}</h2>
     <!-- /end Títol del Component -->
