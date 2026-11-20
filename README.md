@@ -170,7 +170,7 @@ Servers are deployed with the `playbooks/AquaCustomersDocker` playbook of the `a
 | `03-nginx-docker-cloudflare` | Cloudflare Origin certificates and Nginx sites proxying to the Docker ports |
 | `04-backup-db` | `backup_db.sh` (`pg_dump` inside the `db` container) and backup cron |
 | `05-copy-backup-to-test` | Daily copy of the latest backup to the test server |
-| `06-restore` | `restore.sh` and cleanup of old databases (3-day retention) |
+| `06-restore` | `restore.sh` and cleanup of old databases (3-day retention). On the test server it also creates `docker-data/sync-control/`: admins can turn the nightly sync off from the TEST/STAGING badge, and `restore.sh` then skips the restore |
 | `07-readonly-db-user` | Read-only PostgreSQL user |
 
 On servers the host ports are not the defaults (`POSTGRES_PORT=5433`, `REDIS_PORT=6380`, `BACKEND_PORT=8001`, `FRONTEND_PORT=3001`) and can be changed per client in the inventory (`docker_*_port`) so several exploitations can share a server. The `docker-compose.yml` in this repository is the same one the playbook deploys.

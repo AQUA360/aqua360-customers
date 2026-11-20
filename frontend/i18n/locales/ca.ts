@@ -5071,5 +5071,23 @@ export default {
     read_only_notice: "Només podeu executar i exportar aquest informe.",
     select_report: "Seleccioneu un informe de la llista per executar-lo.",
     unsaved: "Canvis sense desar"
+  },
+  db_sync: {
+    open_settings: "Sincronització de dades amb producció",
+    open_settings_blocked: "Sincronització de dades amb producció (desactivada)",
+    title: "Sincronització amb producció",
+    subtitle: "Dades de l'entorn {env}",
+    close: "Tanca",
+    retry: "Torna-ho a provar",
+    nightly_title: "Sincronització automàtica",
+    nightly_help: "Cada nit es carrega en aquest entorn l'última còpia de les dades de producció.",
+    nightly_on: "Activada: les dades se substitueixen cada nit.",
+    nightly_off: "Desactivada: les dades de test es conserven.",
+    disabled_by: "Desactivada per {user} el {date}",
+    nightly_enabled_toast: "Sincronització automàtica activada",
+    nightly_disabled_toast: "Sincronització automàtica desactivada",
+    load_error: "No s'ha pogut obtenir l'estat de la sincronització.",
+    error_control_dir_unavailable: "L'aplicació no pot accedir a la carpeta de control de la sincronització: cal revisar-ne la instal·lació.",
+    save_error: "No s'ha pogut desar el canvi."
   }
 }

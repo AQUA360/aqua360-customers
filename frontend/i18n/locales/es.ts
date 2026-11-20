@@ -5071,5 +5071,23 @@ supply_cut_actions:   {
     read_only_notice: "Solo puede ejecutar y exportar este informe.",
     select_report: "Seleccione un informe de la lista para ejecutarlo.",
     unsaved: "Cambios sin guardar"
+  },
+  db_sync: {
+    open_settings: "Sincronización de datos con producción",
+    open_settings_blocked: "Sincronización de datos con producción (desactivada)",
+    title: "Sincronización con producción",
+    subtitle: "Datos del entorno {env}",
+    close: "Cerrar",
+    retry: "Reintentar",
+    nightly_title: "Sincronización automática",
+    nightly_help: "Cada noche se carga en este entorno la última copia de los datos de producción.",
+    nightly_on: "Activada: los datos se sustituyen cada noche.",
+    nightly_off: "Desactivada: los datos de test se conservan.",
+    disabled_by: "Desactivada por {user} el {date}",
+    nightly_enabled_toast: "Sincronización automática activada",
+    nightly_disabled_toast: "Sincronización automática desactivada",
+    load_error: "No se ha podido obtener el estado de la sincronización.",
+    error_control_dir_unavailable: "La aplicación no puede acceder a la carpeta de control de la sincronización: hay que revisar su instalación.",
+    save_error: "No se ha podido guardar el cambio."
   }
 }

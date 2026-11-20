@@ -4,6 +4,7 @@ from rest_framework import routers
 from documentmanager.views_export.generic_export_view import GenericExportView
 
 from coredata.views.config_project_view import ConfigProjectViewSet
+from coredata.views.db_sync_view import DbSyncView
 from coredata.views.deploy_info_view import DeployInfoView
 from coredata.views.identification_type_view import IdentificationTypeViewSet
 from coredata.views.person_contact_view import PersonContactViewSet
@@ -60,6 +61,7 @@ urlpatterns = [
     path('person/export/', GenericExportView.as_view(entity='person'), name='person-export'),
     path('street/export/', GenericExportView.as_view(entity='street'), name='street-export'),
     path('deploy-info/', DeployInfoView.as_view(), name='deploy-info'),
+    path('db-sync/', DbSyncView.as_view(), name='db-sync'),
     path('', include(router.urls)),
     path('province/<int:id>/cities/', ProvinceCitiesViewSet.as_view({'get': 'list'}), name='province-cities'),
     path('person/token/<str:token>/', PersonByTokenViewSet.as_view({'get': 'retrieve'}), name='user-by-token'),

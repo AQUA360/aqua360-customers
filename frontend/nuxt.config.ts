@@ -82,6 +82,7 @@ export default defineNuxtConfig({
 
     // coredata
     '~/plugins/api/coredata/config-project-api.js',
+    '~/plugins/api/coredata/db-sync-api.js',
     '~/plugins/api/coredata/address-api.js',
     '~/plugins/api/coredata/person-api.js',
     '~/plugins/api/coredata/person-address-api.js',

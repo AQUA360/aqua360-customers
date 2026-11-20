@@ -4890,5 +4890,23 @@ export default {
     read_only_notice: "You can only run and export this report.",
     select_report: "Select a report from the list to run it.",
     unsaved: "Unsaved changes"
+  },
+  db_sync: {
+    open_settings: "Data sync with production",
+    open_settings_blocked: "Data sync with production (turned off)",
+    title: "Sync with production",
+    subtitle: "Data in the {env} environment",
+    close: "Close",
+    retry: "Try again",
+    nightly_title: "Automatic sync",
+    nightly_help: "Every night the latest copy of the production data is loaded into this environment.",
+    nightly_on: "On: data is replaced every night.",
+    nightly_off: "Off: test data is kept.",
+    disabled_by: "Turned off by {user} on {date}",
+    nightly_enabled_toast: "Automatic sync turned on",
+    nightly_disabled_toast: "Automatic sync turned off",
+    load_error: "Could not get the sync status.",
+    error_control_dir_unavailable: "The app cannot access the sync control folder: its installation needs checking.",
+    save_error: "Could not save the change."
   }
 }

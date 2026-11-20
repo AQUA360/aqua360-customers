@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { useExploitationStore } from '~/stores/useExploitationStore';
+import EnvBadge from '~/components/organisms/EnvBadge.vue';
 
-const config = useRuntimeConfig();
-const env = config.public.env;
 const exploitationStore = useExploitationStore();
 
 useHead({
@@ -17,16 +16,8 @@ useHead({
 </script>
 <template>
   <div>
-    <!-- Environment Badge -->
-    <div 
-      v-if="env && env !== 'prod' && env !== 'production'" 
-      :class="[
-        'fixed top-0 left-0 z-[9999] text-white px-4 pb-1 text-sm font-bold shadow-lg rounded-br-md',
-        env.toUpperCase() === 'LOCAL' ? 'bg-green-500' : 'bg-orange-500'
-      ]"
-    >
-      {{ env.toUpperCase() }}
-    </div>
+    <!-- Etiqueta de l'entorn (i, a test/staging, configuració de la sincronització amb prod) -->
+    <EnvBadge />
     <NuxtLayout>
       <NuxtPage />
     </NuxtLayout>

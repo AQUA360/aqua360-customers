@@ -170,7 +170,7 @@ Els servidors es desplieguen amb el playbook `playbooks/AquaCustomersDocker` del
 | `03-nginx-docker-cloudflare` | Certificats Cloudflare Origin i llocs Nginx cap als ports Docker |
 | `04-backup-db` | `backup_db.sh` (`pg_dump` dins el contenidor `db`) i cron de backups |
 | `05-copy-backup-to-test` | Còpia diària del darrer backup al servidor de test |
-| `06-restore` | `restore.sh` i neteja de BD antigues (retenció de 3 dies) |
+| `06-restore` | `restore.sh` i neteja de BD antigues (retenció de 3 dies). Al servidor de test també crea `docker-data/sync-control/`: els administradors poden desactivar la sincronització nocturna des de l'etiqueta TEST/STAGING i llavors `restore.sh` no restaura |
 | `07-readonly-db-user` | Usuari PostgreSQL de només lectura |
 
 Als servidors, els ports del host no són els per defecte (`POSTGRES_PORT=5433`, `REDIS_PORT=6380`, `BACKEND_PORT=8001`, `FRONTEND_PORT=3001`) i es poden canviar per client a l’inventari (`docker_*_port`) perquè diverses explotacions comparteixin servidor. El `docker-compose.yml` d’aquest repositori és el mateix que desplega el playbook.
