@@ -4,20 +4,20 @@ import os
 import shutil
 import tempfile
 import zipfile
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from io import BytesIO, StringIO
 from unittest.mock import patch
 
 from django.conf import settings
-from django.contrib.auth.models import Permission, User
+from django.contrib.auth.models import Group, Permission, User
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.cache import cache
 from django.db import connection
 from django.test import TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
 from django.urls import resolve, reverse
-from django.utils import translation
+from django.utils import timezone, translation
 from rest_framework.test import APIClient
 
 from billing.models import (
@@ -46,6 +46,7 @@ from coredata.models import (
     PostalCode,
     Street,
     StreetNumber,
+    StreetNumberType,
     StreetType,
 )
 from contract.models import (
@@ -93,6 +94,7 @@ from ov.throttles import (
     ContractTerminationProcedureThrottle,
     PaymentReceiptThrottle,
     PersonDataThrottle,
+    PersonInvoicesThrottle,
     QuickPayThrottle,
     ReturnRequestThrottle,
 )
@@ -103,6 +105,7 @@ from ov.views import (
     InvoiceReturnRequestOVView,
     PaymentReceiptOVView,
     PersonDataOVView,
+    PersonInvoicesOVView,
     QuickPayOVView,
 )
 
@@ -2432,6 +2435,341 @@ class PropertiesOVTests(TestCase):
         response = anonymous.get(reverse("properties-ov"), {"search": "Major"})
 
         self.assertEqual(response.status_code, 401)
+
+
+class AddressesOVTests(TestCase):
+    """`GET /ov/addresses/?search=` — autocompletat d'adreces dels punts de
+    subministrament amb escala, pis i porta, sense duplicats, amb el sufix
+    del número, sense distingir accents i sense filtrar per l'estat del
+    punt."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(
+            username="ov-addresses-test", password="not-used"
+        )
+        cls.user.groups.add(Group.objects.get_or_create(name="ov")[0])
+        street_type = StreetType.objects.create(
+            abbreviation="C", name="Carrer"
+        )
+        number_type_n = StreetNumberType.objects.get_or_create(
+            type="N", defaults={"description": "Number"}
+        )[0]
+        country = Country.objects.create(name="Espanya", iso_code="ES")
+        city = City.objects.create(token="CITY-ADDR-1", name="Vilanova")
+        street_major = Street.objects.create(
+            name="Major", type=street_type, city=city
+        )
+        street_petit = Street.objects.create(name="Petit", city=city)
+        street_placa = Street.objects.create(name="Plaça Nova", city=city)
+        number_21 = StreetNumber.objects.create(
+            street=street_major, number=21, number_type=number_type_n
+        )
+        # Mateix valor que number_21 però en una altra fila
+        number_21_bis = StreetNumber.objects.create(
+            street=street_major, number=21, number_type=number_type_n
+        )
+        number_21a = StreetNumber.objects.create(
+            street=street_major,
+            number=21,
+            number_suffix="A",
+            number_type=number_type_n,
+        )
+        number_sn_b = StreetNumber.objects.create(
+            street=street_petit,
+            number_suffix="B",
+            number_type=StreetNumberType.objects.get_or_create(
+                type="SN", defaults={"description": "S/N"}
+            )[0],
+        )
+        cls.finca = Property.objects.create(token="PR-ADDR-1", is_active=True)
+        cls.finca_2 = Property.objects.create(token="PR-ADDR-2", is_active=True)
+
+        def make_address(street, number, **fields):
+            return Address.objects.create(
+                street=street,
+                street_number=number,
+                city=city,
+                country=country,
+                postal_code="08800",
+                **fields,
+            )
+
+        cls.address_2n1a = make_address(
+            street_major, number_21, stair="A", floor="2n", door="1a"
+        )
+        cls.address_1r2a = make_address(
+            street_major, number_21, stair="A", floor="1r", door="2a"
+        )
+        # Una altra fila amb els mateixos valors (com passa a les dades migrades)
+        cls.address_1r2a_copy = make_address(
+            street_major, number_21_bis, stair="A", floor="1r", door="2a"
+        )
+        cls.address_baixa = make_address(
+            street_major, number_21, stair="B", floor="3r", door="1a"
+        )
+        cls.address_without_sp = make_address(
+            street_major, number_21, stair="C", floor="4t", door="1a"
+        )
+        cls.address_21a = make_address(street_major, number_21a)
+        cls.address_petit = make_address(street_petit, None, floor="Baixos")
+        cls.address_placa = make_address(street_placa, None, door="Local")
+        cls.address_sn_b = make_address(street_petit, number_sn_b)
+
+        SupplyPoint.objects.create(
+            token="SP-ADDR-1", address=cls.address_2n1a, property=cls.finca
+        )
+        # Dos punts a la mateixa fila d'adreça i un tercer en una fila
+        # repetida: ha de sortir un sol cop amb els tres
+        SupplyPoint.objects.create(
+            token="SP-ADDR-2", address=cls.address_1r2a, property=cls.finca
+        )
+        SupplyPoint.objects.create(token="SP-ADDR-3", address=cls.address_1r2a)
+        SupplyPoint.objects.create(
+            token="SP-ADDR-5",
+            address=cls.address_1r2a_copy,
+            property=cls.finca_2,
+        )
+        # Punt de baixa: l'adreça també ha de sortir
+        SupplyPoint.objects.create(
+            token="SP-ADDR-OFF", address=cls.address_baixa, is_active=False
+        )
+        SupplyPoint.objects.create(token="SP-ADDR-4", address=cls.address_petit)
+        SupplyPoint.objects.create(token="SP-ADDR-6", address=cls.address_21a)
+        SupplyPoint.objects.create(token="SP-ADDR-7", address=cls.address_placa)
+        SupplyPoint.objects.create(token="SP-ADDR-8", address=cls.address_sn_b)
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def _search(self, term, **params):
+        return self.client.get(
+            reverse("addresses-ov"), {"search": term, **params}
+        )
+
+    def _addresses(self, response):
+        return [item["address"] for item in response.data["results"]]
+
+    def test_returns_formatted_address_atomic_fields_and_supply_points(self):
+        response = self._search("Major 21 2n")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.data["results"],
+            [
+                {
+                    "address": "C. Major, 21 Esc. A 2n-1a, Vilanova",
+                    "street_type": "C",
+                    "street_name": "Major",
+                    "street_number": 21,
+                    "street_number_suffix": None,
+                    "stair": "A",
+                    "building": None,
+                    "floor": "2n",
+                    "door": "1a",
+                    "address_extra": None,
+                    "postal_code": "08800",
+                    "city": "Vilanova",
+                    "supply_points": [
+                        {"token": "SP-ADDR-1", "property_token": "PR-ADDR-1"}
+                    ],
+                }
+            ],
+        )
+
+    def test_same_address_in_several_rows_is_returned_once(self):
+        response = self._search("Major 1r")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(
+            response.data["results"][0]["supply_points"],
+            [
+                {"token": "SP-ADDR-2", "property_token": "PR-ADDR-1"},
+                {"token": "SP-ADDR-3", "property_token": None},
+                {"token": "SP-ADDR-5", "property_token": "PR-ADDR-2"},
+            ],
+        )
+
+    def test_includes_inactive_supply_points_and_skips_addresses_without_sp(self):
+        response = self._search("Major 21")
+
+        self.assertEqual(response.status_code, 200)
+        # Ordre: carrer, número, sufix, escala, pis, porta
+        self.assertEqual(
+            self._addresses(response),
+            [
+                str(self.address_1r2a),
+                str(self.address_2n1a),
+                str(self.address_baixa),
+                "C. Major, 21-A, Vilanova",
+            ],
+        )
+
+    def test_number_suffix_is_shown_and_searchable(self):
+        for term in ("Major 21A", "Major 21-A", "Major 21 A"):
+            with self.subTest(term=term):
+                response = self._search(term)
+                self.assertEqual(response.status_code, 200)
+                self.assertIn("C. Major, 21-A, Vilanova", self._addresses(response))
+        item = self._search("Major 21A").data["results"][0]
+        self.assertEqual(
+            (item["street_number"], item["street_number_suffix"]), (21, "A")
+        )
+        # Cercar «21A» no torna el 21 sense sufix
+        self.assertEqual(self._search("Major 21A").data["count"], 1)
+        # El sufix d'un S/N també es veu
+        self.assertIn(
+            "Petit, S/N-B, Vilanova", self._addresses(self._search("Petit"))
+        )
+
+    def test_search_ignores_accents(self):
+        for term in ("Plaça", "Placa", "PLAÇA", "plaça nova"):
+            with self.subTest(term=term):
+                response = self._search(term)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(self._addresses(response), [str(self.address_placa)])
+
+    def test_search_matches_stair_floor_door_city_and_postal_code(self):
+        for term, expected in (
+            ("Major 21 B", [str(self.address_baixa)]),
+            ("Baixos", [str(self.address_petit)]),
+            ("Major 3r 1a", [str(self.address_baixa)]),
+            ("Petit Vilanova 08800 Baixos", [str(self.address_petit)]),
+            ("Local", [str(self.address_placa)]),
+        ):
+            with self.subTest(term=term):
+                response = self._search(term)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(self._addresses(response), expected)
+
+    def test_results_are_paginated(self):
+        response = self._search("Vilanova", limit=2, page=2)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["count"], 7)
+        self.assertEqual(response.data["total_pages"], 4)
+        self.assertEqual(len(response.data["results"]), 2)
+
+    def test_query_count_does_not_grow_with_results(self):
+        def count_queries(term):
+            with CaptureQueriesContext(connection) as queries:
+                response = self._search(term)
+            self.assertEqual(response.status_code, 200)
+            return len(response.data["results"]), len(queries)
+
+        one_result, one_queries = count_queries("Major 2n")
+        all_results, all_queries = count_queries("Vilanova")
+
+        self.assertEqual((one_result, all_results), (1, 7))
+        # Sense N+1: les mateixes consultes per a 1 adreça que per a 7
+        self.assertEqual(one_queries, all_queries)
+
+    def test_invalid_search_returns_400(self):
+        for term, error in (
+            ("", "Search is required"),
+            ("ab", "Search must be at least 3 characters"),
+            ("...", "Search must contain at least one valid term"),
+        ):
+            with self.subTest(term=term):
+                response = self._search(term)
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(response.data, {"error": error})
+
+    def test_requires_authentication(self):
+        response = APIClient().get(
+            reverse("addresses-ov"), {"search": "Major"}
+        )
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_equivalent_number_types_are_returned_once(self):
+        """Sense tipus, «N» i «S» es veuen igual: una sola adreça. El número
+        amagat d'un S/N tampoc separa adreces ni es pot cercar."""
+        city = City.objects.create(token="CITY-ADDR-2", name="Castellet")
+        country = Country.objects.get(iso_code="ES")
+        street = Street.objects.create(name="Riera", city=city)
+        types = {
+            code: StreetNumberType.objects.get_or_create(
+                type=code, defaults={"description": code}
+            )[0]
+            for code in ("N", "S", "SN")
+        }
+        numbers = [
+            StreetNumber.objects.create(street=street, number=7),
+            StreetNumber.objects.create(
+                street=street, number=7, number_type=types["N"]
+            ),
+            StreetNumber.objects.create(
+                street=street, number=7, number_type=types["S"]
+            ),
+            StreetNumber.objects.create(
+                street=street, number=3, number_type=types["SN"]
+            ),
+            StreetNumber.objects.create(
+                street=street, number=4, number_type=types["SN"]
+            ),
+        ]
+        for index, number in enumerate(numbers):
+            SupplyPoint.objects.create(
+                token=f"SP-RIERA-{index}",
+                address=Address.objects.create(
+                    street=street,
+                    street_number=number,
+                    city=city,
+                    country=country,
+                ),
+            )
+
+        response = self._search("Riera Castellet")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [
+                (item["address"], [sp["token"] for sp in item["supply_points"]])
+                for item in response.data["results"]
+            ],
+            [
+                ("Riera, 7, Castellet", ["SP-RIERA-0", "SP-RIERA-1", "SP-RIERA-2"]),
+                # Els S/N (sense número) van després dels números
+                ("Riera, S/N, Castellet", ["SP-RIERA-3", "SP-RIERA-4"]),
+            ],
+        )
+        self.assertEqual(self._search("Riera 3").data["count"], 0)
+        # El número amagat d'un S/N tampoc es retorna
+        self.assertIsNone(response.data["results"][1]["street_number"])
+
+    def test_group_is_matched_as_a_whole(self):
+        """Una fila del grup amb `city_name` diferent (que no es mostra perquè
+        hi ha població) no parteix el grup en cercar-lo."""
+        Address.objects.filter(pk=self.address_1r2a_copy.pk).update(
+            city_name="Altrevila"
+        )
+
+        self.assertEqual(self._search("Altrevila").data["count"], 0)
+        response = self._search("Major 1r Vilanova")
+        self.assertEqual(
+            [sp["token"] for sp in response.data["results"][0]["supply_points"]],
+            ["SP-ADDR-2", "SP-ADDR-3", "SP-ADDR-5"],
+        )
+
+    def test_requires_ov_group_or_superuser(self):
+        client = APIClient()
+        client.force_authenticate(
+            User.objects.create_user(username="no-ov", password="not-used")
+        )
+        self.assertEqual(
+            client.get(reverse("addresses-ov"), {"search": "Major"}).status_code,
+            403,
+        )
+        client.force_authenticate(
+            User.objects.create_superuser(username="admin-ov", password="not-used")
+        )
+        self.assertEqual(
+            client.get(reverse("addresses-ov"), {"search": "Major"}).status_code,
+            200,
+        )
 
 
 class PersonDataOVTests(TestCase):
@@ -6543,4 +6881,522 @@ class ContractChangeProcedureOVTests(TestCase):
         self.assertIs(
             resolve(reverse("contract-procedure-ov")).func.view_class,
             ContractProcedureOVView,
+        )
+
+
+class FutureInvoiceVisibilityOVTests(TestCase):
+    """Les factures amb data d'emissió futura no es veuen a l'OV fins aquell
+    dia: ni al llistat ni en cap endpoint que les busqui per token o número.
+    Les que no tenen data es continuen mostrant."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(
+            username="ov-future-invoices-test", password="not-used"
+        )
+        for token, value in (
+            ("contract_termination_completed_token", "3"),
+            ("contract_terminated_status", "-1"),
+            ("invoice_type_invoice_token", "F"),
+            ("invoice_status_paid_token", "0"),
+            ("invoice_status_cancelled_token", "-6"),
+        ):
+            ConfigProject.objects.update_or_create(
+                token=token, defaults={"value": value}
+            )
+        cls.contract = Contract.objects.create(token="FUT-CONTRACT")
+        cls.sent_status = InvoiceStatus.objects.create(token="3", name="Enviada")
+        today = timezone.localdate()
+        cls.invoices = {}
+        for key, issue_date in (
+            ("today", today),
+            ("past", today - timedelta(days=1)),
+            ("future", today + timedelta(days=1)),
+            ("no_date", None),
+        ):
+            cls.invoices[key] = Invoice.objects.create(
+                token=f"FUT-INV-{key}",
+                serie_final=f"FC/FUT/{key}",
+                contract=cls.contract,
+                status=cls.sent_status,
+                type_final="F",
+                issue_date=issue_date,
+                total_final=Decimal("10.00"),
+                left_to_pay=Decimal("10.00"),
+            )
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def _tokens(self, data):
+        return {item["invoice_token"] for item in data}
+
+    def test_list_hides_future_invoices(self):
+        response = self.client.get(
+            reverse("invoices-ov"), {"contract_token": self.contract.token}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            self._tokens(response.data),
+            {"FUT-INV-today", "FUT-INV-past", "FUT-INV-no_date"},
+        )
+
+    def test_unpayed_hides_future_invoices(self):
+        response = self.client.get(
+            reverse("unpayed-invoices-ov"),
+            {"contract_token": self.contract.token, "statuses": "3"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("FUT-INV-future", self._tokens(response.data))
+        self.assertIn("FUT-INV-today", self._tokens(response.data))
+
+    def test_invoice_detail_hides_future_invoice(self):
+        for key, expected in (("today", 200), ("future", 400)):
+            with self.subTest(key=key):
+                response = self.client.get(
+                    reverse("invoice-ov"),
+                    {
+                        "contract_token": self.contract.token,
+                        "invoice_token": self.invoices[key].token,
+                    },
+                )
+                self.assertEqual(response.status_code, expected)
+
+    def test_full_detail_hides_future_invoice(self):
+        response = self.client.get(
+            reverse(
+                "invoice-detail-by-token-ov",
+                kwargs={"token": self.invoices["future"].token},
+            )
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_pdf_hides_future_invoice_by_token_and_number(self):
+        future = self.invoices["future"]
+        with patch("ov.views.generate_report_invoice_pdf") as generate:
+            for invoice_token in (future.token, future.serie_final):
+                with self.subTest(invoice_token=invoice_token):
+                    response = self.client.get(
+                        reverse("invoice-pdf-ov"),
+                        {
+                            "contract_token": self.contract.token,
+                            "invoice_token": invoice_token,
+                        },
+                    )
+                    self.assertEqual(response.status_code, 404)
+        generate.assert_not_called()
+
+    def test_batch_download_rejects_future_invoice(self):
+        url = (
+            reverse("batch-invoice-download-ov")
+            + f"?contract_token={self.contract.token}"
+        )
+        response = self.client.post(
+            url,
+            {"invoice_tokens": [self.invoices["future"].token]},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("invoice_tokens", response.data)
+
+    def test_quick_pay_does_not_find_future_invoice(self):
+        response = self.client.post(
+            reverse("quick-pay-ov"),
+            {
+                "contract_number": self.contract.token,
+                "invoice_number": self.invoices["future"].serie_final,
+                "amount": "10.00",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_invoice_paid_does_not_find_future_invoice(self):
+        response = self.client.post(
+            reverse("invoice-paid-ov"),
+            {
+                "contract_token": self.contract.token,
+                "invoice_token": self.invoices["future"].token,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.invoices["future"].refresh_from_db()
+        self.assertEqual(self.invoices["future"].status, self.sent_status)
+
+    def test_last_invoice_date_ignores_future_invoices(self):
+        from ov.serializers import ContractSerializer
+
+        Invoice.objects.filter(pk=self.invoices["future"].pk).update(
+            created_at=timezone.now() + timedelta(minutes=5)
+        )
+        expected = (
+            Invoice.objects.filter(contract=self.contract)
+            .exclude(pk=self.invoices["future"].pk)
+            .order_by("-created_at")
+            .values_list("created_at", flat=True)
+            .first()
+        )
+
+        last_invoice_date = ContractSerializer().get_last_invoice_date(self.contract)
+
+        self.assertIsNotNone(last_invoice_date)
+        self.assertEqual(last_invoice_date, expected)
+
+
+class PersonInvoicesOVTests(TestCase):
+    """`GET /ov/person-invoices/?dni=` — factures on la persona ha estat
+    titular o pagadora segons les dades congelades a la factura, agrupades per
+    contracte."""
+
+    URL_NAME = "person-invoices-ov"
+    DNI = "11111111H"
+    OTHER_DNI = "22222222J"
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(
+            username="ov-person-invoices-test", password="not-used"
+        )
+        # Compte de servei de l'OV: l'endpoint només l'admet a ell.
+        cls.user.groups.add(Group.objects.get_or_create(name="ov")[0])
+        cls.internal_user = User.objects.create_user(
+            username="ov-person-invoices-internal", password="not-used"
+        )
+        for token, value in (
+            ("contract_termination_completed_token", "3"),
+            ("contract_terminated_status", "-1"),
+            ("invoice_status_paid_token", "0"),
+            ("invoice_status_cancelled_token", "-1"),
+        ):
+            if not ConfigProject.objects.filter(token=token).exists():
+                ConfigProject.objects.create(token=token, value=value)
+        cls.contract_status = ContractStatus.objects.create(token="1", name="Alta")
+        cls.dropped_status = ContractStatus.objects.create(token="-1", name="Baixa")
+        cls.invoice_status = InvoiceStatus.objects.create(token="3", name="Enviada")
+        cls.preinvoice_status = InvoiceStatus.objects.create(
+            token="1", name="Prefactura"
+        )
+
+        street_type = StreetType.objects.create(abbreviation="C", name="Carrer")
+        city = City.objects.create(token="CITY-PINV", name="Ciutat")
+        street = Street.objects.create(name="Major", type=street_type, city=city)
+        number = StreetNumber.objects.create(street=street, number=10)
+        country = Country.objects.create(name="Espanya", iso_code="ES")
+        address = Address.objects.create(
+            token="ADDRESS-PINV",
+            street=street,
+            street_number=number,
+            city=city,
+            country=country,
+        )
+        supply_point = SupplyPoint.objects.create(token="SP-PINV", address=address)
+
+        cls.contract = Contract.objects.create(
+            token="CTR-PINV-1",
+            status=cls.contract_status,
+            supply_point_default=supply_point,
+        )
+        # Contracte de baixa: les factures hi continuen sortint.
+        cls.dropped_contract = Contract.objects.create(
+            token="CTR-PINV-2", status=cls.dropped_status
+        )
+
+        def invoice(token, contract, issue_date, customer, payer=None, **extra):
+            return Invoice.objects.create(
+                token=token,
+                serie_final=f"F-{token}",
+                contract=contract,
+                status=extra.pop("status", cls.invoice_status),
+                issue_date=issue_date,
+                customer_token_final=customer,
+                payer_token_final=payer,
+                total_final=Decimal("100.00"),
+                left_to_pay=Decimal("40.00"),
+                **extra,
+            )
+
+        # Titular, sense pagador: és titular i pagadora.
+        cls.holder_no_payer = invoice(
+            "PINV-1", cls.contract, date(2026, 1, 15), cls.DNI
+        )
+        # Titular amb un altre pagador.
+        cls.holder_only = invoice(
+            "PINV-2", cls.contract, date(2026, 2, 15), cls.DNI, cls.OTHER_DNI
+        )
+        # Pagadora d'un altre titular.
+        cls.payer_only = invoice(
+            "PINV-3", cls.dropped_contract, date(2026, 3, 15), cls.OTHER_DNI, cls.DNI
+        )
+        # Titular i pagadora explícita alhora.
+        cls.both = invoice(
+            "PINV-4", cls.contract, date(2026, 4, 15), cls.DNI, cls.DNI
+        )
+        # Canvi de titular: el contracte és el mateix, però aquesta factura és
+        # d'un altre titular i no ha de sortir.
+        cls.other_holder = invoice(
+            "PINV-5", cls.contract, date(2026, 5, 15), cls.OTHER_DNI
+        )
+        # Prefactura de la persona: s'exclou.
+        cls.preinvoice = invoice(
+            "PINV-6",
+            cls.contract,
+            date(2026, 6, 15),
+            cls.DNI,
+            status=cls.preinvoice_status,
+        )
+        # Factura sense contracte (escomesa, reclamació...).
+        cls.no_contract = invoice("PINV-7", None, date(2026, 2, 1), cls.DNI)
+
+    def setUp(self):
+        cache.clear()
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def _get(self, **params):
+        return self.client.get(reverse(self.URL_NAME), params)
+
+    @staticmethod
+    def _invoices(response):
+        return {
+            item["invoice_token"]: item
+            for group in response.data["results"]
+            for item in group["invoices"]
+        }
+
+    @staticmethod
+    def _group(response, contract_number):
+        for group in response.data["results"]:
+            if group["contract_number"] == contract_number:
+                return group
+        return None
+
+    # --- quines factures ---------------------------------------------------
+
+    def test_returns_invoices_as_holder_and_payer(self):
+        response = self._get(dni=self.DNI)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            set(self._invoices(response)),
+            {"PINV-1", "PINV-2", "PINV-3", "PINV-4", "PINV-7"},
+        )
+
+    def test_holder_flags(self):
+        invoices = self._invoices(self._get(dni=self.DNI))
+
+        self.assertTrue(invoices["PINV-2"]["is_holder"])
+        self.assertFalse(invoices["PINV-2"]["is_payer"])
+
+    def test_payer_flags(self):
+        invoices = self._invoices(self._get(dni=self.DNI))
+
+        self.assertFalse(invoices["PINV-3"]["is_holder"])
+        self.assertTrue(invoices["PINV-3"]["is_payer"])
+
+    def test_holder_and_payer_appears_once_with_both_flags(self):
+        response = self._get(dni=self.DNI)
+        tokens = [
+            item["invoice_token"]
+            for group in response.data["results"]
+            for item in group["invoices"]
+        ]
+
+        self.assertEqual(tokens.count("PINV-4"), 1)
+        item = self._invoices(response)["PINV-4"]
+        self.assertTrue(item["is_holder"])
+        self.assertTrue(item["is_payer"])
+
+    def test_empty_payer_means_holder_is_payer(self):
+        item = self._invoices(self._get(dni=self.DNI))["PINV-1"]
+
+        self.assertTrue(item["is_holder"])
+        self.assertTrue(item["is_payer"])
+
+    def test_holder_change_uses_invoice_data_not_current_contract(self):
+        mine = self._invoices(self._get(dni=self.DNI))
+        others = self._invoices(self._get(dni=self.OTHER_DNI))
+
+        self.assertNotIn("PINV-5", mine)
+        self.assertIn("PINV-5", others)
+        self.assertNotIn("PINV-1", others)
+
+    def test_preinvoices_are_excluded(self):
+        self.assertNotIn("PINV-6", self._invoices(self._get(dni=self.DNI)))
+
+    def test_future_dated_invoices_are_hidden(self):
+        future = Invoice.objects.create(
+            token="PINV-FUTURE",
+            serie_final="F-PINV-FUTURE",
+            contract=self.contract,
+            status=self.invoice_status,
+            issue_date=timezone.localdate() + timedelta(days=1),
+            customer_token_final=self.DNI,
+        )
+        today = Invoice.objects.create(
+            token="PINV-TODAY",
+            serie_final="F-PINV-TODAY",
+            contract=self.contract,
+            status=self.invoice_status,
+            issue_date=timezone.localdate(),
+            customer_token_final=self.DNI,
+        )
+
+        invoices = self._invoices(self._get(dni=self.DNI))
+
+        self.assertNotIn(future.token, invoices)
+        self.assertIn(today.token, invoices)
+
+    def test_invoices_without_contract_are_grouped(self):
+        group = self._group(self._get(dni=self.DNI), None)
+
+        self.assertIsNotNone(group)
+        self.assertIsNone(group["contract_status"])
+        self.assertIsNone(group["supply_address"])
+        self.assertEqual(
+            [item["invoice_token"] for item in group["invoices"]], ["PINV-7"]
+        )
+
+    def test_dni_with_different_format_is_normalized(self):
+        response = self._get(dni=" 11.111.111-h ")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("PINV-1", self._invoices(response))
+
+    def test_unknown_dni_returns_empty_results(self):
+        response = self._get(dni="99999999R")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, {"results": []})
+
+    # --- forma de la resposta ----------------------------------------------
+
+    def test_group_contains_contract_data(self):
+        response = self._get(dni=self.DNI)
+        group = self._group(response, "CTR-PINV-1")
+        dropped = self._group(response, "CTR-PINV-2")
+
+        self.assertEqual(group["contract_status"], {"token": "1", "name": "Alta"})
+        self.assertEqual(group["supply_address"], "C. Major, 10, Ciutat")
+        self.assertEqual(dropped["contract_status"], {"token": "-1", "name": "Baixa"})
+        self.assertIsNone(dropped["supply_address"])
+
+    def test_invoices_sorted_newest_first_within_group(self):
+        group = self._group(self._get(dni=self.DNI), "CTR-PINV-1")
+
+        self.assertEqual(
+            [item["invoice_token"] for item in group["invoices"]],
+            ["PINV-4", "PINV-2", "PINV-1"],
+        )
+
+    def test_amount_is_total_and_pending_is_separate(self):
+        item = self._invoices(self._get(dni=self.DNI))["PINV-1"]
+
+        self.assertEqual(item["invoice_amount"], 100.0)
+        self.assertEqual(item["pending_amount"], 40.0)
+        self.assertEqual(item["invoice_number"], "F-PINV-1")
+        self.assertEqual(item["invoice_date"], "2026-01-15")
+        self.assertEqual(item["invoice_status"], "Enviada")
+        self.assertEqual(item["status"], {"token": "3", "name": "Enviada"})
+        self.assertTrue(item["pdf_available"])
+
+    def test_pdf_available_reads_config_once_per_request(self):
+        ConfigProject.objects.create(token="ov_pdf_from", value="2026-02-01")
+
+        with CaptureQueriesContext(connection) as queries:
+            response = self._get(dni=self.DNI)
+
+        invoices = self._invoices(response)
+        self.assertFalse(invoices["PINV-1"]["pdf_available"])
+        self.assertTrue(invoices["PINV-2"]["pdf_available"])
+        config_queries = [
+            q for q in queries.captured_queries if "ov_pdf_from" in q["sql"]
+        ]
+        self.assertEqual(len(config_queries), 1)
+        # Factures + configuració, sense consultes per factura (N+1). Es
+        # descompten les dels middlewares (grups de l'usuari i auditoria).
+        data_queries = [
+            q["sql"]
+            for q in queries.captured_queries
+            if q["sql"].startswith('SELECT "') and "auth_" not in q["sql"]
+        ]
+        self.assertEqual(len(data_queries), 2, data_queries)
+
+    # --- filtre de dates ---------------------------------------------------
+
+    def test_date_from_only(self):
+        invoices = self._invoices(self._get(dni=self.DNI, date_from="2026-03-01"))
+
+        self.assertEqual(set(invoices), {"PINV-3", "PINV-4"})
+
+    def test_date_to_only(self):
+        invoices = self._invoices(self._get(dni=self.DNI, date_to="2026-02-01"))
+
+        self.assertEqual(set(invoices), {"PINV-1", "PINV-7"})
+
+    def test_date_range_bounds_are_inclusive(self):
+        response = self._get(dni=self.DNI, date_from="2026-02-15", date_to="2026-03-15")
+
+        self.assertEqual(set(self._invoices(response)), {"PINV-2", "PINV-3"})
+
+    def test_contracts_without_invoices_in_range_are_omitted(self):
+        response = self._get(dni=self.DNI, date_from="2026-03-01", date_to="2026-03-31")
+
+        self.assertEqual(
+            [group["contract_number"] for group in response.data["results"]],
+            ["CTR-PINV-2"],
+        )
+
+    def test_invalid_date_format_returns_400(self):
+        for value in ("15/01/2026", "2026-1-5", "2026-02-30", "abc"):
+            with self.subTest(value=value):
+                self.assertEqual(
+                    self._get(dni=self.DNI, date_from=value).status_code, 400
+                )
+                self.assertEqual(
+                    self._get(dni=self.DNI, date_to=value).status_code, 400
+                )
+
+    def test_inverted_range_returns_400(self):
+        response = self._get(dni=self.DNI, date_from="2026-03-01", date_to="2026-02-01")
+
+        self.assertEqual(response.status_code, 400)
+
+    # --- seguretat i encaminament ------------------------------------------
+
+    def test_missing_dni_returns_400(self):
+        self.assertEqual(self._get().status_code, 400)
+        self.assertEqual(self._get(dni=" - ").status_code, 400)
+
+    def test_requires_authentication(self):
+        response = APIClient().get(reverse(self.URL_NAME), {"dni": self.DNI})
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_internal_user_outside_ov_group_is_forbidden(self):
+        client = APIClient()
+        client.force_authenticate(self.internal_user)
+
+        response = client.get(reverse(self.URL_NAME), {"dni": self.DNI})
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_endpoint_uses_dedicated_throttle(self):
+        self.assertEqual(
+            PersonInvoicesOVView.throttle_classes, [PersonInvoicesThrottle]
+        )
+        self.assertEqual(PersonInvoicesThrottle.scope, "ov_person_invoices_dni")
+        self.assertEqual(PersonInvoicesThrottle.rate, "35/min")
+
+    def test_route(self):
+        self.assertEqual(reverse(self.URL_NAME), "/ov/person-invoices/")
+        self.assertIs(
+            resolve(reverse(self.URL_NAME)).func.view_class, PersonInvoicesOVView
         )

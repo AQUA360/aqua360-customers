@@ -879,6 +879,10 @@ class Invoice(models.Model):
         # factures per tornar-ne 50 (0,5 s amb 34.000 factures); amb, 0,04 s.
         indexes = [
             models.Index(fields=['-issue_date', '-created_at'], name='invoice_list_order_idx'),
+            # Factures d'una persona a l'OV (/ov/person-invoices/): es busca pel
+            # titular o el pagador congelats a la factura.
+            models.Index(fields=['customer_token_final'], name='invoice_customer_token_idx'),
+            models.Index(fields=['payer_token_final'], name='invoice_payer_token_idx'),
         ]
         
     def __str__(self):
