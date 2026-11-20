@@ -6533,3 +6533,43 @@ msgstr "No s'ha pogut generar la factura de la nova alta."
 #: billing/views/invoice_view.py
 msgid "An unexpected error has occurred."
 msgstr "S'ha produït un error inesperat."
+
+#: billing/utils/remittance_bank_check.py
+msgid "bank account"
+msgstr "compte bancari"
+
+#: billing/utils/remittance_bank_check.py
+msgid "company name"
+msgstr "nom de l'empresa"
+
+#: billing/utils/remittance_bank_check.py
+msgid "company tax ID (NIF)"
+msgstr "NIF de l'empresa"
+
+#: billing/utils/remittance_bank_check.py
+msgid "IBAN"
+msgstr "IBAN"
+
+#: billing/utils/remittance_bank_check.py
+msgid "BIC/SWIFT"
+msgstr "BIC/SWIFT"
+
+#: billing/utils/remittance_bank_check.py
+msgid "SEPA creditor identifier"
+msgstr "identificador de creditor SEPA"
+
+#: billing/utils/remittance_bank_check.py
+msgid "a valid IBAN (the current one is not correct)"
+msgstr "un IBAN vàlid (el que hi ha no és correcte)"
+
+#: billing/utils/remittance_bank_check.py
+msgid "a valid BIC/SWIFT (the current one is not correct)"
+msgstr "un BIC/SWIFT vàlid (el que hi ha no és correcte)"
+
+#: billing/utils/remittance_bank_check.py
+msgid "The account {account} is not linked to any company. Assign it to a company before generating the remittance."
+msgstr "El compte {account} no està assignat a cap empresa. Assigneu-lo a una empresa abans de generar la remesa."
+
+#: billing/utils/remittance_bank_check.py
+msgid "The account {account} of {company} is missing: {fields}. Fill it in in the company's bank details and search again."
+msgstr "Al compte {account} de {company} li falta: {fields}. Completeu-ho a les dades bancàries de l'empresa i torneu a cercar."

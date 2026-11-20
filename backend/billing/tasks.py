@@ -3651,6 +3651,11 @@ def generate_sepa_document(self, request_data):
     if not plan:
       raise ValueError("No payments found to generate SEPA documents.")
 
+    # Es torna a comprovar aquí: els comptes poden haver canviat mentre la
+    # tasca era a la cua.
+    from billing.utils.remittance_bank_check import check_company_banks
+    check_company_banks(list({step[0].id: step[0] for step in plan}.values()))
+
     payments_counter = 0
 
     document_ids = []
@@ -3750,6 +3755,9 @@ def regenerate_sepa_file(self, payment_remittance_id, payment_ids, send_date):
 
     if not payment_remittance.company_bank:
       raise ValueError("PaymentRemittance has no company_bank.")
+
+    from billing.utils.remittance_bank_check import check_company_banks
+    check_company_banks([payment_remittance.company_bank])
 
     # Mark it as processing for UI consistency.
     payment_remittance.status = processing_status

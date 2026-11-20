@@ -22,6 +22,9 @@ from billing.utils.sepa_file_service import (
     build_payment_sepa_concept, generate_xml, generate_xml_payments, get_saved_concept_fields, normalize_concept_fields,
     save_concept_fields, SEPA_CONCEPT_FIELDS,
 )
+from billing.utils.remittance_bank_check import (
+    RemittanceBankDataError, check_company_banks, get_company_banks_issues,
+)
 from coredata.models import Bank, ConfigProject
 from coredata.utils.iban_validator_utils import validate_iban
 from coredata.utils.validators_utils import validate_nif
@@ -650,6 +653,23 @@ class SEPAPaymentDocumentGenerateViewSet(APIView):
             # Enqueue background generation and return the Celery task id.
             from billing.tasks import generate_sepa_document
 
+            # Abans d'encuar es comprova que els comptes tenen les dades que
+            # demana el fitxer: si no, el fitxer sortiria buit d'aquells camps
+            # i el banc el rebutjaria sense dir què falta.
+            try:
+                distribution = get_bank_distribution(request.data)
+                check_company_banks(
+                    CompanyBank.objects.filter(id__in=[bank_id for bank_id, _ in distribution])
+                    .select_related('bank', 'company').order_by('id')
+                )
+            except RemittanceBankDataError as error:
+                return Response(
+                    {"error": str(error), "bank_issues": error.bank_issues},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            except ValueError as error:
+                return Response({"error": str(error)}, status=status.HTTP_400_BAD_REQUEST)
+
             # Ensure payload is JSON serializable for Celery.
             payload = request.data.copy() if hasattr(request.data, "copy") else dict(request.data)
             payload = json.loads(json.dumps(payload, default=str))
@@ -695,6 +715,8 @@ class SEPAPaymentDocumentGenerateViewSet(APIView):
                 "total_sepa_files": len(bank_batches),
             })
 
+        bank_issues = get_company_banks_issues(company_banks.values())
+
         response_data = {
             "total_invoices": len(payments),
             "total_amount": total_import,
@@ -703,6 +725,7 @@ class SEPAPaymentDocumentGenerateViewSet(APIView):
             "total_sepa_files": total_sepa_files,
             "banks": banks_summary,
             "routing_warnings": routing_warnings,
+            "bank_issues": bank_issues,
         }
 
         return JsonResponse(response_data)

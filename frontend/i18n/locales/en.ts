@@ -2563,6 +2563,7 @@ export default {
     edit_bank_name: 'Entity name in the catalogue (editable)',
     info_default_not_chosen: 'Nobody picked the default account: it is just the first active one. Set one in the «Default» row.',
     routing_warnings: 'Routing warnings',
+    remittance_bank_issues: 'Company bank accounts are missing data: the remittance cannot be generated',
     routing_warning_company_without_default_bank: 'payments from a company with no default account: they go to the first active account, which nobody picked.',
     routing_warning_payment_without_iban: 'payments without IBAN: no rule routes them and they go to the default account.',
     routing_warning_payment_from_other_company: 'payments from a company you have not selected.',
