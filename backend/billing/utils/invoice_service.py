@@ -29,6 +29,7 @@ from billing.models import AppliedAdjustment, EstimatedBag, Payment, Reading, Re
 from django.db.models import Q
 
 from coredata.utils.address_utils import get_address_complete_without_city, get_address_complete_with_city
+from billing.utils.connection_request_invoice import format_location, get_address_fields, get_connection_request_billing_address
 
 from billing.utils.adjustment_service import calc_consumption_responsible, get_contract_min_persons
 from .invoice_line_item_service import create_from_lineitemtype, create_from_lineitemtype_connection, constrain_total_value, get_last_reading
@@ -3326,6 +3327,12 @@ def generate_empty_invoice(contract, connection_request, person, title, payment_
             address = billing_address.address if billing_address else None
         else:
             address = None
+        if connection_request and not contract:
+            # La persona d'una sol·licitud pot no tenir contracte ni adreces: mai
+            # la primera adreça qualsevol, que pot ser d'un altre punt.
+            address_fields = get_connection_request_billing_address(connection_request)
+        else:
+            address_fields = get_address_fields(address) if address else None
         origin = ProductOrigin.objects.get(token=ConfigProject.objects.get(token='origin_other_token').value)
         invoice_type = InvoiceType.objects.get(token=ConfigProject.objects.get(token='invoice_type_budget_token').value) if is_budget else InvoiceType.objects.get(token=ConfigProject.objects.get(token='invoice_type_invoice_token').value)
 
@@ -3386,13 +3393,13 @@ def generate_empty_invoice(contract, connection_request, person, title, payment_
             'customer_tlf_final': contract.person_contact_sms.first().phone if contract and contract.person_contact_sms.count() > 0 else None,
             'customer_email_final': contract.person_contact_email.email if contract and contract.person_contact_email else None,
             'customer_is_juridic': contract.holder.is_juridic if contract and contract.holder else person.is_juridic if person else False,
-            "country_final": address.country.iso_code if address else "-",
+            "country_final": address_fields['country_iso'] if address_fields else "-",
             "customer_is_juridic": contract.holder.is_juridic if contract and contract.holder else person.is_juridic if person else False,
-            'address_final': get_address_complete_without_city(address) if address else "-",
-            'postal_code_final': address.postal_code if address else None,
-            'city_final': address.city.name if address else None,
-            'province_final': address.province.name if address else None,
-            'location_final': f"{address.postal_code} {address.city}, {address.province} - {address.country}" if address else "-",
+            'address_final': address_fields['address'] if address_fields else "-",
+            'postal_code_final': address_fields['postal_code'] if address_fields else None,
+            'city_final': address_fields['city'] if address_fields else None,
+            'province_final': address_fields['province'] if address_fields else None,
+            'location_final': format_location(address_fields) if address_fields else "-",
             'payment_type': payment_type_instance,
             'payment_type_final': payment_type_instance.name if payment_type_instance else "-",
             'payment_type_token_final': payment_type_instance.token if payment_type_instance else "-",

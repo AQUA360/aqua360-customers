@@ -179,27 +179,17 @@ onMounted(async () => {
     </div>
 
     <!-- Secció de contractes -->
-    <fieldset class="bg-white p-4 rounded-lg shadow">
+    <fieldset class="bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
       <legend class="flex items-center space-x-2">
         <span class="flex items-center justify-center w-6 h-6 rounded-full bg-gray-400 text-white font-medium">1</span>
         <h4 class="font-medium p-0 m-0">{{ $t('contract_block.affected_contracts') }}</h4>
       </legend>
 
-      <div class="grid grid-cols-2 gap-4 mb-4">
-        <div class="flex items-center space-x-2">
-          <span class="font-medium">{{ $t('contract_block.active_contracts') }}:</span>
-          <span class="text-blue-600 font-bold">{{ activeContractsCount }}</span>
-        </div>
-        <div class="flex items-center space-x-2">
-          <span class="font-medium">{{ $t('common.contract_terminations') }}:</span>
-          <button 
-            @click="handleShowTerminations"
-            class="text-red-600 font-bold hover:text-red-800 hover:underline"
-            :title="`${$t('common.show')} ${$t('common.contract_terminations')}`"
-          >
-            {{ terminatedContractsCount }}
-          </button>
-        </div>
+      <div class="mb-4 flex divide-x divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <AtomsSummaryStatCard :value="activeContractsCount" :label="$t('contract_block.active_contracts')" />
+        <AtomsSummaryStatCard clickable @click="handleShowTerminations" :value="terminatedContractsCount"
+          :label="$t('common.contract_terminations')"
+          :title="`${$t('common.show')} ${$t('common.contract_terminations')}`" />
       </div>
 
       <div class="mb-4">
@@ -210,7 +200,7 @@ onMounted(async () => {
     </fieldset>
 
     <!-- Secció de baixa -->
-    <fieldset class="bg-white p-4 rounded-lg shadow">
+    <fieldset class="bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
       <legend class="flex items-center space-x-2">
         <span class="flex items-center justify-center w-6 h-6 rounded-full bg-gray-400 text-white font-medium">2</span>
         <h4 class="font-medium p-0 m-0">{{ $t('claim_block.start_termination') }}</h4>

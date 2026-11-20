@@ -80,6 +80,9 @@ services:
     volumes:
       - ./docker-data/media:/app/media
       - ./docker-data/static:/app/staticfiles
+      # Carpeta de control de la sincronització prod → test (només servidors de test):
+      # l'aplicació hi deixa el fitxer `disabled` i el restore.sh nocturn de l'host el respecta.
+      - ./docker-data/sync-control:/app/sync-control
     healthcheck:
       test:
         [

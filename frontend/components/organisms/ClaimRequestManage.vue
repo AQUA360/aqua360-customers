@@ -10,6 +10,7 @@ import ClaimRequestManageRemoveMeter from './ClaimRequestManageRemoveMeter.vue';
 import ClaimRequestManageCancelContract from './ClaimRequestManageCancelContract.vue';
 import ClaimRequestContractSelectionRegion from './ClaimRequestContractSelectionRegion.vue';
 import ClaimRequestContractListRegion from './ClaimRequestContractListRegion.vue';
+import ClaimRequestInvoiceListRegion from './ClaimRequestInvoiceListRegion.vue';
 import ClaimRequestOrdersRegion from './ClaimRequestOrdersRegion.vue';
 import ClaimRequestTerminationsRegion from './ClaimRequestTerminationsRegion.vue';
 import CommunicationProcessRegion from './CommunicationProcessRegion.vue';
@@ -47,6 +48,10 @@ const showRegionDetailComponent = ref(null);
 const regionDetailId = ref(null);
 const showContractSelection = ref(false);
 const showContractList = ref(false);
+const showInvoiceList = ref(false);
+// Canvia cada vegada que s'obre una llista: força a muntar-la de nou perquè no conservi
+// un detall obert d'abans (la regió es pot tancar sense desmuntar-la)
+const listKey = ref(0);
 const showOrders = ref(false);
 const showTerminations = ref(false);
 const orders = ref([]);
@@ -363,6 +368,7 @@ const handleShowContractSelection = () => {
   showRegionDetailComponent.value = null;
   isSubRegionOpen.value = false;
   showContractList.value = false;
+  showInvoiceList.value = false;
 };
 
 const handleShowCommunicationProcess = (processId) => {
@@ -372,6 +378,7 @@ const handleShowCommunicationProcess = (processId) => {
   isSubRegionOpen.value = false;
   showContractSelection.value = false;
   showContractList.value = false;
+  showInvoiceList.value = false;
 }
 
 const handleStatusChange = () => {
@@ -380,6 +387,7 @@ const handleStatusChange = () => {
   isSubRegionOpen.value = false;
   showContractSelection.value = false;
   showContractList.value = false;
+  showInvoiceList.value = false;
 }
 
 const handleShowContracts = (contractsList) => {
@@ -389,6 +397,7 @@ const handleShowContracts = (contractsList) => {
   showRegionDetailComponent.value = null;
   isSubRegionOpen.value = true;
   showContractList.value = false;
+  showInvoiceList.value = false;
 
   // Assegurem que els contractes seleccionats es mantenen
   if (visualStep.value?.token === 'vulnerability_request') {
@@ -411,19 +420,36 @@ const handleShowOrders = async (orderType) => {
     isSubRegionOpen.value = false;
     showContractSelection.value = false;
     showContractList.value = false;
+    showInvoiceList.value = false;
   } catch (error) {
     toast.error(t('Error al carregar les ordres'));
     console.error(error);
   }
 };
 
-const handleShowContractList = () => {
-  showContractList.value = true;
+const handleShowInvoiceList = () => {
+  listKey.value++;
+  showInvoiceList.value = true;
+  showContractList.value = false;
   showRegion.value = true;
   showRegionDetailComponent.value = null;
   isSubRegionOpen.value = false;
   showContractSelection.value = false;
 };
+
+const handleShowContractList = () => {
+  listKey.value++;
+  showContractList.value = true;
+  showInvoiceList.value = false;
+  showRegion.value = true;
+  showRegionDetailComponent.value = null;
+  isSubRegionOpen.value = false;
+  showContractSelection.value = false;
+};
+
+// Cada grup del resum creix en proporció al nombre de cel·les que té,
+// perquè totes les cel·les facin la mateixa amplada
+const summaryGroupStyle = (cells) => ({ flex: `${cells} 1 ${cells * 120}px` });
 
 // Propietats computades per controlar la visibilitat dels comptadors
 const showCutSupplyCounter = computed(() => {
@@ -510,6 +536,7 @@ const handleShowTerminations = () => {
   isSubRegionOpen.value = true;
   showContractSelection.value = false;
   showContractList.value = false;
+  showInvoiceList.value = false;
   showOrders.value = false;
 };
 
@@ -557,100 +584,83 @@ const handleFinishStep = async () => {
 <template>
   <div class="wrapper text-base max-w-full mb-20">
     <!-- Panell de resum -->
-    <div class="flex justify-between">
-      <div class="flex mb-4 space-x-4">
-        <div class="flex flex-col divide-x divide-gray-200 border border-gray-200 rounded">
-          <div class="flex items-center bg-white px-2">
-            {{ $t('billing_block.pending_payments') }}:
-            <span class="px-2 py-1 font-bold">{{ requestData.pending_payments_count }}</span>
-          </div>
-          <div class="flex items-center bg-white px-2">
-            {{ $t('reports_block.paid_payments') }}:
-            <span class="px-2 py-1 font-bold">{{ requestData.paid_payments_count }}</span>
-          </div>
-
-          <div class="flex items-center bg-white px-2">
-            {{ $t('common.amount') }}:
-            <span class="px-2 py-1 font-bold">{{ formatMoneyWithCurrency(requestData.amount) }}</span>
-          </div>
-
-        </div>
-
-        <div class="flex flex-col max-w-[500px] divide-x divide-gray-200 border border-gray-200 rounded">
-          <div class="flex items-center bg-white px-2">
-            {{ $t('contract_block.affected_contracts') }}:
-            <button @click="handleShowContractList"
-              class="px-2 py-1 font-bold text-sky-600 hover:text-sky-800 hover:underline"
-              :title="$t('contract_block.manage_contracts')">
-              {{ requestData.total_contracts - requestData.excluded_payments_count }}
-            </button>
-          </div>
-          <div class="flex items-center bg-white px-2">
-            {{ $t('contract_block.excluded_contracts') }}:
-            <span class="px-2 py-1 font-bold">{{ requestData.excluded_payments_count }}</span>
-          </div>
-          <div v-if="visualStep?.token === 'cancel_contract'" class="flex items-center bg-white px-2">
-            {{ $t('common.contract_terminations') }}:
-            <button @click="handleShowTerminations"
-              class="px-2 py-1 font-bold text-red-600 hover:text-red-800 hover:underline"
-              :title="`${$t('common.show')} ${$t('common.contract_terminations')}`">
-              {{ terminationsCount }}
-            </button>
-          </div>
-        </div>
-
-        <div v-if="requestData.vulnerable_requests_count > 0"
-          class="flex flex-col max-w-[500px] divide-x divide-gray-200 border border-gray-200 rounded">
-          <div class="flex items-center bg-white px-2">
-            {{ $t('common.vulnerable_reqs') }}:
-            <span class="px-2 py-1 font-bold">{{ requestData.vulnerable_requests_count }}</span>
-          </div>
-          <div class="flex items-center bg-white px-2">
-            {{ $t('common.accepted_requests') }}:
-            <span class="px-2 py-1 font-bold">{{ requestData.vulnerable_accepted_requests_count }}</span>
-          </div>
-          <div class="flex items-center bg-white px-2">
-            {{ $t('common.pending_requests') }}:
-            <span class="px-2 py-1 font-bold">{{ requestData.vulnerable_pending_requests_count }}</span>
-          </div>
-        </div>
-
-        <div v-if="showCutSupplyCounter || showRemoveMeterCounter || visualStep?.token === 'cancel_contract'"
-          class="flex flex-col divide-x divide-gray-200 border border-gray-200 rounded">
-          <div v-if="showCutSupplyCounter" class="flex items-center bg-white px-2">
-            {{ $t('order_block.cut_orders') }}:
-            <button @click="handleShowOrders('cut_supply')"
-              class="px-2 py-1 font-bold text-sky-600 hover:text-sky-800 hover:underline"
-              :title="`${$t('common.show')} ${$t('order_block.cut_orders')}`">
-              {{ cutSupplyOrdersCount }}
-            </button>
-          </div>
-          <div v-if="showRemoveMeterCounter" class="flex items-center bg-white px-2">
-            {{ $t('order_block.remove_orders') }}:
-            <button @click="handleShowOrders('remove_meter')"
-              class="px-2 py-1 font-bold text-sky-600 hover:text-sky-800 hover:underline"
-              :title="`${$t('common.show')} ${$t('order_block.remove_orders')}`">
-              {{ removeMeterOrdersCount }}
-            </button>
-          </div>
-
-        </div>
-      </div>
-
-      <div class="grid grid-cols-[1fr,auto] mt-auto mb-4 items-center gap-2">
+    <Teleport defer to="#claim-request-header-actions">
+      <div class="flex items-center gap-2">
         <button @click="handleStatusChange"
           class="h-8 w-8 border border-slate-200 rounded-full opacity-70 hover:opacity-100 hover:border-slate-300 hover:bg-slate-50 transition-all duration-200">
           <Icon name="fa6-solid:pencil" class="text-slate-500" />
         </button>
         <StatusesNav :active="requestData.status" :statuses="[requestData.status]" />
-        <!-- <StatusesNav :active="requestData.status" :statuses="claimStatuses" /> -->
       </div>
+    </Teleport>
+
+    <!-- Resum: un grup per tema (títol + franja de cel·les). Cada grup creix segons el nombre de
+         cel·les, perquè totes les cel·les facin la mateixa amplada i la fila ompli tota la pàgina. -->
+    <div class="mb-4 flex flex-wrap gap-x-4 gap-y-3">
+      <section :style="summaryGroupStyle(3)">
+        <p class="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+          {{ $t('billing_block.payments') }}
+        </p>
+        <div class="flex divide-x divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+          <AtomsSummaryStatCard :value="requestData.pending_payments_count"
+            :label="$t('billing_block.pending_payments')" />
+          <AtomsSummaryStatCard :value="requestData.paid_payments_count" :label="$t('reports_block.paid_payments')" />
+          <AtomsSummaryStatCard :value="formatMoneyWithCurrency(requestData.amount)" :label="$t('common.amount')" />
+        </div>
+      </section>
+
+      <section :style="summaryGroupStyle(visualStep?.token === 'cancel_contract' ? 4 : 3)">
+        <p class="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+          {{ $t('billing_block.contracts_and_invoices') }}
+        </p>
+        <div class="flex divide-x divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+          <AtomsSummaryStatCard clickable @click="handleShowContractList"
+            :value="requestData.total_contracts - requestData.excluded_contracts_count"
+            :label="$t('contract_block.affected_contracts')" :title="$t('contract_block.manage_contracts')" />
+          <AtomsSummaryStatCard v-if="visualStep?.token === 'cancel_contract'" clickable
+            @click="handleShowTerminations" :value="terminationsCount" :label="$t('common.contract_terminations')"
+            :title="`${$t('common.show')} ${$t('common.contract_terminations')}`" />
+          <AtomsSummaryStatCard clickable @click="handleShowInvoiceList" :value="requestData.affected_invoices_count"
+            :label="$t('billing_block.affected_invoices_title')"
+            :title="`${$t('common.show')} ${$t('billing_block.affected_invoices_title')}`" />
+          <AtomsSummaryStatCard :value="requestData.excluded_invoices_count"
+            :label="$t('billing_block.excluded_invoices')" />
+        </div>
+      </section>
+
+      <section v-if="requestData.vulnerable_requests_count > 0" :style="summaryGroupStyle(3)">
+        <p class="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+          {{ $t('contract_block.vulnerability') }}
+        </p>
+        <div class="flex divide-x divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+          <AtomsSummaryStatCard :value="requestData.vulnerable_requests_count" :label="$t('common.vulnerable_reqs')" />
+          <AtomsSummaryStatCard :value="requestData.vulnerable_accepted_requests_count"
+            :label="$t('common.accepted_requests')" />
+          <AtomsSummaryStatCard :value="requestData.vulnerable_pending_requests_count"
+            :label="$t('common.pending_requests')" />
+        </div>
+      </section>
+
+      <section v-if="showCutSupplyCounter || showRemoveMeterCounter"
+        :style="summaryGroupStyle((showCutSupplyCounter ? 1 : 0) + (showRemoveMeterCounter ? 1 : 0))">
+        <p class="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+          {{ $t('common.orders') }}
+        </p>
+        <div class="flex divide-x divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+          <AtomsSummaryStatCard v-if="showCutSupplyCounter" clickable @click="handleShowOrders('cut_supply')"
+            :value="cutSupplyOrdersCount" :label="$t('order_block.cut_orders')"
+            :title="`${$t('common.show')} ${$t('order_block.cut_orders')}`" />
+          <AtomsSummaryStatCard v-if="showRemoveMeterCounter" clickable @click="handleShowOrders('remove_meter')"
+            :value="removeMeterOrdersCount" :label="$t('order_block.remove_orders')"
+            :title="`${$t('common.show')} ${$t('order_block.remove_orders')}`" />
+        </div>
+      </section>
     </div>
 
     <WizardStatusNav v-if="wizardSteps.length && visualStep" :steps="wizardSteps" :current-step="visualStepIndex"
       :max-step="maxWorkflowStepIndex" disabled :show-description="false" />
 
-    <div class="border border-slate-300 rounded-b py-3 px-4 bg-white">
+    <div class="border border-slate-200 rounded-xl py-3 px-4 bg-white">
 
       <!-- Components específics per cada pas -->
       <ClaimRequestManageLetter v-if="visualStep?.token === 'send_claim_letter'" :request="requestData"
@@ -772,8 +782,10 @@ const handleFinishStep = async () => {
           :request="requestData" :selectedContracts="selectedRemoveMeterContracts"
           :title="('claim_block.select_remove_contracts')" highlightColor="bg-red-100" :isVulnerabilityContext="false"
           @update:selectedContracts="selectedRemoveMeterContracts = $event" @close="toggleRegion(false)" />
-        <ClaimRequestContractListRegion v-if="showContractList" :request="requestData" :contracts="contracts"
+        <ClaimRequestContractListRegion v-if="showContractList" :key="listKey" :request="requestData" :contracts="contracts"
           @show-detail="handleSubRegionEvent" @close="toggleRegion(false)" @change="handleContractChange" />
+        <ClaimRequestInvoiceListRegion v-if="showInvoiceList" :key="listKey" :request="requestData"
+          @show-detail="handleSubRegionEvent" @close="toggleRegion(false)" />
         <ClaimRequestOrdersRegion v-if="showRegionDetailComponent === 'OrdersRegion'"
           @show-subregion="handleSubRegionEvent" :request="requestData" :orderType="currentOrderType"
           @close="toggleRegion(false)" />
