@@ -1697,7 +1697,10 @@ paths:
         puntuación (espacios, `,`, `.`, `;`, `/`) se trata como separador y
         cada término debe coincidir con algún campo (nombre o tipo de calle,
         número, sufijo del número, ciudad, código postal, escalera, piso o
-        puerta); todos los términos se combinan con AND. No distingue
+        puerta); todos los términos se combinan con AND. Solo se busca en lo
+        que se muestra de la dirección (`city_name` solo cuenta si no hay
+        municipio y el número de un `S/N` no se busca), así cada dirección
+        coincide entera con todos sus puntos. No distingue
         acentos (`Plaça` y `placa` dan lo mismo). El número admite el sufijo
         pegado o con guion (`21A`, `21-A`). Así `Major 21 2n` afina hasta la
         vivienda. Un `search` compuesto solo por puntuación devuelve `400`.
@@ -1706,7 +1709,8 @@ paths:
         las direcciones de puntos dados de baja, para poder buscarlas y
         volver a darlos de alta. Cada dirección aparece una sola vez aunque
         la tengan varios puntos (en el mismo registro de dirección o en
-        registros distintos con los mismos valores); sus tokens (y el de la
+        registros distintos que se muestran igual: sin tipo de número, `N`
+        y `S` son equivalentes); sus tokens (y el de la
         finca de cada uno) se devuelven en `supply_points`. Orden: calle,
         número, sufijo, escalera, piso y puerta.
       operationId: listSupplyPointAddresses
@@ -5242,7 +5246,9 @@ components:
         street_number:
           type: integer
           nullable: true
-          description: Número de la vía (`street_number.number`)
+          description: |
+            Número de la vía (`street_number.number`). `null` en los `S/N`,
+            que no muestran el número.
           example: 21
         street_number_suffix:
           type: string

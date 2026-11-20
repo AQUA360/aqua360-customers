@@ -1972,7 +1972,13 @@ class SupplyPointAddressItemSerializer(serializers.Serializer):
         return obj.street.name if obj.street else None
 
     def get_street_number(self, obj):
-        return obj.street_number.number if obj.street_number else None
+        number = obj.street_number
+        if not number:
+            return None
+        # Un S/N no mostra el número (i l'agrupació no el té en compte)
+        if number.number_type and number.number_type.type == "SN":
+            return None
+        return number.number
 
     def get_street_number_suffix(self, obj):
         return (obj.street_number.number_suffix or None) if obj.street_number else None

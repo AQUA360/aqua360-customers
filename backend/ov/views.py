@@ -4,9 +4,11 @@ from django.db import connection, transaction
 from django.contrib.postgres.aggregates import ArrayAgg
 from django.db.models import (
     Case,
+    CharField,
     Count,
     Exists,
     F,
+    IntegerField,
     Min,
     OuterRef,
     Prefetch,
@@ -1794,15 +1796,46 @@ class PropertiesOVView(APIView):
 # Número amb sufix enganxat o amb guió: «21A», «21-A», «21Po1»
 _ADDRESS_NUMBER_WITH_SUFFIX = re.compile(r"^(\d+)-?([^\d-].*)$")
 
+# Tipus de número que no es mostren igual que «N»: el rang porta el número
+# final i el «S/N» no mostra el número. Sense tipus, «N» i «S» es veuen igual
+# (el sufix sempre es mostra, vegeu `_supply_point_address_text`).
+_NUMBER_TYPE_RANGE = "R"
+_NUMBER_TYPE_NO_NUMBER = "SN"
+_NUMBER_TYPE = "street_number__number_type__type"
+
 # Camps que es veuen de l'adreça: dues files d'adreça amb els mateixos valors
-# són la mateixa adreça. Els buits i els NULL compten igual.
+# són la mateixa adreça. Els buits i els NULL compten igual, i el que no es
+# mostra (tipus de número equivalents, número d'un S/N, final d'un número
+# que no és rang, `city_name` quan hi ha població) no separa adreces.
 _SUPPLY_POINT_ADDRESS_GROUP = {
     "g_street": F("street_id"),
-    "g_number": F("street_number__number"),
-    "g_number_type": F("street_number__number_type__type"),
+    "g_number_type": Case(
+        When(
+            **{f"{_NUMBER_TYPE}__in": (_NUMBER_TYPE_RANGE, _NUMBER_TYPE_NO_NUMBER)},
+            then=F(_NUMBER_TYPE),
+        ),
+        default=Value("N"),
+        output_field=CharField(),
+    ),
+    "g_number": Case(
+        When(**{_NUMBER_TYPE: _NUMBER_TYPE_NO_NUMBER}, then=Value(None)),
+        default=F("street_number__number"),
+        output_field=IntegerField(),
+    ),
     "g_number_suffix": Coalesce("street_number__number_suffix", Value("")),
-    "g_number_end": F("street_number__number_end"),
-    "g_number_end_suffix": Coalesce("street_number__number_end_suffix", Value("")),
+    "g_number_end": Case(
+        When(**{_NUMBER_TYPE: _NUMBER_TYPE_RANGE}, then=F("street_number__number_end")),
+        default=Value(None),
+        output_field=IntegerField(),
+    ),
+    "g_number_end_suffix": Case(
+        When(
+            **{_NUMBER_TYPE: _NUMBER_TYPE_RANGE},
+            then=Coalesce("street_number__number_end_suffix", Value("")),
+        ),
+        default=Value(""),
+        output_field=CharField(),
+    ),
     "g_stair": Coalesce("stair", Value("")),
     "g_building": Coalesce("building", Value("")),
     "g_floor": Coalesce("floor", Value("")),
@@ -1816,29 +1849,39 @@ _SUPPLY_POINT_ADDRESS_GROUP = {
 
 def _supply_point_address_filters(token):
     """Q d'una paraula de cerca: carrer, tipus, número (amb sufix), població,
-    codi postal, escala, pis o porta, sense distingir accents."""
-    filters = Q()
+    codi postal, escala, pis o porta, sense distingir accents.
+
+    Només mira el que es veu de l'adreça i, per tant, forma part de la clau
+    d'agrupació: així un grup coincideix sencer o no coincideix, i no es
+    perden punts de les files del grup que no coincidirien soles. Per això
+    `city_name` només compta quan no hi ha població i el número d'un S/N no
+    es cerca.
+    """
+    filters = Q(city__isnull=True, city_name__unaccent__icontains=token)
     for field in (
         "street__name",
         "street__name_2",
         "street__type__abbreviation",
         "street_number__number_suffix",
         "city__name",
-        "city_name",
         "postal_code",
         "stair",
         "floor",
         "door",
     ):
         filters |= Q(**{f"{field}__unaccent__icontains": token})
+    number_shown = ~Q(**{_NUMBER_TYPE: _NUMBER_TYPE_NO_NUMBER})
     if token.isdigit():
-        filters |= Q(street_number__number=int(token))
+        filters |= Q(street_number__number=int(token)) & number_shown
     else:
         match = _ADDRESS_NUMBER_WITH_SUFFIX.match(token)
         if match:
-            filters |= Q(
-                street_number__number=int(match.group(1)),
-                street_number__number_suffix__unaccent__icontains=match.group(2),
+            filters |= (
+                Q(
+                    street_number__number=int(match.group(1)),
+                    street_number__number_suffix__unaccent__icontains=match.group(2),
+                )
+                & number_shown
             )
     return filters
 

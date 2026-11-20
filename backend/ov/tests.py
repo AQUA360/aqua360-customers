@@ -2682,6 +2682,76 @@ class AddressesOVTests(TestCase):
 
         self.assertEqual(response.status_code, 401)
 
+    def test_equivalent_number_types_are_returned_once(self):
+        """Sense tipus, «N» i «S» es veuen igual: una sola adreça. El número
+        amagat d'un S/N tampoc separa adreces ni es pot cercar."""
+        city = City.objects.create(token="CITY-ADDR-2", name="Castellet")
+        country = Country.objects.get(iso_code="ES")
+        street = Street.objects.create(name="Riera", city=city)
+        types = {
+            code: StreetNumberType.objects.get_or_create(
+                type=code, defaults={"description": code}
+            )[0]
+            for code in ("N", "S", "SN")
+        }
+        numbers = [
+            StreetNumber.objects.create(street=street, number=7),
+            StreetNumber.objects.create(
+                street=street, number=7, number_type=types["N"]
+            ),
+            StreetNumber.objects.create(
+                street=street, number=7, number_type=types["S"]
+            ),
+            StreetNumber.objects.create(
+                street=street, number=3, number_type=types["SN"]
+            ),
+            StreetNumber.objects.create(
+                street=street, number=4, number_type=types["SN"]
+            ),
+        ]
+        for index, number in enumerate(numbers):
+            SupplyPoint.objects.create(
+                token=f"SP-RIERA-{index}",
+                address=Address.objects.create(
+                    street=street,
+                    street_number=number,
+                    city=city,
+                    country=country,
+                ),
+            )
+
+        response = self._search("Riera Castellet")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [
+                (item["address"], [sp["token"] for sp in item["supply_points"]])
+                for item in response.data["results"]
+            ],
+            [
+                ("Riera, 7, Castellet", ["SP-RIERA-0", "SP-RIERA-1", "SP-RIERA-2"]),
+                # Els S/N (sense número) van després dels números
+                ("Riera, S/N, Castellet", ["SP-RIERA-3", "SP-RIERA-4"]),
+            ],
+        )
+        self.assertEqual(self._search("Riera 3").data["count"], 0)
+        # El número amagat d'un S/N tampoc es retorna
+        self.assertIsNone(response.data["results"][1]["street_number"])
+
+    def test_group_is_matched_as_a_whole(self):
+        """Una fila del grup amb `city_name` diferent (que no es mostra perquè
+        hi ha població) no parteix el grup en cercar-lo."""
+        Address.objects.filter(pk=self.address_1r2a_copy.pk).update(
+            city_name="Altrevila"
+        )
+
+        self.assertEqual(self._search("Altrevila").data["count"], 0)
+        response = self._search("Major 1r Vilanova")
+        self.assertEqual(
+            [sp["token"] for sp in response.data["results"][0]["supply_points"]],
+            ["SP-ADDR-2", "SP-ADDR-3", "SP-ADDR-5"],
+        )
+
     def test_requires_ov_group_or_superuser(self):
         client = APIClient()
         client.force_authenticate(
