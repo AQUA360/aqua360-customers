@@ -1,7 +1,23 @@
 from django.http import FileResponse
 from django.conf import settings
 from django.db import connection, transaction
-from django.db.models import Case, Count, F, Prefetch, Q, When
+from django.contrib.postgres.aggregates import ArrayAgg
+from django.db.models import (
+    Case,
+    CharField,
+    Count,
+    Exists,
+    F,
+    IntegerField,
+    Min,
+    OuterRef,
+    Prefetch,
+    Q,
+    TextField,
+    Value,
+    When,
+)
+from django.db.models.functions import Coalesce
 from django.utils import translation, timezone
 from django.utils.dateparse import parse_date
 from django.utils.translation import gettext as _
@@ -15,6 +31,7 @@ from billing.utils.biller_period_service import current_and_next_cycles
 from billing.views.invoice_pdf_view import generate_report_invoice_pdf
 from coredata.utils.pdf_utils import merge_pdfs
 from coredata.models import (
+    Address,
     ConfigProject,
     Person,
     PersonAddress,
@@ -62,6 +79,7 @@ from documentmanager.utils.main_utils import download_document, upload_document
 from pricing.models import PriceRate, Product
 from service.models import Property, SupplyPoint
 from service.utils.route_scope import effective_route
+from ov.invoice_visibility import exclude_future_invoices
 from ov.serializers import (
     _normalize_person_dni,
     _normalized_dni_expression,
@@ -91,7 +109,9 @@ from ov.serializers import (
     InvoiceStatusDictionarySerializer,
     ProcedureTariffDictionarySerializer,
     PropertyItemSerializer,
+    SupplyPointAddressItemSerializer,
     PersonDataSerializer,
+    PersonInvoiceOVSerializer,
     QuickPayRequestSerializer,
     QuickPayResponseSerializer,
     ReturnRequestSerializer,
@@ -106,6 +126,7 @@ from ov.serializers import (
     ContractTerminationProcedureResponseSerializer,
 )
 from pagination.ov_pagination import OVLimitPagination, OVConsumptionPagination
+from ov.permissions import IsOVUser
 from ov.throttles import (
     ContractProcedureThrottle,
     ContractTerminationProcedureThrottle,
@@ -113,6 +134,7 @@ from ov.throttles import (
     DniEnumerationThrottle,
     PaymentReceiptThrottle,
     PersonDataThrottle,
+    PersonInvoicesThrottle,
     QuickPayThrottle,
     ReturnRequestThrottle,
 )
@@ -296,7 +318,7 @@ class BillingContractInvoicesOVView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        invoices = (
+        invoices = exclude_future_invoices(
             Invoice.objects.filter(contract=contract)
             .exclude(status__token="1")  # excluïm les factures de pre-factura
             .select_related("status", "contract", "payment_type")
@@ -320,7 +342,7 @@ class BillingContractInvoiceOVView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        invoice = self.queryset.filter(
+        invoice = exclude_future_invoices(self.queryset).filter(
             token=invoice_token, contract__token=contract_token
         ).first()
 
@@ -415,7 +437,7 @@ class UnpayedInvoicesOVView(APIView):
             )
 
         # optional payment type exclusion
-        invoices_queryset = Invoice.objects.filter(
+        invoices_queryset = exclude_future_invoices(Invoice.objects).filter(
             contract=contract, status__in=statuses
         ).exclude(
             status__token="1"
@@ -458,7 +480,7 @@ class BilledConsumptionsOVView(APIView):
                 {"error": "Contract not found"}, status=status.HTTP_400_BAD_REQUEST
             )
 
-        invoices = Invoice.objects.filter(contract=contract)
+        invoices = exclude_future_invoices(Invoice.objects.filter(contract=contract))
         serilizer = BilledConsumptionsOVSerializer(invoices, many=True)
 
         return Response(serilizer.data, status=status.HTTP_200_OK)
@@ -518,14 +540,15 @@ class InvoicePDFView(APIView):
                 {"error": "Invoice not found"}, status=status.HTTP_404_NOT_FOUND
             )
         file_type_value = invoice_type_config.value
-        invoice: Invoice = self.queryset.filter(
+        visible_invoices = exclude_future_invoices(self.queryset)
+        invoice: Invoice = visible_invoices.filter(
             token=invoice_token,
             contract__token=contract_token,
             type_final=file_type_value,
         ).first()
 
         if not invoice:
-            invoice = self.queryset.filter(
+            invoice = visible_invoices.filter(
                 serie_final=invoice_token,
                 contract__token=contract_token,
                 type_final=file_type_value,
@@ -789,7 +812,7 @@ class InvoiceDetailByTokenOVView(RetrieveAPIView):
     def get_queryset(self):
         cfg = ConfigProject.objects.filter(token="invoice_type_invoice_token").first()
         invoice_type_token = cfg.value if cfg and cfg.value else None
-        queryset = (
+        queryset = exclude_future_invoices(
             Invoice.objects.exclude(status__token="1")
             .select_related("contract", "status")
             .prefetch_related("readings__previous_reading")
@@ -1461,7 +1484,7 @@ class BatchInvoiceDownloadView(APIView):
         ).first().value
         tokens = serializer.validated_data["invoice_tokens"]
 
-        invoices = Invoice.objects.filter(
+        invoices = exclude_future_invoices(Invoice.objects).filter(
             token__in=tokens,
             contract__token=contract_token,
             type_final=file_type_value,
@@ -1774,6 +1797,219 @@ class PropertiesOVView(APIView):
         return paginator.get_paginated_response(serializer.data)
 
 
+# Número amb sufix enganxat o amb guió: «21A», «21-A», «21Po1»
+_ADDRESS_NUMBER_WITH_SUFFIX = re.compile(r"^(\d+)-?([^\d-].*)$")
+
+# Tipus de número que no es mostren igual que «N»: el rang porta el número
+# final i el «S/N» no mostra el número. Sense tipus, «N» i «S» es veuen igual
+# (el sufix sempre es mostra, vegeu `_supply_point_address_text`).
+_NUMBER_TYPE_RANGE = "R"
+_NUMBER_TYPE_NO_NUMBER = "SN"
+_NUMBER_TYPE = "street_number__number_type__type"
+
+# Camps que es veuen de l'adreça: dues files d'adreça amb els mateixos valors
+# són la mateixa adreça. Els buits i els NULL compten igual, i el que no es
+# mostra (tipus de número equivalents, número d'un S/N, final d'un número
+# que no és rang, `city_name` quan hi ha població) no separa adreces.
+_SUPPLY_POINT_ADDRESS_GROUP = {
+    "g_street": F("street_id"),
+    "g_number_type": Case(
+        When(
+            **{f"{_NUMBER_TYPE}__in": (_NUMBER_TYPE_RANGE, _NUMBER_TYPE_NO_NUMBER)},
+            then=F(_NUMBER_TYPE),
+        ),
+        default=Value("N"),
+        output_field=CharField(),
+    ),
+    "g_number": Case(
+        When(**{_NUMBER_TYPE: _NUMBER_TYPE_NO_NUMBER}, then=Value(None)),
+        default=F("street_number__number"),
+        output_field=IntegerField(),
+    ),
+    "g_number_suffix": Coalesce("street_number__number_suffix", Value("")),
+    "g_number_end": Case(
+        When(**{_NUMBER_TYPE: _NUMBER_TYPE_RANGE}, then=F("street_number__number_end")),
+        default=Value(None),
+        output_field=IntegerField(),
+    ),
+    "g_number_end_suffix": Case(
+        When(
+            **{_NUMBER_TYPE: _NUMBER_TYPE_RANGE},
+            then=Coalesce("street_number__number_end_suffix", Value("")),
+        ),
+        default=Value(""),
+        output_field=CharField(),
+    ),
+    "g_stair": Coalesce("stair", Value("")),
+    "g_building": Coalesce("building", Value("")),
+    "g_floor": Coalesce("floor", Value("")),
+    "g_door": Coalesce("door", Value("")),
+    "g_extra": Coalesce("address_extra", Value(""), output_field=TextField()),
+    "g_postal_code": Coalesce("postal_code", Value("")),
+    "g_city": Coalesce("city__name", "city_name", Value("")),
+    "g_country": F("country_id"),
+}
+
+
+def _supply_point_address_filters(token):
+    """Q d'una paraula de cerca: carrer, tipus, número (amb sufix), població,
+    codi postal, escala, pis o porta, sense distingir accents.
+
+    Només mira el que es veu de l'adreça i, per tant, forma part de la clau
+    d'agrupació: així un grup coincideix sencer o no coincideix, i no es
+    perden punts de les files del grup que no coincidirien soles. Per això
+    `city_name` només compta quan no hi ha població i el número d'un S/N no
+    es cerca.
+    """
+    filters = Q(city__isnull=True, city_name__unaccent__icontains=token)
+    for field in (
+        "street__name",
+        "street__name_2",
+        "street__type__abbreviation",
+        "street_number__number_suffix",
+        "city__name",
+        "postal_code",
+        "stair",
+        "floor",
+        "door",
+    ):
+        filters |= Q(**{f"{field}__unaccent__icontains": token})
+    number_shown = ~Q(**{_NUMBER_TYPE: _NUMBER_TYPE_NO_NUMBER})
+    if token.isdigit():
+        filters |= Q(street_number__number=int(token)) & number_shown
+    else:
+        match = _ADDRESS_NUMBER_WITH_SUFFIX.match(token)
+        if match:
+            filters |= (
+                Q(
+                    street_number__number=int(match.group(1)),
+                    street_number__number_suffix__unaccent__icontains=match.group(2),
+                )
+                & number_shown
+            )
+    return filters
+
+
+class AddressesOVView(APIView):
+    """GET /ov/addresses/?search=<text>[&page=<n>&limit=<n>]
+
+    Autocompletat d'adreces dels punts de subministrament, amb el detall de
+    l'habitatge o local (escala, pis i porta), que l'adreça de la finca de
+    `/ov/properties/` no té. Mateixes regles de cerca que `/ov/properties/`:
+    `search` obligatori de com a mínim 3 caràcters, la puntuació fa de
+    separador i cada paraula ha de coincidir (AND) amb el carrer, el tipus
+    de via, el número (també amb sufix: `21A`), la població, el codi postal,
+    l'escala, el pis o la porta. No distingeix accents.
+
+    No es filtra per l'estat del punt: també surten els de baixa, perquè
+    precisament es pot buscar l'adreça per tornar-lo a donar d'alta. Cada
+    adreça surt un sol cop encara que la tinguin diversos punts (amb la
+    mateixa fila d'adreça o amb files diferents i els mateixos valors); els
+    seus tokens (i el de la finca de cadascun) van a `supply_points`.
+    """
+
+    permission_classes = [IsOVUser]
+    pagination_class = OVLimitPagination
+    min_search_length = 3
+
+    def get(self, request):
+        search = (request.query_params.get("search") or "").strip()
+        if not search:
+            return Response(
+                {"error": "Search is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if len(search) < self.min_search_length:
+            return Response(
+                {"error": "Search must be at least 3 characters"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        tokens = _property_search_tokens(search)
+        if not tokens:
+            return Response(
+                {"error": "Search must contain at least one valid term"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        filters = Q()
+        for token in tokens:
+            filters &= _supply_point_address_filters(token)
+
+        # Agrupa per valors: una fila per adreça visible, amb les files
+        # d'adreça que la formen. La primera és la que es mostra.
+        groups = (
+            Address.objects.filter(
+                Exists(SupplyPoint.objects.filter(address=OuterRef("pk")))
+            )
+            .filter(filters)
+            .annotate(**_SUPPLY_POINT_ADDRESS_GROUP)
+            .values(*_SUPPLY_POINT_ADDRESS_GROUP)
+            .annotate(
+                first_id=Min("id"),
+                address_ids=ArrayAgg("id", ordering="id"),
+                street_name_order=Min("street__name"),
+            )
+            .order_by(
+                "street_name_order",
+                "g_street",
+                "g_number",
+                "g_number_suffix",
+                "g_stair",
+                "g_floor",
+                "g_door",
+                "first_id",
+            )
+        )
+
+        paginator = self.pagination_class()
+        try:
+            page = paginator.paginate_queryset(groups, request, view=self)
+        except NotFound:
+            return Response(
+                {"error": "Invalid page"}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        addresses = Address.objects.select_related(
+            "street__type",
+            "street_number__number_type",
+            "city",
+            "country",
+        ).in_bulk([group["first_id"] for group in page])
+        supply_points_by_address = {}
+        for supply_point in (
+            SupplyPoint.objects.filter(
+                address_id__in=[
+                    address_id
+                    for group in page
+                    for address_id in group["address_ids"]
+                ]
+            )
+            .select_related("property")
+            .order_by("token", "id")
+        ):
+            supply_points_by_address.setdefault(
+                supply_point.address_id, []
+            ).append(supply_point)
+
+        items = []
+        for group in page:
+            address = addresses[group["first_id"]]
+            address.grouped_supply_points = sorted(
+                (
+                    supply_point
+                    for address_id in group["address_ids"]
+                    for supply_point in supply_points_by_address.get(
+                        address_id, []
+                    )
+                ),
+                key=lambda supply_point: (supply_point.token or "", supply_point.id),
+            )
+            items.append(address)
+
+        serializer = SupplyPointAddressItemSerializer(items, many=True)
+        return paginator.get_paginated_response(serializer.data)
+
+
 class PersonDataOVView(APIView):
     """GET /ov/person-data/?dni=<DNI>
 
@@ -1858,6 +2094,129 @@ class PersonDataOVView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
+
+_OV_ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _parse_ov_iso_date(value):
+    """Data `YYYY-MM-DD` d'un paràmetre de query; `None` si no és vàlida
+    (format diferent o data inexistent, com `2026-02-30`)."""
+    if not value or not _OV_ISO_DATE.match(value):
+        return None
+    try:
+        return parse_date(value)
+    except ValueError:
+        return None
+
+
+class PersonInvoicesOVView(APIView):
+    """GET /ov/person-invoices/?dni=<DNI>[&date_from=YYYY-MM-DD][&date_to=YYYY-MM-DD]
+
+    Totes les factures on la persona ha estat titular o pagadora, segons les
+    dades congelades a la mateixa factura (`customer_token_final` i
+    `payer_token_final`), no segons el titular o pagador actual del
+    contracte: així només veu les del període en què hi va estar implicada.
+    Si la factura no té pagador, el pagador és el titular. S'exclouen les
+    prefactures (estat token `1`) i les factures amb data futura, i s'inclouen
+    les factures sense contracte.
+
+    El DNI es normalitza com a `/ov/person-data/` (sense espais, guions ni
+    punts, en majúscules) i es compara exactament amb els tokens de la
+    factura, que es desen en majúscules: així es poden fer servir els índexs
+    dels dos camps.
+
+    La resposta (sense paginar) agrupa les factures per contracte, de més
+    nova a més antiga dins de cada grup; els grups surten per ordre de la
+    seva factura més recent. Les factures sense contracte van en un grup amb
+    `contract_number` a `null`. `date_from` i `date_to` filtren per
+    `issue_date`, tots dos opcionals i inclusius.
+    """
+
+    # Només el compte de servei de l'OV (i superusuaris): amb un DNI es veu
+    # tot l'historial de factures d'una persona.
+    permission_classes = [IsAuthenticated, IsOVUser]
+    throttle_classes = [PersonInvoicesThrottle]
+
+    def get(self, request):
+        dni = _normalize_person_dni(request.query_params.get("dni"))
+        if not dni:
+            return Response(
+                {"error": "DNI is required"}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        date_from_raw = request.query_params.get("date_from")
+        date_to_raw = request.query_params.get("date_to")
+        date_from = _parse_ov_iso_date(date_from_raw)
+        date_to = _parse_ov_iso_date(date_to_raw)
+        if (date_from_raw and not date_from) or (date_to_raw and not date_to):
+            return Response(
+                {"error": "Invalid date format (expected YYYY-MM-DD)"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if date_from and date_to and date_from > date_to:
+            return Response(
+                {"error": "date_from must be before or equal to date_to"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Una sola consulta amb OR: una factura on és titular i pagadora surt
+        # un cop. El cas «sense pagador» ja hi és pel titular.
+        # Les factures amb data futura no es mostren a l'OV fins aquell dia.
+        invoices = (
+            exclude_future_invoices(Invoice.objects)
+            .filter(Q(customer_token_final=dni) | Q(payer_token_final=dni))
+            .exclude(status__token="1")  # excloem les prefactures
+            .select_related(
+                "status",
+                "contract__status",
+                "contract__supply_point_default__address__street__type",
+                "contract__supply_point_default__address__street_number__number_type",
+                "contract__supply_point_default__address__city",
+                "contract__supply_point_default__address__country",
+            )
+            .order_by(F("issue_date").desc(nulls_last=True), "-id")
+        )
+        if date_from:
+            invoices = invoices.filter(issue_date__gte=date_from)
+        if date_to:
+            invoices = invoices.filter(issue_date__lte=date_to)
+
+        # Context compartit: el DNI per als indicadors i la data dels PDF,
+        # que es llegeix un sol cop per petició.
+        context = {"request": request, "dni": dni}
+        groups = {}
+        for invoice in invoices:
+            group = groups.get(invoice.contract_id)
+            if group is None:
+                group = groups[invoice.contract_id] = self._group(invoice.contract)
+            group["invoices"].append(
+                PersonInvoiceOVSerializer(invoice, context=context).data
+            )
+
+        return Response({"results": list(groups.values())}, status=status.HTTP_200_OK)
+
+    @staticmethod
+    def _group(contract):
+        if contract is None:
+            return {
+                "contract_number": None,
+                "contract_status": None,
+                "supply_address": None,
+                "invoices": [],
+            }
+        supply_point = contract.supply_point_default
+        address = supply_point.address if supply_point else None
+        return {
+            "contract_number": contract.token,
+            "contract_status": (
+                {"token": contract.status.token, "name": contract.status.name}
+                if contract.status
+                else None
+            ),
+            "supply_address": str(address) if address else None,
+            "invoices": [],
+        }
+
 QUICK_PAY_NON_PAYABLE_STATUS_CONFIG_TOKENS = [
     "invoice_status_paid_token",
     "invoice_status_pending_token",
@@ -1917,7 +2276,7 @@ class QuickPayOVView(APIView):
         )
 
         invoice = (
-            Invoice.objects.select_related("contract", "status")
+            exclude_future_invoices(Invoice.objects.select_related("contract", "status"))
             .filter(
                 contract__token=data["contract_number"],
                 serie_final=data["invoice_number"],
@@ -2216,7 +2575,7 @@ class InvoiceReturnRequestOVView(APIView):
             )
 
         invoice = (
-            Invoice.objects.select_related("contract", "status")
+            exclude_future_invoices(Invoice.objects.select_related("contract", "status"))
             .filter(
                 token=invoice_token,
                 contract__token=contract_token,

@@ -1,7 +1,7 @@
 import datetime
 from billing.models import Invoice, InvoiceStatus, Payment, PaymentStatus
 from billing.utils.confirm_invoice_service import confirm_invoice
-from billing.utils.payment_service import generate_payment_movement, log_payment_status
+from billing.utils.payment_service import generate_payment_movement, log_payment_status, disconnect_payment_signals, reconnect_payment_signals
 from contract.models import Bail, BailStatus, Contract, PaymentType, PiggyBankMovement
 from coredata.models import ConfigProject
 from django.db import transaction
@@ -62,6 +62,8 @@ def liquidate_bail(user, bails, balance_contract=None, return_date=None):
             confirm_invoice(invoice)
 
             invoice_payments = Payment.objects.filter(invoice=invoice)
+            
+            disconnect_payment_signals()
             for payment in invoice_payments:
                 log_payment_status(payment, payment_status_piggy, user)
                 generate_payment_movement(
@@ -74,6 +76,7 @@ def liquidate_bail(user, bails, balance_contract=None, return_date=None):
                 payment.status = payment_status_piggy
                 payment.save()
                 payment.refresh_from_db()
+            reconnect_payment_signals()
 
         # Sense factura de retorn no s'abona res al saldo (del contracte ni de la persona).
         if skip_invoice and not invoice:

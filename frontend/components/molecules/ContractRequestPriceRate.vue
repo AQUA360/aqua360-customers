@@ -1,4 +1,5 @@
 <script setup>
+import AppLoading from '~/components/atoms/AppLoading.vue';
 // components/molecules/ContractRequestPriceRate.vue
 import { ref, onMounted, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
@@ -345,20 +346,26 @@ const openVulnerabilityRequest = function () {
   showRegionComponent.value = 'VulnerabilityRequestRegion';
 }
 
+const initialLoading = ref(true);
 onMounted(async () => {
-  origin_contract_token.value = await $ConfigProjectApiService.get('origin_contract_token');
-  origin_reading_token.value = await $ConfigProjectApiService.get('origin_reading_token');
-  await loadDocuments();
-  await loadContractCategories();
-  await loadContractUseTypes();
-  await loadContractClientTypes();
-  await loadBonifications();
-  await loadVariables();
-  await loadPriceRates();
-  await loadData();
-  await getVulnerabilityRequest()
-  loading.value = false;
+  try {
+    origin_contract_token.value = await $ConfigProjectApiService.get('origin_contract_token');
+    origin_reading_token.value = await $ConfigProjectApiService.get('origin_reading_token');
+    await loadDocuments();
+    await loadContractCategories();
+    await loadContractUseTypes();
+    await loadContractClientTypes();
+    await loadBonifications();
+    await loadVariables();
+    await loadPriceRates();
+    await loadData();
+    await getVulnerabilityRequest()
+  } finally {
+    loading.value = false;
+    initialLoading.value = false;
+  }
 });
+
 
 const onBonificationSaved = (item) => {
   loadBonifications();
@@ -435,7 +442,11 @@ watch([selectedContractCategory, priceRateSelectedItems, selectedContractClientT
 });
 </script>
 <template>
-  <div id="wrapper" class="text-base">
+  <div id="wrapper" class="text-base relative" :class="{ 'min-h-[260px]': initialLoading }">
+    <!-- Animació de càrrega fins que s'han carregat totes les dades del pas -->
+    <div v-if="initialLoading" class="absolute inset-0 z-20 bg-white flex justify-center items-start pt-10">
+      <AppLoading :text="$t('common.loading')" />
+    </div>
     <!-- Títol del Component -->
     <h2 class="text-xl font-semibold mb-4">{{ $t('contract_block.request_price_rate_title') }}</h2>
 
