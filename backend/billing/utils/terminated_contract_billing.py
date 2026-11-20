@@ -2,12 +2,15 @@
 
 La facturació inclou les lectures d'un contracte de baixa anteriors a la data de baixa.
 Abans de processar-la (o recalcular-la), l'usuari veu quins contractes de baixa té i tria
-quins es facturen; la tria es desa a `Billing.terminated_contract_ids_to_bill` i la tasca
-no factura cap contracte de baixa que no hi sigui.
+quins es facturen; la tria es desa al `payload` de l'element de la cua (BillingQueue), que es
+manté si es reinicia, i la tasca no factura cap contracte de baixa que no hi sigui.
 """
 from django.db.models import F, Q
 
 from coredata.models import ConfigProject
+
+
+TERMINATED_CONTRACT_IDS_KEY = 'terminated_contract_ids'
 
 
 class TerminatedContractSelectionError(ValueError):
@@ -88,11 +91,12 @@ def resolve_terminated_contract_selection(billing, raw_ids, recalculation=False)
         raise TerminatedContractSelectionError('terminated_contract_ids must be a list')
     ids = set()
     for raw in raw_ids:
-        if isinstance(raw, bool):
-            raise TerminatedContractSelectionError('invalid contract id')
-        try:
-            ids.add(int(raw))
-        except (TypeError, ValueError):
+        # Només enters exactes: ni booleans, ni decimals (12.9 no pot passar per 12)
+        if isinstance(raw, int) and not isinstance(raw, bool):
+            ids.add(raw)
+        elif isinstance(raw, str) and raw.strip().isdigit():
+            ids.add(int(raw.strip()))
+        else:
             raise TerminatedContractSelectionError('invalid contract id')
     if not ids:
         return []
@@ -104,12 +108,21 @@ def resolve_terminated_contract_selection(billing, raw_ids, recalculation=False)
     return sorted(ids)
 
 
-def terminated_contract_ids_to_skip(billing, contract_ids):
+def queue_item_selection(queue_item_id):
+    """Contractes de baixa triats en la confirmació que va crear l'element de la cua."""
+    from billing.models import BillingQueue
+    if not queue_item_id:
+        return []
+    payload = BillingQueue.objects.filter(id=queue_item_id).values_list('payload', flat=True).first()
+    return (payload or {}).get(TERMINATED_CONTRACT_IDS_KEY) or []
+
+
+def terminated_contract_ids_to_skip(contract_ids, selected_ids):
     """Dels contractes a facturar, els de baixa que l'usuari no ha triat."""
     from contract.models import Contract
     if not contract_ids:
         return set()
-    selected = set(billing.terminated_contract_ids_to_bill or [])
+    selected = set(selected_ids or [])
     terminated = Contract.objects.filter(
         id__in=contract_ids, status__token=_config_value('contract_terminated_status'),
     ).values_list('id', flat=True)

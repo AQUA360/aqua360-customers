@@ -27,13 +27,11 @@ class BillingTerminatedContractsView(views.APIView):
                 .select_related('holder')
                 .order_by('token', 'id')
             )
-            selected = set(billing.terminated_contract_ids_to_bill or [])
             results = [{
                 'id': contract.id,
                 'token': contract.token,
                 'holder': str(contract.holder) if contract.holder_id else None,
                 'termination_date': contract.termination_date,
-                'selected': contract.id in selected,
             } for contract in contracts]
         except Exception:
             logger.exception("No s'han pogut llistar els contractes de baixa de la facturació")

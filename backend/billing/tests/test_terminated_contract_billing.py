@@ -8,7 +8,7 @@ from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIRequestFactory, force_authenticate
 
-from billing.models import Biller, Billing, BillingStatus, InvoiceWarning, Reading
+from billing.models import Biller, Billing, BillingQueue, BillingStatus, InvoiceWarning, Reading
 from billing.tasks import process_billing_batch
 from billing.utils.terminated_contract_billing import (
     TerminatedContractSelectionError, resolve_terminated_contract_selection, terminated_billable_contracts,
@@ -91,7 +91,7 @@ class TerminatedContractBillingBase(TestCase):
 class TestTerminatedContractBillingTask(TerminatedContractBillingBase):
     """Un contracte de baixa només es factura si l'usuari l'ha triat."""
 
-    def _process(self):
+    def _process(self, queue_item=None):
         """Factures simulades (com a test_billing_process_errors): només interessa què en fa la tasca."""
         invoices = {}
 
@@ -101,7 +101,7 @@ class TestTerminatedContractBillingTask(TerminatedContractBillingBase):
             return invoice
 
         with mock.patch('billing.tasks.generate_consumption_invoice_multiple', side_effect=fake_generate):
-            process_billing_batch(self.billing.id)
+            process_billing_batch(self.billing.id, queue_item_id=queue_item.id if queue_item else None)
         self.billing.refresh_from_db()
         self.assertEqual(self.billing.process_errors, [])
         return invoices
@@ -112,16 +112,29 @@ class TestTerminatedContractBillingTask(TerminatedContractBillingBase):
         self.assertNotIn(self.contracts['terminated'].id, invoices)
         self.assertIn(self.contracts['active'].id, invoices)
 
-    def test_selected_terminated_contract_is_billed_with_warning(self, _progress, _close):
-        Billing.objects.filter(id=self.billing.id).update(
-            terminated_contract_ids_to_bill=[self.contracts['terminated'].id],
+    def _queue_item(self, ids):
+        return BillingQueue.objects.create(
+            billing=self.billing, task_type='PRE_INVOICE', status='running',
+            payload={'terminated_contract_ids': ids},
         )
 
-        invoice = self._process()[self.contracts['terminated'].id]
+    def test_selected_terminated_contract_is_billed_with_warning(self, _progress, _close):
+        item = self._queue_item([self.contracts['terminated'].id])
+
+        invoice = self._process(item)[self.contracts['terminated'].id]
 
         self.assertEqual(invoice.warning, self.terminated_warning)
         # No s'exclou: l'usuari ja ha decidit facturar-la
         invoice.save.assert_called_with(update_fields=['warning'])
+
+    def test_later_confirmation_does_not_change_queued_selection(self, _progress, _close):
+        """Cada element de la cua factura amb la tria de la seva confirmació."""
+        first = self._queue_item([self.contracts['terminated'].id])
+        self._queue_item([])
+
+        invoices = self._process(first)
+
+        self.assertIn(self.contracts['terminated'].id, invoices)
 
     def test_active_contract_has_no_terminated_warning(self, _progress, _close):
         invoice = self._process()[self.contracts['active'].id]
@@ -144,7 +157,8 @@ class TestTerminatedContractSelection(TerminatedContractBillingBase):
         self.assertEqual(resolve_terminated_contract_selection(self.billing, [str(cid)]), [cid])
 
     def test_selection_rejects_contracts_outside_the_billing(self):
-        for raw in ([self.contracts['active'].id], [999999], ['x'], [True], 'abc'):
+        cid = self.contracts['terminated'].id
+        for raw in ([self.contracts['active'].id], [999999], ['x'], [True], 'abc', [cid + 0.9], [float(cid)], [f'{cid}.9']):
             with self.assertRaises(TerminatedContractSelectionError, msg=raw):
                 resolve_terminated_contract_selection(self.billing, raw)
 
@@ -159,7 +173,6 @@ class TestTerminatedContractEndpoints(TerminatedContractBillingBase):
 
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual([c['id'] for c in response.data['results']], [self.contracts['terminated'].id])
-        self.assertFalse(response.data['results'][0]['selected'])
 
     def _post_summary(self, data):
         request = self.factory.post('/billing/billing-batch/summary', data, format='json')
@@ -172,21 +185,17 @@ class TestTerminatedContractEndpoints(TerminatedContractBillingBase):
 
         self.assertEqual(response.status_code, 400)
         queue.assert_not_called()
-        self.billing.refresh_from_db()
-        self.assertEqual(self.billing.terminated_contract_ids_to_bill, [])
+        self.assertFalse(BillingQueue.objects.filter(billing=self.billing).exists())
 
-    def test_process_saves_selection_before_queueing(self):
+    def test_process_saves_selection_on_queue_item(self):
         cid = self.contracts['terminated'].id
-        saved = []
 
-        def check_saved():
-            saved.append(Billing.objects.get(id=self.billing.id).terminated_contract_ids_to_bill)
-
-        with mock.patch('billing.views.billing_batch_generate_view.process_next_queue_item', side_effect=check_saved):
+        with mock.patch('billing.views.billing_batch_generate_view.process_next_queue_item'):
             response = self._post_summary({'billing': self.billing.id, 'terminated_contract_ids': [cid]})
 
         self.assertEqual(response.status_code, 202, response.data)
-        self.assertEqual(saved, [[cid]])
+        item = BillingQueue.objects.get(id=response.data['queue_item_id'])
+        self.assertEqual(item.payload, {'terminated_contract_ids': [cid]})
 
     def test_recalculate_rejects_invalid_selection_before_deleting(self):
         request = self.factory.post(

@@ -1,4 +1,4 @@
-from django.db import migrations, models
+from django.db import migrations
 
 WARNING_TOKEN = 'terminated_contract'
 NEW_DESCRIPTION = (
@@ -31,10 +31,5 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.AddField(
-            model_name='billing',
-            name='terminated_contract_ids_to_bill',
-            field=models.JSONField(blank=True, default=list),
-        ),
         migrations.RunPython(update_warning_description, restore_warning_description),
     ]

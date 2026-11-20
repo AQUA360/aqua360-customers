@@ -1,7 +1,8 @@
 <script setup>
 // Abans de processar o recalcular una facturació: si té contractes de baixa amb lectures
-// per facturar, l'usuari tria quins es facturen. ask() resol amb els ids triats
-// ([] si no n'hi ha cap) o amb null si l'usuari cancel·la o no s'han pogut carregar.
+// per facturar, l'usuari tria quins es facturen (per defecte, cap). ask() resol amb els ids
+// triats ([] si no n'hi ha cap) o amb null si l'usuari cancel·la, no s'han pogut carregar
+// o ja hi ha una altra crida en marxa (un segon clic no fa res).
 import { ref, computed } from 'vue';
 import { useToast } from 'vue-toastification';
 
@@ -17,6 +18,7 @@ const visible = ref(false);
 const contracts = ref([]);
 const selectedIds = ref([]);
 let resolver = null;
+let pending = false;
 
 const allSelected = computed(() =>
   contracts.value.length > 0 && selectedIds.value.length === contracts.value.length
@@ -24,24 +26,31 @@ const allSelected = computed(() =>
 
 const finish = (value) => {
   visible.value = false;
+  pending = false;
   const resolve = resolver;
   resolver = null;
   if (resolve) resolve(value);
 };
 
 const ask = async (recalculate = false) => {
+  if (pending) return null;
+  pending = true;
   let response;
   try {
     response = await $BillingApiService.getTerminatedContracts(props.billingId, recalculate);
   } catch (error) {
     console.error(error);
     toast.error(t('billing_block.terminated_contracts_error'));
+    pending = false;
     return null;
   }
   const results = response?.results || [];
-  if (results.length === 0) return [];
+  if (results.length === 0) {
+    pending = false;
+    return [];
+  }
   contracts.value = results;
-  selectedIds.value = results.filter(c => c.selected).map(c => c.id);
+  selectedIds.value = [];
   visible.value = true;
   return new Promise((resolve) => { resolver = resolve; });
 };

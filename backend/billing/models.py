@@ -350,10 +350,6 @@ class Billing(models.Model):
     # Contractes que no s'han pogut facturar en el darrer processat (pre-factures):
     # [{contract_id, contract_token, code, message, hint, at}]. Es treuen en tornar-los a processar.
     process_errors = models.JSONField(null=True, blank=True, encoder=DjangoJSONEncoder)
-
-    # Contractes de baixa que l'usuari ha triat per facturar en confirmar el processat;
-    # la resta de contractes de baixa no es facturen (billing/utils/terminated_contract_billing.py).
-    terminated_contract_ids_to_bill = models.JSONField(default=list, blank=True)
     
     class Meta:
         verbose_name = "Billing"

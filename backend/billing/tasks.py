@@ -80,7 +80,9 @@ from billing.utils.pending_termination_service import (
   get_terminated_contract_warning,
   pending_termination_warning_for,
 )
-from billing.utils.terminated_contract_billing import billable_readings, terminated_contract_ids_to_skip
+from billing.utils.terminated_contract_billing import (
+  billable_readings, queue_item_selection, terminated_contract_ids_to_skip,
+)
 from billing.utils.billing_process_errors import (
   QUEUE_TASK_FAILED_MESSAGE, QUEUE_TASK_START_FAILED_MESSAGE, BillingProcessError, build_contract_error, classify_billing_error, dedupe_contract_readings,
   no_invoice_generated_error, remove_billing_process_errors, upsert_billing_process_error,
@@ -2383,7 +2385,8 @@ def _process_billing_batch(self, billing_id, queue_item_id=None):
 
   contract_ids = list(readings_qs)
   # Contractes de baixa: només els que l'usuari ha triat en confirmar la facturació.
-  skipped_terminated_ids = terminated_contract_ids_to_skip(billing, contract_ids)
+  # La tria és la de l'element de la cua: una altra confirmació posterior no la canvia.
+  skipped_terminated_ids = terminated_contract_ids_to_skip(contract_ids, queue_item_selection(queue_item_id))
   contract_ids = [cid for cid in contract_ids if cid not in skipped_terminated_ids]
   
   name = billing.name
