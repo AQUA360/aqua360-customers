@@ -10,7 +10,7 @@ from io import BytesIO, StringIO
 from unittest.mock import patch
 
 from django.conf import settings
-from django.contrib.auth.models import Permission, User
+from django.contrib.auth.models import Group, Permission, User
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.cache import cache
 from django.db import connection
@@ -6562,6 +6562,11 @@ class PersonInvoicesOVTests(TestCase):
         cls.user = User.objects.create_user(
             username="ov-person-invoices-test", password="not-used"
         )
+        # Compte de servei de l'OV: l'endpoint només l'admet a ell.
+        cls.user.groups.add(Group.objects.get_or_create(name="ov")[0])
+        cls.internal_user = User.objects.create_user(
+            username="ov-person-invoices-internal", password="not-used"
+        )
         for token, value in (
             ("contract_termination_completed_token", "3"),
             ("contract_terminated_status", "-1"),
@@ -6848,6 +6853,14 @@ class PersonInvoicesOVTests(TestCase):
         response = APIClient().get(reverse(self.URL_NAME), {"dni": self.DNI})
 
         self.assertEqual(response.status_code, 401)
+
+    def test_internal_user_outside_ov_group_is_forbidden(self):
+        client = APIClient()
+        client.force_authenticate(self.internal_user)
+
+        response = client.get(reverse(self.URL_NAME), {"dni": self.DNI})
+
+        self.assertEqual(response.status_code, 403)
 
     def test_endpoint_uses_dedicated_throttle(self):
         self.assertEqual(

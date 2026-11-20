@@ -23,3 +23,20 @@ class RestrictOVUserToOVApp(BasePermission):
 
         # Non-OV users: let other permission classes decide
         return True
+
+
+class IsOVServiceUser(BasePermission):
+    """
+    Només el compte de servei de l'Oficina Virtual (usuaris del grup `ov`).
+
+    Per a endpoints de l'OV que no ha de poder cridar cap altre usuari
+    autenticat del Customers (p. ex. els que, amb només un DNI, retornen
+    dades d'una persona). Així la vista té un permís propi i no s'ha
+    d'afegir a `customers/view_permissions_baseline.txt`.
+    """
+
+    def has_permission(self, request, view):
+        user = request.user
+        if not user or not user.is_authenticated:
+            return False
+        return user.groups.filter(name="ov").exists()

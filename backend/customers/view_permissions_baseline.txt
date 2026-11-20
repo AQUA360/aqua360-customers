@@ -152,7 +152,6 @@ ov.views.MeterDetailByTokenOVView
 ov.views.PaymentReceiptOVView
 ov.views.PaymentTypeDictionaryOVView
 ov.views.PersonDataOVView
-ov.views.PersonInvoicesOVView
 ov.views.ProcedureTariffDictionaryOVView
 ov.views.PropertiesOVView
 ov.views.QuickPayOVView

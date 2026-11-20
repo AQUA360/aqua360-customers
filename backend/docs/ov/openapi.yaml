@@ -534,6 +534,9 @@ paths:
         `YYYY-MM-DD` o si `date_from` es posterior a `date_to`. Un DNI sin
         facturas devuelve `results` vacío. El endpoint está limitado a 35
         peticiones por minuto y cuenta.
+
+        Solo lo puede llamar la cuenta de servicio de la OV (usuarios del
+        grupo `ov`); cualquier otro usuario autenticado recibe `403`.
       operationId: listPersonInvoices
       security:
         - tokenAuth: []
@@ -611,6 +614,8 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: El usuario autenticado no es la cuenta de servicio de la OV (grupo `ov`)
         "429":
           $ref: "#/components/responses/TooManyRequests"
 
@@ -3619,8 +3624,10 @@ components:
           properties:
             token:
               type: string
+              nullable: true
             name:
               type: string
+              nullable: true
         supply_address:
           type: string
           nullable: true
@@ -3665,8 +3672,10 @@ components:
           properties:
             token:
               type: string
+              nullable: true
             name:
               type: string
+              nullable: true
         pdf_available:
           type: boolean
           description: Indica si el PDF está disponible según la configuración `ov_pdf_from`

@@ -107,6 +107,7 @@ from ov.serializers import (
     ContractTerminationProcedureResponseSerializer,
 )
 from pagination.ov_pagination import OVLimitPagination, OVConsumptionPagination
+from ov.permissions import IsOVServiceUser
 from ov.throttles import (
     ContractProcedureThrottle,
     ContractTerminationProcedureThrottle,
@@ -1897,7 +1898,9 @@ class PersonInvoicesOVView(APIView):
     `issue_date`, tots dos opcionals i inclusius.
     """
 
-    permission_classes = [IsAuthenticated]
+    # Només el compte de servei de l'OV: amb un DNI es veu tot l'historial de
+    # factures d'una persona.
+    permission_classes = [IsAuthenticated, IsOVServiceUser]
     throttle_classes = [PersonInvoicesThrottle]
 
     def get(self, request):
