@@ -4923,5 +4923,23 @@ export default {
     read_only_notice: "Só pode executar e exportar este informe.",
     select_report: "Seleccione un informe da lista para executalo.",
     unsaved: "Cambios sen gardar"
+  },
+  db_sync: {
+    open_settings: "Sincronización de datos con produción",
+    open_settings_blocked: "Sincronización de datos con produción (desactivada)",
+    title: "Sincronización con produción",
+    subtitle: "Datos do contorno {env}",
+    close: "Pechar",
+    retry: "Tentar de novo",
+    nightly_title: "Sincronización automática",
+    nightly_help: "Cada noite cárgase neste contorno a última copia dos datos de produción.",
+    nightly_on: "Activada: os datos substitúense cada noite.",
+    nightly_off: "Desactivada: os datos de test consérvanse.",
+    disabled_by: "Desactivada por {user} o {date}",
+    nightly_enabled_toast: "Sincronización automática activada",
+    nightly_disabled_toast: "Sincronización automática desactivada",
+    load_error: "Non se puido obter o estado da sincronización.",
+    error_control_dir_unavailable: "A aplicación non pode acceder ao cartafol de control da sincronización: hai que revisar a súa instalación.",
+    save_error: "Non se puido gardar o cambio."
   }
 }

@@ -135,6 +135,9 @@ AZURE_CONTAINER_NAME = config("AZURE_CONTAINER_NAME", default="")
 CLOUD_BUCKET_NAME = config("CLOUD_BUCKET_NAME", default="")
 
 ENV = config("ENV", default="")
+# Carpeta compartida amb l'host on l'aplicació desactiva la sincronització nocturna de la BD
+# de prod a test (coredata/utils/db_sync_service.py). Només si ENV és test, staging o local.
+DB_SYNC_CONTROL_DIR = config("DB_SYNC_CONTROL_DIR", default=str(BASE_DIR / "sync-control"))
 LANGUAGE = _resolve_language(config("LANGUAGE", default=DEFAULT_LANGUAGE_CODE))
 
 VERIFACTU_ENABLED = config("VERIFACTU_ENABLED", default=False, cast=bool)
