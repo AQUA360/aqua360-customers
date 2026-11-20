@@ -2120,6 +2120,8 @@ export default {
     validation_error_fallback: 'Se ha producido un error en la validación de los datos.',
     unexpected_error: 'Se ha producido un error inesperado',
     contract_finalized_success: 'Contrato finalizado correctamente',
+    request_already_finalized: 'Esta solicitud ya está finalizada',
+    request_finalized_read_only: 'Esta solicitud ya está finalizada: es de solo lectura y los cambios no se guardarán.',
     step_setup: 'Configuración',
     step_persons: 'Personas',
     step_address_payment: 'Pago',

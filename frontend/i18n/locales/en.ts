@@ -2111,6 +2111,8 @@ export default {
     validation_error_fallback: 'An error occurred while validating the data.',
     unexpected_error: 'An unexpected error occurred',
     contract_finalized_success: 'Contract finalized successfully',
+    request_already_finalized: 'This request is already finalized',
+    request_finalized_read_only: 'This request is already finalized: it is read-only and changes will not be saved.',
     step_setup: 'Setup',
     step_persons: 'Persons',
     step_address_payment: 'Payment',

@@ -2111,6 +2111,8 @@ export default {
     validation_error_fallback: 'Produciuse un erro na validación dos datos.',
     unexpected_error: 'Produciuse un erro inesperado',
     contract_finalized_success: 'Contrato finalizado correctamente',
+    request_already_finalized: 'Esta solicitude xa está finalizada',
+    request_finalized_read_only: 'Esta solicitude xa está finalizada: é de só lectura e os cambios non se gardarán.',
     step_setup: 'Configuración',
     step_persons: 'Persoas',
     step_address_payment: 'Pago',

@@ -1,4 +1,5 @@
 <script setup>
+import AppLoading from '~/components/atoms/AppLoading.vue';
 // components/molecules/ContractRequestContract.vue
 import _ from 'lodash';
 import { format, differenceInDays } from 'date-fns';
@@ -1188,9 +1189,8 @@ watch(billCutReading, async (newVal) => {
 <template>
   <div id="wrapper" class="text-base">
 
-    <div v-if="loading" class="flex justify-center items-center my-5">
-      <Icon name="fa6-solid:spinner" class="animate-spin text-slate-500" />
-      <span class="ml-2 font-semibold">{{ $t('common.loading') }}...</span>
+    <div v-if="loading" class="flex justify-center my-5">
+      <AppLoading :text="$t('common.loading')" />
     </div>
     <div v-else class="py-1">
 
