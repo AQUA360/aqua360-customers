@@ -6,7 +6,7 @@ from contract.serializers.bail_serializer import BailMinimalSerializer
 from contract.serializers.bonification_serializer import BonificationSerializer
 from contract.serializers.contract_clause_serializer import ContractClauseSerializer
 from contract.serializers.contract_price_rate_serializer import ContractPriceRateSerializer
-from contract.serializers.contract_serializer import ContractObservationSerializer, count_contract_invoices, serialize_contract_show_price_rates
+from contract.serializers.contract_serializer import ContractObservationSerializer, count_contract_invoices, count_contract_debt_management, serialize_contract_show_price_rates
 from contract.serializers.contract_surrogation_serializer import ContractSurrogationSerializer
 from contract.serializers.contract_tenant_change_serializer import ContractTenantChangeSerializer
 from contract.serializers.contract_termination_request_serializer import ContractTerminationRequestMinimalSerializer
@@ -133,6 +133,8 @@ class PinnedContractSerializer(serializers.ModelSerializer):
     housing_units = serializers.SerializerMethodField()
     # Comptador de la pestanya de factures (ContractTabs), com al ContractSerializer
     invoices_count = serializers.SerializerMethodField()
+    # Comptador de la pestanya de gestió del deute (ContractTabs), com al ContractSerializer
+    debt_management_count = serializers.SerializerMethodField()
     
     class Meta:
         model = Contract
@@ -143,6 +145,9 @@ class PinnedContractSerializer(serializers.ModelSerializer):
 
     def get_invoices_count(self, obj):
         return count_contract_invoices(obj)
+
+    def get_debt_management_count(self, obj):
+        return count_contract_debt_management(obj)
 
     def get_general_invoice(self, obj):
         if obj.general_invoice:

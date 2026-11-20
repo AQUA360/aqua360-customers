@@ -157,7 +157,7 @@ onMounted(() => {
 
 
 
-      <div class="px-4 py-2 border border-slate-300 w-[350px] rounded mt-3">
+      <div class="px-4 py-2 border border-slate-200 w-[350px] rounded-xl mt-3">
 
         <div class="flex items-center justify-between gap-2 text-slate-400">
           {{ $t('common.comms') }}:

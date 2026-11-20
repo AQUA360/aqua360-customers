@@ -323,7 +323,7 @@ onMounted(async () => {
                   <span class="tabular-nums whitespace-nowrap">{{ formatMoney(getContractAmount(contract)) }} €</span>
 
                   <span class="text-sm text-gray-700 whitespace-nowrap" :title="getContractPaidPayments(contract).length
-                    ? `${getContractPaidPayments(contract).length} ${$t('reports_block.collected').toLowerCase()}`
+                    ? `${getContractPaidPayments(contract).length} ${$t('reports_block.collected', getContractPaidPayments(contract).length).toLowerCase()}`
                     : undefined">
                     {{ contract.claim_payments.length }}
                     <span v-if="getContractPaidPayments(contract).length" class="text-emerald-700">
@@ -398,14 +398,14 @@ onMounted(async () => {
       </div>
     </div>
     <div v-if="showRegion == true" role="region" id="subregion"
-      class="h-full border-l border-gray-100 transition-all duration-500 ease py-2 text-base bg-white fixed top-0 right-0 w-[48vw] z-50"
+      class="h-full border-l border-gray-100 transition-all duration-500 ease py-2 text-base bg-white flex flex-col overflow-hidden shadow-2xl fixed top-0 right-0 w-[48vw] z-50"
       :class="{ 'translate-x-0': showRegion, 'translate-x-full': !showRegion }">
       <div id="region_nav" class="mb-3 px-3">
         <button @click="closeAllRegions()" class="px-2 py-1 text-sky-500 hover:bg-slate-200 active:bg-slate-300">
           <Icon name="fa6-solid:angles-right" class="text-slate-500" />
         </button>
       </div>
-      <div class="px-10">
+      <div class="pl-10 flex-1 overflow-y-auto pb-24 pr-2">
         <ContractRegion v-if="showRegionDetailComponent === 'ContractRegion'" :id="regionDetailId"
           :isSubRegion="true" />
         <InvoiceRegion v-if="showRegionDetailComponent === 'InvoiceRegion'" :id="regionDetailId" :isSubRegion="true" />
