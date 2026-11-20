@@ -69,15 +69,12 @@ class SigningCallbackView(APIView):
                 payload, "Esdeveniment no suportat.", status.HTTP_400_BAD_REQUEST
             )
 
-        if not (payload.get("external_reference") or "").strip():
-            return self._reject(
-                payload, "external_reference és obligatori.", status.HTTP_400_BAD_REQUEST
-            )
-
-        if not (payload.get("session_id") or "").strip():
-            return self._reject(
-                payload, "session_id és obligatori.", status.HTTP_400_BAD_REQUEST
-            )
+        for field in ("external_reference", "session_id"):
+            value = payload.get(field)
+            if not isinstance(value, str) or not value.strip():
+                return self._reject(
+                    payload, f"{field} és obligatori.", status.HTTP_400_BAD_REQUEST
+                )
 
         try:
             result = handle_signing_callback(payload)

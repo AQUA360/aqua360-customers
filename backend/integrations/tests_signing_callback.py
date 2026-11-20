@@ -184,3 +184,38 @@ class SigningCallbackTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.signing_client.download_signed_document.assert_called_once_with(DS_SESSION, 1)
         self.save_document.assert_called_once()
+
+    # --- Revisió ---
+
+    def test_identificadors_que_no_son_text(self):
+        for payload in (
+            {**signed_payload("CR-TEST", CR_SESSION), "external_reference": 123},
+            {**signed_payload("CR-TEST", CR_SESSION), "session_id": 123},
+        ):
+            response = self.post(payload)
+            self.assertEqual(response.status_code, 400)
+        self.assert_nothing_changed()
+
+    def test_sollicitud_sense_pdf_no_queda_signada(self):
+        self.signing_client.download_signed_document.side_effect = SigningApiError("caigut")
+        response = self.post(signed_payload("CR-TEST", CR_SESSION))
+        self.assertEqual(response.status_code, 400)
+        self.session.refresh_from_db()
+        self.assertEqual(self.session.status, ContractSigningSession.STATUS_PENDING)
+        self.save_contract.assert_not_called()
+
+        # El reintent (de Sign o del sondeig) sí que el desa.
+        self.signing_client.download_signed_document.side_effect = None
+        retry = self.post(signed_payload("CR-TEST", CR_SESSION))
+        self.assertEqual(retry.status_code, 200)
+        self.save_contract.assert_called_once()
+
+    def test_document_reenviat_durant_la_descarrega(self):
+        def resend_while_downloading(session_id, document_id):
+            DocumentSign.objects.filter(pk=self.document_sign.pk).update(token=OTHER_SESSION)
+            return b"%PDF-sessio-antiga"
+
+        self.signing_client.download_signed_document.side_effect = resend_while_downloading
+        response = self.post(signed_payload("docsign-%s" % self.document_sign.id, DS_SESSION))
+        self.assertEqual(response.status_code, 400)
+        self.save_document.assert_not_called()

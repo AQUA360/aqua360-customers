@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.db import transaction
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -176,12 +177,16 @@ def _handle_contract_request_signed(contract_request, session, payload):
         return {"ok": True, "already_processed": True}
 
     signed_at = _parse_signed_at(payload.get("signed_at"))
-    contract_file_saved = False
 
+    # Sense PDF no es marca com a signada: així Sign (o el sondeig, que mira les
+    # sessions pendents) ho pot tornar a intentar.
     pdf_bytes = _download_signed_pdf(session.session_id, payload)
-    if pdf_bytes:
-        save_signed_contract_file(contract_request, pdf_bytes)
-        contract_file_saved = True
+    if not pdf_bytes:
+        raise SigningCallbackError(
+            "No s'ha pogut descarregar el contracte firmat des d'Aqua360 Sign.",
+            status_code=400,
+        )
+    save_signed_contract_file(contract_request, pdf_bytes)
 
     session.status = ContractSigningSession.STATUS_SIGNED
     session.signed_at = signed_at
@@ -192,7 +197,7 @@ def _handle_contract_request_signed(contract_request, session, payload):
         "contract_request_id": contract_request.id,
         "contract_request_token": contract_request.token,
         "session_id": session.session_id,
-        "contract_file_saved": contract_file_saved,
+        "contract_file_saved": True,
     }
 
 
@@ -209,7 +214,12 @@ def _handle_document_sign_signed(document_sign, session_id, payload):
             status_code=400,
         )
 
-    save_signed_document_sign_file(document_sign, pdf_bytes, signed_at)
+    # Mentre es baixava el PDF el document es pot haver tornat a enviar (token nou):
+    # es revalida la sessió amb la fila bloquejada abans de desar-lo.
+    with transaction.atomic():
+        document_sign = DocumentSign.objects.select_for_update().get(pk=document_sign.pk)
+        _check_document_sign_session(document_sign, session_id)
+        save_signed_document_sign_file(document_sign, pdf_bytes, signed_at)
 
     return {
         "ok": True,
