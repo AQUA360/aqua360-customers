@@ -113,17 +113,18 @@ class TestManageRejectionWithWarnings(ReturnWarningsBase):
         }
         return client.post(reverse('payment-manage-rejection-payments'), data, format='multipart')
 
-    def test_rectified_invoice_is_not_reopened_nor_claimed(self):
+    def test_rectified_invoice_payment_is_returned_but_not_claimed(self):
+        # Un pagament cobrat i retornat s'ha de marcar com a retornat encara que la factura
+        # estigui anul·lada i refeta: els diners ja no els tenim
         self.rectify_and_refactor_invoice()
 
         response = self.post_return(claim=True)
 
         self.assertEqual(response.status_code, 200)
         self.payment.refresh_from_db()
-        self.invoice.refresh_from_db()
-        self.assertEqual(self.payment.status.token, '-6')
-        self.assertEqual(self.invoice.status.token, 'CANCELLED')
-        self.assertFalse(self.payment.movements.filter(current_status__token='-2').exists())
+        self.assertEqual(self.payment.status.token, '-2')
+        self.assertTrue(self.payment.movements.filter(current_status__token='-2').exists())
+        # El deute és a la factura refeta: no es reclama la factura anul·lada
         self.assertFalse(self.payment.claim_requests.exists())
         # El motiu del retorn sí que queda informat
         self.assertEqual(self.payment.reject, self.motive)

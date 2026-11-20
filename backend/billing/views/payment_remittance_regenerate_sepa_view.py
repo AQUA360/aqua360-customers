@@ -54,7 +54,11 @@ class PaymentRemittanceRegenerateSepaView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        bank_issues = get_company_banks_issues([payment_remittance.company_bank])
+        # Només a les transferències de retorn: el compte d'origen és obligatori.
+        bank_issues = (
+            get_company_banks_issues([payment_remittance.company_bank])
+            if payment_remittance.is_return else []
+        )
         if bank_issues:
             return JsonResponse(
                 {"error": bank_issues[0]["message"], "bank_issues": bank_issues},
