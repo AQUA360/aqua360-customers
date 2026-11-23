@@ -31,11 +31,18 @@ const loading = ref(false);
 
 const typeOptions = computed(() => types.value.map((type) => {
   const key = `person_anomaly.types.${type.token}`;
-  return { value: type.id, label: te(key) ? t(key) : type.name };
+  return { value: type.id, label: te(key) ? t(key) : type.name, opensProcess: type.opens_process };
 }));
 
+// La insolvència no es crea com a anomalia solta: s'inicia el procés (que la crea)
+const opensProcess = computed(() => !!anomalyType.value?.opensProcess);
+const startProcess = () => navigateTo({
+  path: '/contract/persons/insolvency/add',
+  query: { person_id: props.personId, start_date: startDate.value || undefined },
+});
+
 const invalidEndDate = computed(() => !!endDate.value && !!startDate.value && endDate.value < startDate.value);
-const canSave = computed(() => !!anomalyType.value && !!startDate.value && !invalidEndDate.value && !loading.value);
+const canSave = computed(() => !!anomalyType.value && !opensProcess.value && !!startDate.value && !invalidEndDate.value && !loading.value);
 
 const getTypes = async () => {
   loadingTypes.value = true;
@@ -98,7 +105,11 @@ onMounted(getTypes);
             :class="{ 'border-red-400 focus:border-red-500': attemptedSave && !startDate }" />
         </div>
 
-        <div>
+        <div v-if="opensProcess" class="md:col-span-2 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+          {{ t('person_anomaly.opens_process_help') }}
+        </div>
+
+        <div v-if="!opensProcess">
           <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500"
             for="anomaly_end_date">
             {{ t('person_anomaly.end_date') }}
@@ -107,7 +118,7 @@ onMounted(getTypes);
             :class="{ 'border-red-400 focus:border-red-500': invalidEndDate }" />
         </div>
 
-        <div class="md:col-span-2">
+        <div v-if="!opensProcess" class="md:col-span-2">
           <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500"
             for="anomaly_observation">
             {{ t('person_anomaly.observation') }}
@@ -118,7 +129,11 @@ onMounted(getTypes);
     </section>
 
     <div class="mt-4 flex justify-end">
-      <button class="button-primary flex items-center gap-2" :disabled="!canSave" @click="save">
+      <button v-if="opensProcess" class="button-primary flex items-center gap-2" @click="startProcess">
+        <Icon name="fa6-solid:scale-balanced" />
+        {{ t('insolvency.start') }}
+      </button>
+      <button v-else class="button-primary flex items-center gap-2" :disabled="!canSave" @click="save">
         <Icon :name="loading ? 'fa6-solid:spinner' : 'fa6-solid:floppy-disk'" :class="{ 'animate-spin': loading }" />
         {{ t('common.save') }}
       </button>

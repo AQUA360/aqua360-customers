@@ -8,6 +8,7 @@ import InvoiceViewEdit from '~/components/organisms/InvoiceViewEdit.vue';
 import MissingContractsDetail from './MissingContractsDetail.vue';
 import BillingProcessErrorsDetail from './BillingProcessErrorsDetail.vue';
 import BillingTerminatedContractsDialog from './BillingTerminatedContractsDialog.vue';
+import BillingInsolventHoldersDialog from './BillingInsolventHoldersDialog.vue';
 import ConsumptionAlertsDetail from './ConsumptionAlertsDetail.vue';
 import BilledInvoicesCard from './BilledInvoicesCard.vue';
 import BilledInvoicesDetail from './BilledInvoicesDetail.vue';
@@ -541,12 +542,15 @@ const getInfoMissingContracts = async (reload = false) => {
 }
 
 const terminatedDialog = ref(null);
+const insolventDialog = ref(null);
 
 const regenerate = async () => {
   try {
     // Contractes de baixa: l'usuari tria quins es facturen (null = cancel·lat o error)
     const terminatedContractIds = await terminatedDialog.value?.ask(true);
     if (terminatedContractIds === null || terminatedContractIds === undefined) return;
+    // Titulars insolvents: només avís (false = cancel·lat o error)
+    if (insolventDialog.value && !(await insolventDialog.value.ask(true))) return;
     if (confirm(t('confirmation_text_block.confirm_recalculate_invoices'))) {
       reloading.value = true
       counters.value = null;
@@ -721,6 +725,7 @@ watch(() => props.load_invoices, (newValue) => {
 <template>
   <div id="wrapper" class="text-base">
     <BillingTerminatedContractsDialog ref="terminatedDialog" :billing-id="props.billing_id" />
+    <BillingInsolventHoldersDialog ref="insolventDialog" :billing-id="props.billing_id" />
     <div class="mb-2">
       <h2 class="mb-1 text-xl font-semibold">{{ $t('billing_block.prev_invoices') }}</h2>
       <div class="flex gap-2">

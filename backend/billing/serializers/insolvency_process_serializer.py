@@ -1,0 +1,78 @@
+from rest_framework import serializers
+
+from auth.serializers import UserMinimalSerializer
+from billing.models import InsolvencyProcess, InsolvencyProcessContract
+
+
+class InsolvencyInvoiceSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    serie_final = serializers.CharField(allow_null=True)
+    issue_date = serializers.DateField(allow_null=True)
+    total_final = serializers.DecimalField(max_digits=12, decimal_places=2, allow_null=True)
+    left_to_pay = serializers.DecimalField(max_digits=12, decimal_places=2, allow_null=True)
+    status_name = serializers.CharField(source='status.name', allow_null=True, default=None)
+    contract_token = serializers.CharField(source='contract.token', allow_null=True, default=None)
+
+
+class InsolvencyContractSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    token = serializers.CharField(allow_null=True)
+    status_name = serializers.CharField(source='status.name', allow_null=True, default=None)
+    payment_type = serializers.SerializerMethodField()
+    has_iban = serializers.SerializerMethodField()
+
+    def get_payment_type(self, obj):
+        payment_type = obj.payment.type if obj.payment_id and obj.payment and obj.payment.type_id else None
+        if not payment_type:
+            return None
+        return {'id': payment_type.id, 'token': payment_type.token, 'name': payment_type.name}
+
+    def get_has_iban(self, obj):
+        return bool(obj.payment_id and obj.payment and obj.payment.IBAN_id)
+
+
+class InsolvencyProcessContractSerializer(serializers.ModelSerializer):
+    contract_token = serializers.CharField(source='contract.token', read_only=True)
+    previous_payment_type_name = serializers.CharField(source='previous_payment_type.name', read_only=True, default=None)
+    new_payment_type_name = serializers.CharField(source='new_payment_type.name', read_only=True, default=None)
+
+    class Meta:
+        model = InsolvencyProcessContract
+        fields = ['id', 'contract', 'contract_token', 'previous_payment_type_name', 'new_payment_type_name', 'created_at']
+
+
+class InsolvencyProcessListSerializer(serializers.ModelSerializer):
+    person_name = serializers.SerializerMethodField()
+    person_token = serializers.CharField(source='person.token', read_only=True)
+    kind_display = serializers.CharField(source='get_kind_display', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    invoices_count = serializers.IntegerField(read_only=True, default=0)
+    user = UserMinimalSerializer(read_only=True)
+
+    class Meta:
+        model = InsolvencyProcess
+        fields = [
+            'id', 'created_at', 'person', 'person_name', 'person_token', 'kind', 'kind_display',
+            'start_date', 'case_number', 'status', 'status_display', 'invoices_count', 'user', 'closed_at',
+        ]
+
+    def get_person_name(self, obj):
+        return str(obj.person).strip() if obj.person_id else None
+
+
+class InsolvencyProcessSerializer(InsolvencyProcessListSerializer):
+    invoices = InsolvencyInvoiceSerializer(many=True, read_only=True)
+    contracts = InsolvencyProcessContractSerializer(many=True, read_only=True)
+    documents = serializers.SerializerMethodField()
+    closed_by = UserMinimalSerializer(read_only=True)
+
+    class Meta(InsolvencyProcessListSerializer.Meta):
+        fields = InsolvencyProcessListSerializer.Meta.fields + [
+            'observation', 'invoices', 'contracts', 'documents', 'closed_by', 'anomaly',
+        ]
+
+    def get_documents(self, obj):
+        return [
+            {'id': document.id, 'document_name': document.document_name, 'date': document.date}
+            for document in obj.documents.filter(is_active=True).order_by('id')
+        ]

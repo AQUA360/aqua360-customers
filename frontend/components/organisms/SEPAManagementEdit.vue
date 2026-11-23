@@ -140,6 +140,9 @@ const total_sepa_files = ref(0);
 // Avisos de l'encaminament (rebuts sense IBAN, empreses sense compte per
 // defecte...). No bloquegen mai la generació, només informen.
 const routingWarnings = ref([]);
+// Persones insolvents amb rebuts a la remesa (avís, no impedeix generar)
+const insolventHolders = ref([]);
+const totalInsolvent = ref(0);
 // Comptes de l'empresa sense les dades que demana el fitxer SEPA (IBAN, BIC,
 // identificador de creditor...). A diferència dels avisos, bloquegen la
 // generació fins que es completen.
@@ -333,6 +336,8 @@ const search = async (applyPendingInvoicesExclusion = true) => {
     total_sepa_files.value = result.total_sepa_files || 0;
     routingWarnings.value = result.routing_warnings || [];
     bankIssues.value = result.bank_issues || [];
+    insolventHolders.value = result.insolvent_holders || [];
+    totalInsolvent.value = result.total_insolvent || 0;
     
     lastSearchData.value = { ...searchData };
 
@@ -375,6 +380,9 @@ const clickFinalize = async () => {
   if (!isValid()) return
   if (total_anomalies.value > 0){
     if (!confirm(t('warning_block.warning_anomalies_found'))) return
+  }
+  if (totalInsolvent.value > 0) {
+    if (!confirm(t('insolvency.remittance_confirm'))) return
   }
   saving.value = true;
   try {
@@ -832,6 +840,8 @@ const resetFilters = (reset_all = true) => {
   total_sepa_files.value = 0;
   routingWarnings.value = [];
   bankIssues.value = [];
+  insolventHolders.value = [];
+  totalInsolvent.value = 0;
   lastSearchData.value = null;
 }
 
@@ -1061,6 +1071,19 @@ watch(selectedContracts, () => {
           <li v-for="issue in bankIssues" :key="issue.bank" class="flex items-start gap-2">
             <Icon name="fa6-solid:circle-exclamation" class="text-xs mt-1 shrink-0" />
             <span>{{ issue.message }}</span>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Rebuts de persones insolvents: informatiu, es demana confirmació en generar -->
+      <div v-if="totalInsolvent > 0" class="mb-4 rounded border border-red-200 bg-red-50 px-3 py-2">
+        <p class="text-sm font-semibold text-red-800 flex items-center gap-2">
+          <Icon name="fa6-solid:triangle-exclamation" />
+          {{ $t('insolvency.remittance_warning', { n: totalInsolvent }) }}
+        </p>
+        <ul class="mt-1 text-sm text-red-800 space-y-0.5">
+          <li v-for="holder in insolventHolders" :key="holder.id">
+            {{ holder.name }} ({{ holder.token }}) · {{ holder.payments }}
           </li>
         </ul>
       </div>

@@ -85,6 +85,8 @@ from .views.invoice_mark_reviewed_range_view import InvoiceMarkReviewedRangeView
 from .views.invoice_reviewed_range_preview_view import InvoiceReviewedRangePreviewView
 from .views.billing_batch_regenerate_view import BillingBatchRegenerateView
 from .views.billing_terminated_contracts_view import BillingTerminatedContractsView
+from .views.billing_insolvent_holders_view import BillingInsolventHoldersView
+from .views.insolvency_process_view import InsolvencyProcessViewSet
 from .views.billing_regenerate_pdfs_view import BillingRegeneratePDFsView, BillingRegeneratePDFsStatusView
 from .views.wincen_export_view import WinCenExportView, WinCenExportStatusView
 from .views.billing_preinvoices_summary_view import BillingPreInvoicesSummaryViewSet
@@ -114,6 +116,7 @@ from .views.invoice_send_grouped_email_view import InvoiceSendGroupedEmailView
 router = routers.DefaultRouter()
 
 router.register(r'reading', ReadingViewSet, basename='reading')
+router.register(r'insolvency-process', InsolvencyProcessViewSet)
 router.register(r'reading-document', ReadingDocumentViewSet)
 router.register(r'reading-detail', ReadingDetailViewSet, basename='reading-detail')
 router.register(r'reading-batch', ReadingBatchViewSet)
@@ -243,6 +246,7 @@ urlpatterns = [
     path('billing/<int:id>/invoices/summary', BillingInvoicesSummaryViewSet.as_view(http_method_names=['get']), name='billing-invoices-summary'),
     path('billing/<int:id>/recalculate', BillingBatchRegenerateView.as_view(http_method_names=['post']), name='billing-invoices-recalculate'),
     path('billing/<int:id>/terminated-contracts', BillingTerminatedContractsView.as_view(http_method_names=['get']), name='billing-terminated-contracts'),
+    path('billing/<int:id>/insolvent-holders', BillingInsolventHoldersView.as_view(), name='billing-insolvent-holders'),
     path('billing/<int:id>/regenerate-pdfs', BillingRegeneratePDFsView.as_view(http_method_names=['post']), name='billing-regenerate-pdfs'),
     path('billing/regenerate-pdfs/status/<str:task_id>/', BillingRegeneratePDFsStatusView.as_view(http_method_names=['get']), name='billing-regenerate-pdfs-status'),
     path('billing/<int:id>/wincen-export', WinCenExportView.as_view(http_method_names=['post']), name='billing-wincen-export'),
