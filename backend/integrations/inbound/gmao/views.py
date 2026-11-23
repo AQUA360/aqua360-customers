@@ -1,8 +1,8 @@
 import re
 
+from coredata.authentication import ExpiringTokenAuthentication
 from django.db.models import Q
 from rest_framework import status
-from rest_framework.authentication import TokenAuthentication
 from rest_framework.exceptions import NotFound
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -32,7 +32,7 @@ class GMAOPropertySearchView(APIView):
     `{count, page, limit, total_pages, results}`.
     """
 
-    authentication_classes = [TokenAuthentication]
+    authentication_classes = [ExpiringTokenAuthentication]
     permission_classes = [IsAuthenticated]
     pagination_class = OVLimitPagination
     min_search_length = 3

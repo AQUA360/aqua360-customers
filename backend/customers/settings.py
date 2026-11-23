@@ -439,19 +439,22 @@ REST_FRAMEWORK.update(
 # per inactivitat o per antiguitat, el que arribi primer.
 AUTH_TOKEN_IDLE_HOURS = config("AUTH_TOKEN_IDLE_HOURS", default=24, cast=int)
 AUTH_TOKEN_MAX_AGE_DAYS = config("AUTH_TOKEN_MAX_AGE_DAYS", default=7, cast=int)
-# Usuaris d'integració amb token permanent: els de les variables que ja creen
+# Caducitat del token de DRF dels usuaris d'integració: en caducar, cal tornar a fer login.
+AUTH_INTEGRATION_TOKEN_MAX_AGE_DAYS = config("AUTH_INTEGRATION_TOKEN_MAX_AGE_DAYS", default=15, cast=int)
+# Usuaris d'integració amb token de DRF: els de les variables que ja creen
 # aquests usuaris, els de AUTH_TOKEN_NON_EXPIRING_USERS i els dels grups indicats.
 AUTH_TOKEN_NON_EXPIRING_USERS = sorted({
     username
     for username in (
         config("OV_USER_USERNAME", default=""),
+        config("GMAO_USER_USERNAME", default=""),
         config("GISWATER_USER_USERNAME", default=""),
         config("SMARTMETERING_USER_USERNAME", default=""),
         *config("AUTH_TOKEN_NON_EXPIRING_USERS", default="", cast=Csv()),
     )
     if username
 })
-AUTH_TOKEN_NON_EXPIRING_GROUPS = ("ov", "giswater", "smartmetering")
+AUTH_TOKEN_NON_EXPIRING_GROUPS = ("ov", "gmao", "giswater", "smartmetering")
 
 # django-axes: bloqueig per nom d'usuari després de N intents fallits (login API i /admin/).
 # Els intents es guarden a la base de dades, així que es comparteixen entre workers.

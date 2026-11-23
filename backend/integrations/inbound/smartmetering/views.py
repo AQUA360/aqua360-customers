@@ -1,5 +1,5 @@
 from rest_framework import status
-from rest_framework.authentication import TokenAuthentication
+from coredata.authentication import ExpiringTokenAuthentication
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 class SmartMeteringContractsView(APIView):
-    authentication_classes = [TokenAuthentication]
+    authentication_classes = [ExpiringTokenAuthentication]
     permission_classes = [IsAuthenticated]
     endpoint = CONTRACTS_ENDPOINT
 
