@@ -24,6 +24,7 @@ from coredata.views.person_cnae_serializer import PersonCnaeViewSet
 from coredata.views.street_number_view import StreetNumberViewSet
 from coredata.views.person_deliquency_view import PersonDeliquencyViewSet
 from coredata.views.person_observation_view import PersonObservationViewSet
+from coredata.views.person_anomaly_view import PersonAnomalyTypeViewSet, PersonAnomalyViewSet
 from coredata.views.main_permission_view import MainPermissionViewSet
 from coredata.views.call_register_view import CallRegisterViewSet
 from coredata.views.return_reason_view import ReturnReasonViewSet
@@ -38,6 +39,8 @@ router.register(r'person-contact', PersonContactViewSet)
 router.register(r'person-cnae', PersonCnaeViewSet)
 router.register(r'person-deliquency', PersonDeliquencyViewSet)
 router.register(r'person-observation', PersonObservationViewSet)
+router.register(r'person-anomaly', PersonAnomalyViewSet)
+router.register(r'person-anomaly-type', PersonAnomalyTypeViewSet)
 router.register(r'street', StreetViewSet)
 router.register(r'street-type', StreetTypeViewSet)
 router.register(r'street-number', StreetNumberViewSet)

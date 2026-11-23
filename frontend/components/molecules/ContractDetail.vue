@@ -78,6 +78,10 @@ const isContractSupplyCut = computed(() => isSupplyPointCut(localData.value));
 
 // Value of the contract variable configured in `contract_housing_units_variable_type_token`
 // Propietari, llogater i representants, en files amb les mateixes columnes.
+// Columna de l'etiqueta més estreta que la general (120px): les etiquetes d'aquesta regió són curtes
+// i les llargues passen a dues línies (wrap-label)
+const LABEL_WIDTH = 90;
+
 const otherPersons = computed(() => {
   const rows = [];
   if (localData.value?.owner) rows.push({ key: 'owner', label: t('contract_block.owner'), person: localData.value.owner });
@@ -390,7 +394,7 @@ watch(() => props.data, (newValue) => {
         </span>
       </div>
       <div role="row" class="grid grid-cols-3 gap-x-3">
-        <FieldDetail :label="t('common.identification')" :value="localData.token" class="font-bold">
+        <FieldDetail :label-width="LABEL_WIDTH" wrap-label :label="t('common.identification')" :value="localData.token" class="font-bold">
           <button v-if="reducedDetail && !isSubRegion" @click="showDetail('ContractRegion', localData.id)">
             <div class="flex items-center gap-2 text-start text-sky-500 hover:underline">
               <span>{{ localData.token }}</span>
@@ -418,30 +422,31 @@ watch(() => props.data, (newValue) => {
             </abbr>
           </div>
         </FieldDetail>
-        <FieldDetail v-if="localData.registration_date || localData.created_at" :label="t('common.registration_date')"
+        <FieldDetail :label-width="LABEL_WIDTH" wrap-label v-if="localData.registration_date || localData.created_at" :label="t('common.registration_date')"
           :value="formatDate(localData.registration_date || localData.created_at)">
           <AtomsDate :date="localData.registration_date || localData.created_at"></AtomsDate>
         </FieldDetail>
-        <FieldDetail v-if="localData.language" :label="t('common.language')"
+        <FieldDetail :label-width="LABEL_WIDTH" wrap-label v-if="localData.language" :label="t('common.language')"
           :value="languageLabel(localData.language)" />
       </div>
       <div v-if="localData.termination_date || (useMultipleCompanies && localData.company?.alias)" role="row" class="grid grid-cols-3 gap-x-3">
-        <FieldDetail v-if="localData.termination_date" :label="t('common.termination_date')" :value="formatDate(localData.termination_date)">
+        <FieldDetail :label-width="LABEL_WIDTH" wrap-label v-if="localData.termination_date" :label="t('common.termination_date')" :value="formatDate(localData.termination_date)">
           <AtomsDate :date="localData.termination_date"></AtomsDate>
         </FieldDetail>
-        <FieldDetail v-if="useMultipleCompanies && localData.company?.alias" :label="t('company')" :value="localData.company.alias" />
+        <FieldDetail :label-width="LABEL_WIDTH" wrap-label v-if="useMultipleCompanies && localData.company?.alias" :label="t('company')" :value="localData.company.alias" />
       </div>
       <div role="row" class="grid grid-cols-2">
-        <FieldDetail :label="$t('contract_block.holder')" :value="localData.holder.full_name" class="mr-5">
+        <FieldDetail :label-width="LABEL_WIDTH" wrap-label :label="$t('contract_block.holder')" :value="localData.holder.full_name" class="mr-5">
           <!-- <abbr :title="localData.holder.token">{{ localData.holder.full_name }}</abbr> -->
           <div class=" flex items-center"
             :class="{ 'grid grid-cols-[auto,1fr]': localData.holder.vulnerability_level > 0 }">
             <AtomsVulnerabilityCheck v-if="localData.holder.vulnerability_level > 0"
               :vulnerability_level="localData.holder.vulnerability_level" :small="true" class="mr-1" />
-            <AtomsPersonBadge :person="localData.holder" class="font-bold" />
+            <AtomsPersonBadge :person="localData.holder" class="font-bold" :clickable="!isSubRegion"
+              @click="!isSubRegion && localData.holder?.id && showDetail('PersonRegion', localData.holder.id)" />
           </div>
         </FieldDetail>
-        <FieldDetail :label="$t('common.short_supply')">
+        <FieldDetail :label-width="LABEL_WIDTH" wrap-label :label="$t('common.short_supply')">
           <div v-if="!isSubRegion" class="flex gap-2">
             <button @click="showDetail('SupplyPointRegion', localData.supply_point_default?.id)"
               class="text-start text-sky-500 underline flex items-center gap-2">
@@ -464,14 +469,14 @@ watch(() => props.data, (newValue) => {
       </div>
       <!-- Mateixes columnes que titular | punt: el comptador queda sota el punt -->
       <div v-if="localData.virtual_office_date || localData.supply_point_default?.meter_code" role="row" class="grid grid-cols-2">
-        <FieldDetail v-if="localData.virtual_office_date" class="mr-5" :label="t('contract_block.virtual_office')"
+        <FieldDetail :label-width="LABEL_WIDTH" wrap-label v-if="localData.virtual_office_date" class="mr-5" :label="t('contract_block.virtual_office')"
           :value="formatDate(localData.virtual_office_date)">
           <span :title="t('contract_block.virtual_office_since')" class="flex items-center gap-1">
             <Icon name="mdi:laptop-account" class="w-4 h-4 text-sky-600 shrink-0" />
             <AtomsDate :date="localData.virtual_office_date"></AtomsDate>
           </span>
         </FieldDetail>
-        <FieldDetail v-if="localData.supply_point_default?.meter_code" class="col-start-2" :label="$t('meter')">
+        <FieldDetail :label-width="LABEL_WIDTH" wrap-label v-if="localData.supply_point_default?.meter_code" class="col-start-2" :label="$t('meter')">
           <div v-if="!isSubRegion" class="flex gap-2">
             <button @click="showDetail('MeterRegion', localData.supply_point_default.meter_id)"
               class="text-start text-sky-500 underline flex items-center gap-2">
@@ -527,7 +532,7 @@ watch(() => props.data, (newValue) => {
       <!-- <div v-if="!reducedDetail">
         <hr class="my-2" />
         <div role="row" class="grid grid-cols-2">
-          <FieldDetail v-for="bag in localData.estimated_bags" :key="bag.id" :label="$t('Bossa de consum')">
+          <FieldDetail :label-width="LABEL_WIDTH" wrap-label v-for="bag in localData.estimated_bags" :key="bag.id" :label="$t('Bossa de consum')">
             <div v-if="!isSubRegion" class="flex gap-2">
               <button @click="showDetail('EstimatedBagRegion', bag.id)"
                 class="text-start text-sky-500 underline flex items-center gap-2">
@@ -548,26 +553,27 @@ watch(() => props.data, (newValue) => {
             :showBailTab="showBailTab" @show-detail="showDetail" @show-tab="emit('update-active-tab', $event)" />
         </div>
         <div role="row" class="grid grid-cols-3 gap-x-3">
-          <FieldDetail :label="$t('contract_block.client_type')"
+          <FieldDetail :label-width="LABEL_WIDTH" wrap-label :label="$t('contract_block.client_type')"
             :value="localData.client_type ? localData.client_type?.name : t('contract_block.no_client_type')">
           </FieldDetail>
-          <FieldDetail :label="$t('common.usage_type')"
+          <FieldDetail :label-width="LABEL_WIDTH" wrap-label :label="$t('common.usage_type')"
             :value="localData.use_type ? localData.use_type?.name : t('common.no_usage_type')"></FieldDetail>
-          <FieldDetail :label="$t('contract_block.category')"
+          <FieldDetail :label-width="LABEL_WIDTH" wrap-label :label="$t('contract_block.category')"
             :value="localData.category ? localData.category?.name : t('contract_block.no_category')"></FieldDetail>
         </div>
         <div v-if="hasHousingUnits" role="row" class="grid grid-cols-3 gap-x-3">
-          <FieldDetail :label="$t('contract_block.housing_units')"
+          <FieldDetail :label-width="LABEL_WIDTH" wrap-label :label="$t('contract_block.housing_units')"
             :value="localData.housing_units" class="col-start-2" />
         </div>
 
         <!-- Altres persones del contracte, alineades en columnes: rol | nom | DNI | informació extra -->
         <div v-if="otherPersons.length">
           <hr class="my-2" />
-          <div class="grid grid-cols-[120px,minmax(0,2fr),minmax(0,1fr),minmax(0,1.5fr)] gap-x-3 gap-y-1 items-center mb-2">
+          <div class="grid grid-cols-[90px,minmax(0,2fr),minmax(0,1fr),minmax(0,1.5fr)] gap-x-3 gap-y-1 items-center mb-2">
             <template v-for="row in otherPersons" :key="row.key">
               <span class="text-slate-600 truncate" :title="row.label">{{ row.label }}</span>
-              <AtomsPersonBadge :person="row.person" class="font-bold" :color="'white'">
+              <AtomsPersonBadge :person="row.person" class="font-bold" :color="'white'" :clickable="!isSubRegion && !!row.person?.id"
+                @click="!isSubRegion && row.person?.id && showDetail('PersonRegion', row.person.id)">
                 <span class="truncate" :title="personName(row.person)">{{ personName(row.person) }}</span>
               </AtomsPersonBadge>
               <span class="text-sm text-slate-700 truncate">{{ row.person?.token || '-' }}</span>
@@ -580,7 +586,7 @@ watch(() => props.data, (newValue) => {
           </div>
             <!-- <div v-if="localData?.contract_request_type?.has_persons">
               <div v-if="!isEditingPersons" class="grid grid-cols-2">
-                <FieldDetail :label='$t("common.persons")' :value="(localData.total_persons).toString() || '-'"
+                <FieldDetail :label-width="LABEL_WIDTH" wrap-label :label='$t("common.persons")' :value="(localData.total_persons).toString() || '-'"
                   class="items-center">
                   <span v-if="!isSubRegion && canChange">
                     <span class="p-3">{{ localData.total_persons ? localData.total_persons : 3 }}</span>
@@ -594,7 +600,7 @@ watch(() => props.data, (newValue) => {
                 </FieldDetail>
               </div>
               <div v-else class="grid grid-cols-2">
-                <FieldDetail :label='$t("common.persons")' :value="localData.total_persons || '-'" class="items-center">
+                <FieldDetail :label-width="LABEL_WIDTH" wrap-label :label='$t("common.persons")' :value="localData.total_persons || '-'" class="items-center">
                   <span class="flex gap-3 w-full h-[75%]">
                     <input type="number" v-model="totalPersons" class="input" />
                     <button class=" py-1 text-gray-500" @click="emitChange">
@@ -620,20 +626,20 @@ watch(() => props.data, (newValue) => {
               <div :class="{
                 'grid grid-cols-2 gap-x-3': localData.payment?.IBAN?.updated_at
               }">
-                <FieldDetail
+                <FieldDetail :label-width="LABEL_WIDTH" wrap-label
                   v-if="localData.payment?.IBAN && localData.payment?.IBAN?.dni && localData.payment?.IBAN?.dni != localData.holder.dni"
                   class="col-span-2" :label="$t('contract_block.holder')"
                   :value="`${localData.payment?.IBAN?.name} (${localData.payment?.IBAN?.dni})`" />
-                <FieldDetail
+                <FieldDetail :label-width="LABEL_WIDTH" wrap-label
                   v-else-if="localData.payment?.IBAN && localData.payment?.IBAN?.person.token != localData.holder.token"
                   class="col-span-2" :label="$t('contract_block.holder')"
                   :value="`${localData.payment?.IBAN?.person?.name} (${localData.payment?.IBAN?.person?.token})`" />
-                <FieldDetail class="col-span-2" :label="$t('common.payment_method')" wrap-label>
+                <FieldDetail :label-width="LABEL_WIDTH" wrap-label class="col-span-2" :label="$t('common.payment_method')">
                   <abbr class="break-words" :title="localData.payment?.type?.name">
                     {{ localData.payment?.type?.name }}
                   </abbr>
                 </FieldDetail>
-                <FieldDetail class="col-span-2" v-if="localData.payment?.IBAN?.updated_at" :label="$t('common.updated')"
+                <FieldDetail :label-width="LABEL_WIDTH" wrap-label class="col-span-2" v-if="localData.payment?.IBAN?.updated_at" :label="$t('common.updated')"
                   :value="`${formatDate(localData.payment?.IBAN?.updated_at)}${localData.payment?.IBAN?.origin ? ` (${localData.payment.IBAN.origin})` : ''}`" />
               </div>
               <div v-if="localData.payment?.type?.token == 'DIRECT_DEBIT'" class="relative group">
@@ -645,7 +651,7 @@ watch(() => props.data, (newValue) => {
                   </template>
                 </BankDetail>
                 <span v-if="localData.payment?.mandate_id" class="flex items-center gap-x-1">
-                  <FieldDetail class="flex-1 min-w-0" :label="$t('common.mandate_id')" wrap-label>
+                  <FieldDetail :label-width="LABEL_WIDTH" wrap-label class="flex-1 min-w-0" :label="$t('common.mandate_id')">
                     <span class="text-black-900 break-all">{{ localData.payment?.mandate_id }}</span>
                   </FieldDetail>
                   <div class="relative flex-shrink-0 " >
@@ -709,7 +715,7 @@ watch(() => props.data, (newValue) => {
 
 
               <div v-if="!isEditingRemittance && localData.remittance_date" class="grid grid-cols-2 mt-1 mb-3">
-                <FieldDetail :label='$t("common.remittance_day")' class="items-center"
+                <FieldDetail :label-width="LABEL_WIDTH" wrap-label :label='$t("common.remittance_day")' class="items-center"
                   :value="localData.remittance_date ? localData.remittance_date.toString() : '-'">
                   <span v-if="!isSubRegion">
                     <span class="p-3">{{ localData.remittance_date ? localData.remittance_date : '-' }}</span>
@@ -723,7 +729,7 @@ watch(() => props.data, (newValue) => {
                 </FieldDetail>
               </div>
               <div v-else-if="isEditingRemittance" class="grid grid-cols-2">
-                <FieldDetail :label='$t("common.remittance_day")'
+                <FieldDetail :label-width="LABEL_WIDTH" wrap-label :label='$t("common.remittance_day")'
                   :value="(remittance_date ?? '-').toString()" class="items-center">
                   <span class="flex gap-3 w-full h-[75%]">
                     <input type="number" v-model="remittance_date" class="input w-3/4" />
@@ -866,32 +872,32 @@ watch(() => props.data, (newValue) => {
                         width: invoiceDropdownPosition.width + 'px'
                       }">
                       <div class="px-3 py-3 bg-white">
-                        <FieldDetail :label="$t('billing_block.short_accounting_office')">
+                        <FieldDetail :label-width="LABEL_WIDTH" wrap-label :label="$t('billing_block.short_accounting_office')">
                           <span class="truncate">
                             {{ localData.payment?.accounting_office }}
                           </span>
                         </FieldDetail>
-                        <FieldDetail :label="$t('billing_block.short_managing_body')">
+                        <FieldDetail :label-width="LABEL_WIDTH" wrap-label :label="$t('billing_block.short_managing_body')">
                           <span class="truncate">
                             {{ localData.payment?.managing_body }}
                           </span>
                         </FieldDetail>
-                        <FieldDetail :label="$t('billing_block.short_processing_unit')">
+                        <FieldDetail :label-width="LABEL_WIDTH" wrap-label :label="$t('billing_block.short_processing_unit')">
                           <span class="truncate">
                             {{ localData.payment?.processing_unit }}
                           </span>
                         </FieldDetail>
-                        <FieldDetail v-if="localData.holder?.current_record" :label="$t('billing_block.record')">
+                        <FieldDetail :label-width="LABEL_WIDTH" wrap-label v-if="localData.holder?.current_record" :label="$t('billing_block.record')">
                           <span class="truncate">
                             {{ localData.holder?.current_record }}
                           </span>
                         </FieldDetail>
-                        <FieldDetail v-if="localData.payment?.command" :label="$t('billing_block.command')">
+                        <FieldDetail :label-width="LABEL_WIDTH" wrap-label v-if="localData.payment?.command" :label="$t('billing_block.command')">
                           <span class="truncate">
                             {{ localData.payment?.command }}
                           </span>
                         </FieldDetail>
-                        <FieldDetail v-if="localData.payment?.record" :label="$t('billing_block.record')">
+                        <FieldDetail :label-width="LABEL_WIDTH" wrap-label v-if="localData.payment?.record" :label="$t('billing_block.record')">
                           <span class="truncate">
                             {{ localData.payment?.record }}
                           </span>

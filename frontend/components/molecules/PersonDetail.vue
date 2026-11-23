@@ -4,6 +4,7 @@ import FieldDetail from '~/components/atoms/FieldDetail.vue';
 import { formatDate } from '~/utils/date';
 import Date from '~/components/atoms/Date.vue';
 import ButtonOutline from '../atoms/ButtonOutline.vue';
+import PersonAnomalyBadges from '../atoms/PersonAnomalyBadges.vue';
 
 const { $PersonApiService } = useNuxtApp();
 const { t } = useI18n();
@@ -48,6 +49,9 @@ const fetchData = async () => {
 
 };
 
+// Del pare quan n'hi ha (es refresca en canviar les anomalies); si no, de la càrrega pròpia
+const currentAnomalies = computed(() => props.data?.current_anomalies ?? localData.value?.current_anomalies ?? []);
+
 const showDetail = function (component, id) {
   emit('show-detail', component, id);
 }
@@ -90,6 +94,9 @@ watch(() => props.id, (newId, oldId) => {
         </button>
       </div>
       <FieldDetail :label='localData.is_juridic ? $t("common.name_social") : $t("common.name")' :value=localData.full_name></FieldDetail>
+      <div v-if="currentAnomalies.length" class="col-span-2 px-1">
+        <PersonAnomalyBadges :anomalies="currentAnomalies" />
+      </div>
       <FieldDetail v-if="localData.is_juridic && localData.current_record" :label='$t("billing_block.current_record")' 
         :value=localData.current_record></FieldDetail>
       <div class="col-span-2 flex items-center gap-2">

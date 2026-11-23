@@ -88,6 +88,7 @@ export default defineNuxtConfig({
     '~/plugins/api/coredata/person-address-api.js',
     '~/plugins/api/coredata/person-bank-api.js',
     '~/plugins/api/coredata/person-contact-api.js',
+    '~/plugins/api/coredata/person-anomaly-api.js',
     '~/plugins/api/coredata/street-api.js',
     '~/plugins/api/coredata/cnae-api.js',
     '~/plugins/api/coredata/person-bank-sepa-documentation-api.js',

@@ -1,4 +1,28 @@
 export default {
+  person_anomaly: {
+    title: 'Anomalies',
+    anomaly_type: 'Anomaly type',
+    start_date: 'Start date',
+    end_date: 'End date',
+    observation: 'Notes',
+    user: 'User',
+    status: 'Status',
+    current: 'Current',
+    resolved: 'Resolved',
+    add: 'Add anomaly',
+    resolve: 'Resolve',
+    delete: 'Delete',
+    no_records: 'No anomalies',
+    confirm_delete: 'Are you sure you want to delete this anomaly?',
+    confirm_resolve: 'Mark this anomaly as resolved as of today?',
+    current_anomalies: 'Current anomalies',
+    types: {
+      wrong_identification: 'Wrong ID/tax number',
+      wrong_iban: 'Wrong IBAN',
+      deceased: 'Deceased',
+      insolvent: 'Insolvent',
+    },
+  },
   export_jobs: {
     title: 'Downloads',
     empty: 'You have no recent downloads',

@@ -12,12 +12,18 @@ const props = defineProps({
   },
   strong: Boolean,
   // Etiquetes llargues: en lloc de tallar-les amb «...», que passin a dues línies.
-  wrapLabel: Boolean
+  wrapLabel: Boolean,
+  // Amplada de la columna de l'etiqueta en px (per defecte 120, la de tota l'aplicació)
+  labelWidth: {
+    type: Number,
+    default: null,
+  },
 });
 </script>
 
 <template>
-  <div :id="'field_' + props.label" class="mb-2 grid" :class="props.icon ? 'grid-cols-[20px,1fr]' : 'grid-cols-[120px,1fr]'">
+  <div :id="'field_' + props.label" class="mb-2 grid" :class="props.icon ? 'grid-cols-[20px,1fr]' : (props.labelWidth ? '' : 'grid-cols-[120px,1fr]')"
+    :style="!props.icon && props.labelWidth ? { gridTemplateColumns: `${props.labelWidth}px minmax(0, 1fr)` } : null">
     <Icon v-if="props.icon" :name="props.icon" class="text-slate-400" />
     <label v-else class="inline-block" :class="[props.wrapLabel ? 'break-words pr-1' : 'truncate', strong ? 'text-slate-600 font-bold' : 'text-slate-600']" :title="props.label">{{ props.label }}</label>
     <slot><span class="text-black-900">{{ props.value == null ? '-' : String(props.value) }}</span></slot>
