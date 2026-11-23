@@ -85,6 +85,7 @@ class InsolvencyProcessViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
             queryset = queryset.prefetch_related(
                 'invoices__status', 'invoices__contract',
                 'contracts__contract', 'contracts__previous_payment_type', 'contracts__new_payment_type',
+                'contracts__previous_debt_management',
             )
         return queryset
 
@@ -120,7 +121,6 @@ class InsolvencyProcessViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
                 start_date=_get_date(data.get('start_date')),
                 case_number=data.get('case_number'),
                 observation=data.get('observation'),
-                invoice_ids=data.get('invoice_ids'),
                 payment_changes=data.get('payment_changes'),
                 user=request.user,
             )
@@ -137,7 +137,8 @@ class InsolvencyProcessViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
         process = self.get_object()
         try:
             end_date = _get_date(request.data.get('end_date')) if request.data.get('end_date') else None
-            close_insolvency_process(process, request.user, end_date)
+            close_insolvency_process(process, request.user, end_date,
+                                     restore_payment=request.data.get('restore_payment') is True)
         except InsolvencyProcessError as error:
             return Response({'error': insolvency_error_message(error.code)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(InsolvencyProcessSerializer(self.get_queryset().get(pk=process.pk)).data)

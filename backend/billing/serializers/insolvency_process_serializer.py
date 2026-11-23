@@ -2,6 +2,7 @@ from rest_framework import serializers
 
 from auth.serializers import UserMinimalSerializer
 from billing.models import InsolvencyProcess, InsolvencyProcessContract
+from billing.utils.insolvency_service import eligible_invoices
 
 
 class InsolvencyInvoiceSerializer(serializers.Serializer):
@@ -18,6 +19,7 @@ class InsolvencyContractSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     token = serializers.CharField(allow_null=True)
     status_name = serializers.CharField(source='status.name', allow_null=True, default=None)
+    debt_management_name = serializers.CharField(source='debt_management.name', allow_null=True, default=None)
     payment_type = serializers.SerializerMethodField()
     has_iban = serializers.SerializerMethodField()
 
@@ -35,10 +37,16 @@ class InsolvencyProcessContractSerializer(serializers.ModelSerializer):
     contract_token = serializers.CharField(source='contract.token', read_only=True)
     previous_payment_type_name = serializers.CharField(source='previous_payment_type.name', read_only=True, default=None)
     new_payment_type_name = serializers.CharField(source='new_payment_type.name', read_only=True, default=None)
+    previous_debt_management_name = serializers.CharField(source='previous_debt_management.name', read_only=True,
+                                                          default=None)
 
     class Meta:
         model = InsolvencyProcessContract
-        fields = ['id', 'contract', 'contract_token', 'previous_payment_type_name', 'new_payment_type_name', 'created_at']
+        fields = [
+            'id', 'contract', 'contract_token', 'previous_payment_type_name', 'new_payment_type_name',
+            'payment_restored', 'previous_debt_management_name', 'debt_management_changed',
+            'debt_management_restored', 'created_at',
+        ]
 
 
 class InsolvencyProcessListSerializer(serializers.ModelSerializer):
@@ -46,7 +54,7 @@ class InsolvencyProcessListSerializer(serializers.ModelSerializer):
     person_token = serializers.CharField(source='person.token', read_only=True)
     kind_display = serializers.CharField(source='get_kind_display', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
-    invoices_count = serializers.IntegerField(read_only=True, default=0)
+    invoices_count = serializers.SerializerMethodField()
     user = UserMinimalSerializer(read_only=True)
 
     class Meta:
@@ -56,12 +64,17 @@ class InsolvencyProcessListSerializer(serializers.ModelSerializer):
             'start_date', 'case_number', 'status', 'status_display', 'invoices_count', 'user', 'closed_at',
         ]
 
+    def get_invoices_count(self, obj):
+        if obj.status == InsolvencyProcess.STATUS_OPEN:
+            return eligible_invoices(obj.person, obj.start_date).count()
+        return getattr(obj, 'invoices_count', None) or obj.invoices.count()
+
     def get_person_name(self, obj):
         return str(obj.person).strip() if obj.person_id else None
 
 
 class InsolvencyProcessSerializer(InsolvencyProcessListSerializer):
-    invoices = InsolvencyInvoiceSerializer(many=True, read_only=True)
+    invoices = serializers.SerializerMethodField()
     contracts = InsolvencyProcessContractSerializer(many=True, read_only=True)
     documents = serializers.SerializerMethodField()
     closed_by = UserMinimalSerializer(read_only=True)
@@ -70,6 +83,14 @@ class InsolvencyProcessSerializer(InsolvencyProcessListSerializer):
         fields = InsolvencyProcessListSerializer.Meta.fields + [
             'observation', 'invoices', 'contracts', 'documents', 'closed_by', 'anomaly',
         ]
+
+    def get_invoices(self, obj):
+        # Obert: totes les factures emeses des de la data, també les noves; tancat: les que hi havia en tancar-lo
+        if obj.status == InsolvencyProcess.STATUS_OPEN:
+            invoices = eligible_invoices(obj.person, obj.start_date).select_related('contract')
+        else:
+            invoices = obj.invoices.all()
+        return InsolvencyInvoiceSerializer(invoices, many=True).data
 
     def get_documents(self, obj):
         return [
