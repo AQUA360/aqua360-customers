@@ -4601,3 +4601,11 @@ msgstr "The account {account} of {company} is missing: {fields}. Fill it in in t
 #: billing/views/sepa_payment_document_generate_view.py
 msgid "The bank accounts selected for the remittance are not valid. Search again and check them."
 msgstr "The bank accounts selected for the remittance are not valid. Search again and check them."
+
+#: claimrequest/views/claim_request_excel_generate_view.py
+msgid "Carrer"
+msgstr "Street"
+
+#: claimrequest/views/claim_request_excel_generate_view.py
+msgid "Pis-porta"
+msgstr "Floor-door"
