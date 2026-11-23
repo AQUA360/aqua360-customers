@@ -29,7 +29,7 @@ class SearchResultsSecurityAndPagingTest(TestCase):
 
     def setUp(self):
         self.user = User.objects.create_user("cerca-limited", "limited@example.com", "pwd")
-        self.token = Token.objects.create(user=self.user)
+        self.token = AuthSessionToken.create_for(self.user)
         self.auth = {"HTTP_AUTHORIZATION": f"Token {self.token.key}"}
         Person.objects.create(token="PER-SECRET", name="Secret", surname="Person")
 

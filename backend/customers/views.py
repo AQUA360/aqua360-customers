@@ -37,8 +37,10 @@ def _media_user(request):
         user = get_user_from_token_key(auth_header.split(' ', 1)[1].strip())
         if user is not None:
             return user
-    if request.user.is_authenticated:
-        return request.user
+    # El middleware deixa request.user a None si el token és invàlid o ha caducat.
+    session_user = getattr(request, 'user', None)
+    if session_user is not None and session_user.is_authenticated:
+        return session_user
     return None
 
 
