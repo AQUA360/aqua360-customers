@@ -27,6 +27,8 @@ from .views import (
     CancelDirectDebitView,
     ContractProcedureOVView,
     ContractRequestStatusOVView,
+    ContractRequestPdfOVView,
+    ContractRequestSignedUploadOVView,
     ContractTerminationProcedureOVView,
     ContractChangeProcedureOVView,
     ContactDataOVView,
@@ -169,6 +171,23 @@ urlpatterns = [
         "procedures/contract/<str:contract_request_token>/",
         ContractRequestStatusOVView.as_view(),
         name="contract-request-status-ov",
+    ),
+    # /ov/procedures/contract/<contract_request_token>/pdf/
+    # PDF del contracte de la sol·licitud per signar-lo fora d'Aqua360.
+    # Quatre segments amb literals als extrems: no confon amb
+    # procedures/<contract_token>/<accio>/ (tres segments).
+    path(
+        "procedures/contract/<str:contract_request_token>/pdf/",
+        ContractRequestPdfOVView.as_view(),
+        name="contract-request-pdf-ov",
+    ),
+    # /ov/procedures/contract/<contract_request_token>/signed/  POST multipart
+    # Contracte de la sol·licitud signat fora d'Aqua360. Quatre segments, com
+    # el del PDF.
+    path(
+        "procedures/contract/<str:contract_request_token>/signed/",
+        ContractRequestSignedUploadOVView.as_view(),
+        name="contract-request-signed-ov",
     ),
     # /ov/procedures/contract-termination/  POST body: baixa de contracte
     # (ContractTerminationRequest). Dos segments literals: no entra en

@@ -124,6 +124,31 @@ def update_invoice_data(invoice):
         invoice.save()
     return invoice
 
+
+def get_invoice_supply_address(invoice):
+    """
+    Adreça de subministrament que s'imprimeix al PDF de la factura/pressupost.
+
+    Mateixa lògica que generate_invoice_pdf: l'adreça de l'escomesa per a una
+    sol·licitud d'escomesa; si no, la del punt de subministrament per defecte del
+    contracte, de la sol·licitud d'alta o del contracte de la baixa.
+    """
+    if invoice.connection_request:
+        return get_connection_request_supply_address(invoice.connection_request)
+    if invoice.contract:
+        contract = invoice.contract
+    elif invoice.contract_request:
+        contract = invoice.contract_request
+    elif invoice.contract_termination:
+        contract = invoice.contract_termination.contract
+    else:
+        return None
+    supply_point = getattr(contract, 'supply_point_default', None) if contract else None
+    if supply_point and supply_point.address:
+        return str(supply_point.address)
+    return None
+
+
 def get_contract_variables(contract):
     """
     Retorna les variables vigents d'un contracte indexades pel token del seu tipus.
