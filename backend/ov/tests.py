@@ -5422,8 +5422,10 @@ class ContractProcedureSepaSignedOVTests(TestCase):
         self.assertEqual(parser.parse(BytesIO(b'{"a": "b"}')), {"a": "b"})
         with self.assertRaises(RequestBodyTooLarge):
             parser.parse(BytesIO(b'{"a": "' + b"x" * 30 + b'"}'))
-        with self.assertRaises(ParseError):
+        with self.assertRaises(ParseError) as raised:
             parser.parse(BytesIO(b"{no json"))
+        # Sense el detall de l'excepció de Python.
+        self.assertEqual(str(raised.exception.detail), "JSON parse error.")
 
     def test_view_uses_the_limited_json_parser(self):
         json_parsers = [

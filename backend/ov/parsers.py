@@ -42,5 +42,6 @@ class LimitedJSONParser(BaseParser):
         try:
             parse_constant = json.strict_constant if self.strict else None
             return json.loads(raw.decode(encoding), parse_constant=parse_constant)
-        except ValueError as exc:
-            raise ParseError("JSON parse error - %s" % str(exc))
+        except ValueError:
+            # Missatge genèric: el de l'excepció pot exposar detalls interns.
+            raise ParseError("JSON parse error.")
