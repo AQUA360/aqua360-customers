@@ -27,10 +27,13 @@ from .views import (
     CancelDirectDebitView,
     ContractProcedureOVView,
     ContractRequestStatusOVView,
+    ContractRequestPdfOVView,
+    ContractRequestSignedUploadOVView,
     ContractTerminationProcedureOVView,
     ContractChangeProcedureOVView,
     ContactDataOVView,
     PersonDataOVView,
+    PersonInvoicesOVView,
     BatchInvoiceDownloadView,
     ContractRequestTypeDictionaryOVView,
     ContractStatusDictionaryOVView,
@@ -38,6 +41,7 @@ from .views import (
     InvoiceStatusDictionaryOVView,
     ProcedureTariffDictionaryOVView,
     PropertiesOVView,
+    AddressesOVView,
 )
 
 urlpatterns = [
@@ -64,6 +68,12 @@ urlpatterns = [
         "person-data/",
         PersonDataOVView.as_view(),
         name="person-data-ov",
+    ),  # Get method
+    # /ov/person-invoices/?dni=<DNI>[&date_from=YYYY-MM-DD][&date_to=YYYY-MM-DD]
+    path(
+        "person-invoices/",
+        PersonInvoicesOVView.as_view(),
+        name="person-invoices-ov",
     ),  # Get method
     # /ov/invoices/?contract_token=<token>
     path("invoices/", BillingContractInvoicesOVView.as_view(), name="invoices-ov"),
@@ -162,6 +172,23 @@ urlpatterns = [
         ContractRequestStatusOVView.as_view(),
         name="contract-request-status-ov",
     ),
+    # /ov/procedures/contract/<contract_request_token>/pdf/
+    # PDF del contracte de la sol·licitud per signar-lo fora d'Aqua360.
+    # Quatre segments amb literals als extrems: no confon amb
+    # procedures/<contract_token>/<accio>/ (tres segments).
+    path(
+        "procedures/contract/<str:contract_request_token>/pdf/",
+        ContractRequestPdfOVView.as_view(),
+        name="contract-request-pdf-ov",
+    ),
+    # /ov/procedures/contract/<contract_request_token>/signed/  POST multipart
+    # Contracte de la sol·licitud signat fora d'Aqua360. Quatre segments, com
+    # el del PDF.
+    path(
+        "procedures/contract/<str:contract_request_token>/signed/",
+        ContractRequestSignedUploadOVView.as_view(),
+        name="contract-request-signed-ov",
+    ),
     # /ov/procedures/contract-termination/  POST body: baixa de contracte
     # (ContractTerminationRequest). Dos segments literals: no entra en
     # conflicte amb procedures/<contract_token>/<accio>/ (quatre segments).
@@ -234,5 +261,7 @@ urlpatterns = [
     ),
     # /ov/properties/?search=<text>
     path("properties/", PropertiesOVView.as_view(), name="properties-ov"),
+    # /ov/addresses/?search=<text>
+    path("addresses/", AddressesOVView.as_view(), name="addresses-ov"),
 ]
 

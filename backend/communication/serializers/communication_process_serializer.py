@@ -51,7 +51,8 @@ class CommunicationProcessSerializer(serializers.ModelSerializer):
         return obj.communications.filter(types__token='electronic_inv').exists()
 
     def get_has_letters(self, obj):
-        return obj.communications.filter(types__token='letter').exists()
+        letter_token = ConfigProject.objects.get(token='message_type_letter_token').value
+        return any(letter_token in (c.type_tokens or '').split(',') for c in obj.communications.all())
 
     def get_has_email(self, obj):
         email_token = ConfigProject.objects.get(token='message_type_email_token').value
@@ -88,6 +89,7 @@ class CommunicationProcessSerializer(serializers.ModelSerializer):
             type_tokens = (communication.type_tokens or '').split(',')
             comm_is_postal = postal_token in type_tokens
             comm_is_email = email_token in type_tokens
+            comm_is_einvoice = 'electronic_inv' in type_tokens
             comm_files = communication.files.filter(is_active=True).annotate(
                 is_communication_document=is_communication_document,
             ).order_by('-is_letter', '-is_communication_document', 'id')
@@ -103,7 +105,11 @@ class CommunicationProcessSerializer(serializers.ModelSerializer):
                         'id': comm_file.file.id,
                         'is_postal': is_postal,
                         'is_email': is_email,
-                        'has_invoice': comm_file.file.entity == 'FACTURES' and comm_file.file.field == 'FACTURA'
+                        'has_invoice': comm_file.file.entity == 'FACTURES' and comm_file.file.field == 'FACTURA',
+                        # L'XML de la factura electrònica no es pot ajuntar al PDF de documents
+                        'is_einvoice_xml': comm_file.file.is_einvoice_xml,
+                        # Comunicació d'un titular amb factura electrònica (per filtrar-ne els documents)
+                        'is_einvoice_communication': comm_is_einvoice,
                         })
         return files
 
@@ -386,6 +392,17 @@ class CommunicationProcessSaveSerializer(serializers.ModelSerializer):
         validated_data['type_names'] = msg_names
         validated_data['type_tokens'] = msg_tokens
         validated_data['user'] = user
+
+        # Es desa al procés la tria de documents adjunts amb què es creen les comunicacions.
+        has_invoices = fixed_data == 'billing' or bool(attach_invoices)
+        validated_data['attach_letter'] = bool(attach_letter)
+        validated_data['attach_invoices'] = has_invoices
+        validated_data['attach_readings'] = has_invoices and bool(attach_readings)
+        validated_data['attach_reading_invoices'] = bool(attach_reading_invoices)
+        validated_data['attach_claim_documents'] = attach_claim_documents if fixed_data == 'claimrequest' else None
+        validated_data['invoice_email_delivery'] = (
+            invoice_email_delivery if has_invoices or attach_reading_invoices else None
+        )
         
         instance = None
         if og_id:

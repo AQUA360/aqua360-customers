@@ -14,6 +14,7 @@ from datetime import timedelta
 from pathlib import Path
 import os
 import re
+from urllib.parse import unquote, urlsplit
 from decouple import config, Csv
 from django.core.exceptions import ImproperlyConfigured
 
@@ -24,11 +25,55 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = config("SECRET_KEY", default="Unsafe-default-key")
-
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = config("DEBUG", default=True, cast=bool)
+DEBUG = config("DEBUG", default=False, cast=bool)
+
+# Claus conegudes (antics valors per defecte i les dels fitxers d'exemple): no es poden fer
+# servir fora de desenvolupament, perquè permetrien falsificar sessions i dades signades.
+INSECURE_SECRET_KEYS = {
+    "Unsafe-default-key",
+    "dev-insecure-change-me",
+    "change-me-use-a-long-random-string",
+}
+DEV_SECRET_KEY = "dev-insecure-change-me"
+
+
+def _resolve_secret_key(secret_key, debug):
+    """Retorna la SECRET_KEY a fer servir o atura l'arrencada si és insegura.
+
+    Amb DEBUG=True (desenvolupament local) es tolera que falti i es fa servir una clau de
+    desenvolupament; amb DEBUG=False ha de ser definida i no pot ser una clau coneguda.
+    """
+    secret_key = (secret_key or "").strip()
+    if debug:
+        return secret_key or DEV_SECRET_KEY
+    if not secret_key or secret_key in INSECURE_SECRET_KEYS:
+        raise ImproperlyConfigured(
+            "Cal definir SECRET_KEY al .env amb una clau llarga i aleatòria (no la de l'exemple) "
+            "quan DEBUG=False. Es pot generar amb: "
+            "python -c \"from django.core.management.utils import get_random_secret_key; "
+            "print(get_random_secret_key())\""
+        )
+    return secret_key
+
+
+SUPPORTED_LANGUAGE_CODES = ("ca", "es", "gl", "en")
+DEFAULT_LANGUAGE_CODE = "ca"
+
+
+def _resolve_language(value):
+    """Codi d'idioma suportat a partir de `value`; si no ho és, `ca`.
+
+    `LANGUAGE` també és una variable del locale del sistema (GNU gettext, p. ex. `ast` o
+    `es_ES:es`) i python-decouple prioritza l'entorn sobre el `.env`: sense aquesta
+    comprovació, un codi no suportat acabaria als camps d'idioma de 2 caràcters.
+    """
+    code = (value or "").strip().split(":")[0].replace("-", "_").split("_")[0].lower()
+    return code if code in SUPPORTED_LANGUAGE_CODES else DEFAULT_LANGUAGE_CODE
+
+
+# SECURITY WARNING: keep the secret key used in production secret!
+SECRET_KEY = _resolve_secret_key(config("SECRET_KEY", default=""), DEBUG)
 
 # SECURITY WARNING: update this when you have the production host
 
@@ -52,9 +97,15 @@ ALLOWED_HOSTS = [host.strip() for host in allowed_hosts_str.split(",")]
 CSRF_TRUSTED_ORIGINS = config("CSRF_TRUSTED_ORIGINS", default="http://").split(",")
 
 
-FTP_HOST = config("FTP_HOST", default="")
-FTP_USER = config("FTP_USER", default="")
-FTP_PASSWORD = config("FTP_PASSWORD", default="")
+# Gestor de documents per SFTP (servei "sftp"). La clau del servidor ha de ser a SFTP_KNOWN_HOSTS:
+# sense ella es rebutja la connexió.
+SFTP_HOST = config("SFTP_HOST", default="")
+SFTP_PORT = config("SFTP_PORT", default=22, cast=int)
+SFTP_USER = config("SFTP_USER", default="")
+SFTP_PASSWORD = config("SFTP_PASSWORD", default="")
+SFTP_KEY_FILE = config("SFTP_KEY_FILE", default="")
+SFTP_KNOWN_HOSTS = config("SFTP_KNOWN_HOSTS", default="")
+SFTP_TIMEOUT = 30  # segons
 
 PFX_PASS = config("PFX_PASS", default="")
 PFX_PATH = config("PFX_PATH", default="")
@@ -84,7 +135,10 @@ AZURE_CONTAINER_NAME = config("AZURE_CONTAINER_NAME", default="")
 CLOUD_BUCKET_NAME = config("CLOUD_BUCKET_NAME", default="")
 
 ENV = config("ENV", default="")
-LANGUAGE = config("LANGUAGE", default="ca")
+# Carpeta compartida amb l'host on l'aplicació desactiva la sincronització nocturna de la BD
+# de prod a test (coredata/utils/db_sync_service.py). Només si ENV és test, staging o local.
+DB_SYNC_CONTROL_DIR = config("DB_SYNC_CONTROL_DIR", default=str(BASE_DIR / "sync-control"))
+LANGUAGE = _resolve_language(config("LANGUAGE", default=DEFAULT_LANGUAGE_CODE))
 
 VERIFACTU_ENABLED = config("VERIFACTU_ENABLED", default=False, cast=bool)
 # Verifactu SOAP Configuration
@@ -294,6 +348,12 @@ CELERY_TASK_TRACK_STARTED = True
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_ACCEPT_CONTENT = ["json"]
+# Processos del worker. Sense valor, Celery en posa tants com CPU. Configurar-ho aquí (i no amb
+# `-c` a la línia d'ordres) fa que les subtasques de PDF de la facturació en sàpiguen el nombre.
+CELERY_WORKER_CONCURRENCY = config("CELERY_WORKER_CONCURRENCY", cast=lambda value: int(value) if str(value).strip() else None, default="")
+# Memòria (KB) a partir de la qual un procés del worker es recicla en acabar la tasca: un
+# informe gran no deixa el procés inflat per a les següents. No talla la tasca que corre.
+CELERY_WORKER_MAX_MEMORY_PER_CHILD = config("CELERY_WORKER_MAX_MEMORY_PER_CHILD", cast=int, default=2 * 1024 * 1024)
 
 # Database
 # https://docs.djangoproject.com/en/5.0/ref/settings/#databases
@@ -360,7 +420,7 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/5.0/topics/i18n/
 
-LANGUAGE_CODE = config("LANGUAGE_CODE", default=config("LANGUAGE", default="ca"))  # Fallback to LANGUAGE if set
+LANGUAGE_CODE = _resolve_language(config("LANGUAGE_CODE", default=LANGUAGE))  # Si no hi és, el de LANGUAGE
 
 LANGUAGES = [
     ('ca', 'Català'),
@@ -460,6 +520,8 @@ AUTH_TOKEN_NON_EXPIRING_GROUPS = ("ov", "gmao", "giswater", "smartmetering")
 # Els intents es guarden a la base de dades, així que es comparteixen entre workers.
 AUTHENTICATION_BACKENDS = [
     "axes.backends.AxesStandaloneBackend",
+    # Rol admin (is_staff): tots els has_perm de negoci excepte escriptura auth.user/group.
+    "auth.backends.AdminRoleBackend",
     "django.contrib.auth.backends.ModelBackend",
 ]
 AXES_FAILURE_LIMIT = 5
@@ -543,7 +605,42 @@ INVOICE_LANGUAGE = os.getenv("INVOICE_LANGUAGE", "ca")  # Default to 'ca' if not
 
 # RabbitMQ Configuration
 RABBITMQ_ENABLED = config("RABBITMQ_ENABLED", default=False, cast=bool)
-RABBITMQ_URL = config("RABBITMQ_URL", default="amqp://guest:guest@localhost:5672//")
+# Credencials conegudes (les de fàbrica de RabbitMQ i les del .env.example): no es poden fer
+# servir fora de desenvolupament. Sense usuari a la URL, pika també es connecta com a guest.
+INSECURE_RABBITMQ_CREDENTIALS = {("guest", "guest"), ("user", "password")}
+
+
+def _resolve_rabbitmq_url(url, enabled, debug):
+    """Retorna la RABBITMQ_URL a fer servir o atura l'arrencada si falta o és insegura.
+
+    Sense RabbitMQ activat no cal URL. Activat, ha de ser definida; i amb DEBUG=False no pot
+    portar credencials conegudes. Els missatges no inclouen la URL, perquè porta la contrasenya.
+    """
+    url = (url or "").strip()
+    if not enabled:
+        return url
+    if not url:
+        raise ImproperlyConfigured(
+            "RABBITMQ_ENABLED=True però falta RABBITMQ_URL al .env "
+            "(amqps://<usuari>:<contrasenya>@<host>:5671/<vhost>)."
+        )
+    if debug:
+        return url
+    try:
+        parts = urlsplit(url)
+        credentials = (unquote(parts.username or "guest"), unquote(parts.password or "guest"))
+    except ValueError:
+        raise ImproperlyConfigured("RABBITMQ_URL no és una URL vàlida.") from None
+    if credentials in INSECURE_RABBITMQ_CREDENTIALS:
+        raise ImproperlyConfigured(
+            "RABBITMQ_URL fa servir unes credencials conegudes (guest/guest o les de l'exemple, "
+            "o no porta usuari) i DEBUG=False: cal un usuari propi de la instal·lació amb una "
+            "contrasenya llarga i aleatòria."
+        )
+    return url
+
+
+RABBITMQ_URL = _resolve_rabbitmq_url(config("RABBITMQ_URL", default=""), RABBITMQ_ENABLED, DEBUG)
 
 # Optional: when empty, the GMAO integration keeps the legacy single-queue behaviour
 INSTANCE_UID = config("INSTANCE_UID", default="").strip()
@@ -600,11 +697,33 @@ OV_ACTIVE_CONTRACTS_ENDPOINT = config("OV_ACTIVE_CONTRACTS_ENDPOINT", default="/
 OV_SYNC_ENABLED = config("OV_SYNC_ENABLED", default=False, cast=bool)
 OV_SYNC_HOUR = config("OV_SYNC_HOUR", default=4, cast=int)
 OV_SYNC_MINUTE = config("OV_SYNC_MINUTE", default=0, cast=int)
+# Mida màxima del PDF del contracte signat que un sistema extern puja a una
+# sol·licitud d'alta (POST /ov/procedures/contract/<token>/signed/).
+OV_SIGNED_CONTRACT_MAX_BYTES = 10 * 1024 * 1024
+
+# Webhooks de sortida: avisen un sistema extern (POST) quan es crea un contracte,
+# es dona de baixa, s'anul·la una baixa o s'emeten factures. Vegeu
+# integrations/outbound/webhooks/. Desactivats per defecte: només s'activen a la
+# instal·lació que en té (variables d'entorn pròpies). Activat però sense URL, els
+# avisos es desen com a "disabled" i no s'envien. Sense WEBHOOKS_SECRET tampoc: mai s'envien sense signar.
+WEBHOOKS_ENABLED = config("WEBHOOKS_ENABLED", default=False, cast=bool)
+WEBHOOKS_URL = config("WEBHOOKS_URL", default="").strip()
+WEBHOOKS_SECRET = config("WEBHOOKS_SECRET", default="")
+# Valors fixos (iguals a totes les instal·lacions)
+WEBHOOKS_TIMEOUT = 10  # segons per petició
+# Espera abans de cada reintent (segons): 1 min, 5 min, 15 min, 1 h, 3 h, 6 h, 12 h.
+# Exhaurits, l'avís queda com a "failed" i es pot reenviar amb `resend_webhooks`.
+WEBHOOKS_RETRY_DELAYS = [60, 300, 900, 3600, 3 * 3600, 6 * 3600, 12 * 3600]
+WEBHOOKS_SEND_INTERVAL = 0.2  # segons entre enviaments: no saturar el receptor
+WEBHOOKS_SEND_BATCH = 100  # avisos per execució de la tasca; si en queden, es torna a encuar
+WEBHOOKS_BILLING_CHUNK_SIZE = 500  # factures per avís de facturació massiva
 
 SIGNING_BASE_URL = config("SIGNING_BASE_URL", default="")
 SIGNING_API_KEY = config("SIGNING_API_KEY", default="")
 SIGNING_CALLBACK_URL = config("SIGNING_CALLBACK_URL", default="")
 SIGNING_TIMEOUT = config("SIGNING_TIMEOUT", default=30, cast=int)
+# Clau que Aqua360 Sign envia a X-API-Key en el callback. Obligatòria: si és buida, el callback
+# ho rebutja tot (403). Ha de coincidir amb el callback_api_key del client a Sign.
 SIGN_CALLBACK_API_KEY = config("SIGN_CALLBACK_API_KEY", default="")
 
 # Sondeig de les sessions d'Aqua360 Sign: alternativa al webhook `session.signed`

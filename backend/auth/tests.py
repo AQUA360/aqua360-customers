@@ -58,39 +58,62 @@ from coredata.models import MainPermission
 
 
 class UserManagementPermissionTest(TestCase):
-    """Gestió d'usuaris i grups: lectura amb `view_user`, escriptura amb `change_user`."""
+    """Gestió d'usuaris i grups: lectura per autenticats, escriptura només superusuari."""
 
     def setUp(self):
-        MainPermission.objects.get_or_create(
+        MainPermission.objects.update_or_create(
             name="users",
             defaults={
                 "view_key": "view_user",
                 "change_key": "change_user",
                 "affected_models": "auth.user,auth.group,auth.permission",
+                "change_requires_superuser": True,
+            },
+        )
+        MainPermission.objects.get_or_create(
+            name="default",
+            defaults={
+                "view_key": "view_default",
+                "change_key": "change_default",
+                "affected_models": "notification.notification",
+                "is_default": True,
             },
         )
         self.client = APIClient()
-        self.admin = User.objects.create_superuser("admin", "admin@example.com", "admin-pwd")
+        self.superuser = User.objects.create_superuser("customers", "customers@example.com", "customers-pwd")
         self.plain = User.objects.create_user("plain", "plain@example.com", "plain-pwd")
         self.viewer = User.objects.create_user("viewer", "viewer@example.com", "viewer-pwd")
         self.viewer.user_permissions.add(Permission.objects.get(codename="view_user"))
-        self.manager = User.objects.create_user("manager", "manager@example.com", "manager-pwd")
-        self.manager.user_permissions.add(
+        # Admin de grup: té change_user a Django, però no és superusuari.
+        self.admin = User.objects.create_user("admin", "admin@example.com", "admin-pwd")
+        self.admin.user_permissions.add(
             Permission.objects.get(codename="view_user"),
             Permission.objects.get(codename="change_user"),
+            Permission.objects.get(codename="change_group"),
         )
         self.group = Group.objects.create(name="group-test")
+        self.privileged_group = Group.objects.create(name="privileged")
+        self.privileged_group.permissions.add(
+            Permission.objects.get(codename="view_user"),
+            Permission.objects.get(codename="change_user"),
+            Permission.objects.get(codename="add_user"),
+            Permission.objects.get(codename="delete_user"),
+        )
 
     def test_user_without_permission_cannot_change_other_password(self):
         self.client.force_authenticate(self.plain)
-        response = self.client.patch(f"/auth/user/{self.admin.id}/", {"new_pwd": "hacked"}, format="json")
+        response = self.client.patch(f"/auth/user/{self.superuser.id}/", {"new_pwd": "hacked"}, format="json")
         self.assertEqual(response.status_code, 403)
-        self.admin.refresh_from_db()
-        self.assertTrue(self.admin.check_password("admin-pwd"))
+        self.superuser.refresh_from_db()
+        self.assertTrue(self.superuser.check_password("customers-pwd"))
 
-    def test_user_without_permission_cannot_list_users(self):
+    def test_authenticated_user_can_list_users_and_groups_for_selection(self):
+        """Calendar, daily-document, etc. necessiten GET sense view_user."""
         self.client.force_authenticate(self.plain)
-        self.assertEqual(self.client.get("/auth/user/").status_code, 403)
+        self.assertEqual(self.client.get("/auth/user/").status_code, 200)
+        self.assertEqual(self.client.get("/auth/group/").status_code, 200)
+        self.assertEqual(self.client.patch(f"/auth/user/{self.plain.id}/", {"first_name": "X"}, format="json").status_code, 403)
+        self.assertEqual(self.client.delete(f"/auth/user/{self.plain.id}/").status_code, 403)
 
     def test_viewer_can_list_but_not_modify(self):
         self.client.force_authenticate(self.viewer)
@@ -99,39 +122,200 @@ class UserManagementPermissionTest(TestCase):
         self.assertEqual(response.status_code, 403)
         self.assertEqual(self.client.delete(f"/auth/user/{self.plain.id}/").status_code, 403)
 
-    def test_manager_can_modify_user_but_not_superuser(self):
-        self.client.force_authenticate(self.manager)
-        response = self.client.patch(f"/auth/user/{self.plain.id}/", {"new_pwd": "new-pwd"}, format="json")
+    def test_admin_cannot_change_password_or_group_even_with_change_user(self):
+        self.client.force_authenticate(self.admin)
+        response = self.client.patch(
+            f"/auth/user/{self.plain.id}/",
+            {"new_pwd": "hacked", "group_id": self.privileged_group.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 403)
+        self.plain.refresh_from_db()
+        self.assertTrue(self.plain.check_password("plain-pwd"))
+        self.assertFalse(self.plain.groups.filter(id=self.privileged_group.id).exists())
+
+        self.assertEqual(self.client.delete(f"/auth/user/{self.plain.id}/").status_code, 403)
+        self.assertTrue(User.objects.filter(id=self.plain.id).exists())
+
+    def test_admin_cannot_self_assign_privileged_group(self):
+        self.client.force_authenticate(self.admin)
+        response = self.client.patch(
+            f"/auth/user/{self.admin.id}/",
+            {"group_id": self.privileged_group.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 403)
+        self.admin.refresh_from_db()
+        self.assertFalse(self.admin.groups.filter(id=self.privileged_group.id).exists())
+
+    def test_change_user_permission_flag_false_for_non_superuser(self):
+        from auth.permissions import PermissionManager
+        self.assertFalse(PermissionManager.has_permission(self.admin, 'change_user'))
+        self.assertTrue(PermissionManager.has_permission(self.admin, 'view_user'))
+        self.assertTrue(PermissionManager.has_permission(self.superuser, 'change_user'))
+
+    def test_superuser_can_modify_user_and_password(self):
+        self.client.force_authenticate(self.superuser)
+        response = self.client.patch(
+            f"/auth/user/{self.plain.id}/",
+            {"new_pwd": "riu-blau-2026", "first_name": "Nou", "group_id": self.group.id},
+            format="json",
+        )
         self.assertEqual(response.status_code, 200)
         self.plain.refresh_from_db()
-        self.assertTrue(self.plain.check_password("new-pwd"))
+        self.assertTrue(self.plain.check_password("riu-blau-2026"))
+        self.assertEqual(self.plain.first_name, "Nou")
+        self.assertTrue(self.plain.groups.filter(id=self.group.id).exists())
 
-        response = self.client.patch(f"/auth/user/{self.admin.id}/", {"new_pwd": "hacked"}, format="json")
-        self.assertEqual(response.status_code, 403)
-        self.assertEqual(self.client.delete(f"/auth/user/{self.admin.id}/").status_code, 403)
-        self.assertTrue(User.objects.filter(id=self.admin.id).exists())
-
-    def test_superuser_can_modify_superuser(self):
-        other_admin = User.objects.create_superuser("admin2", "admin2@example.com", "pwd")
-        self.client.force_authenticate(self.admin)
-        response = self.client.patch(f"/auth/user/{other_admin.id}/", {"first_name": "Nou"}, format="json")
+    def test_superuser_can_set_admin_or_group_role(self):
+        self.client.force_authenticate(self.superuser)
+        response = self.client.patch(
+            f"/auth/user/{self.plain.id}/",
+            {"role": "admin"},
+            format="json",
+        )
         self.assertEqual(response.status_code, 200)
+        self.plain.refresh_from_db()
+        self.assertFalse(self.plain.is_superuser)
+        self.assertTrue(self.plain.is_staff)
+        self.assertFalse(self.plain.groups.exists())
 
-    def test_group_delete_requires_superuser(self):
+        response = self.client.patch(
+            f"/auth/user/{self.plain.id}/",
+            {"role": "none", "group_id": self.group.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.plain.refresh_from_db()
+        self.assertFalse(self.plain.is_superuser)
+        self.assertFalse(self.plain.is_staff)
+        self.assertTrue(self.plain.groups.filter(id=self.group.id).exists())
+
+    def test_non_customers_cannot_be_superuser(self):
+        self.client.force_authenticate(self.superuser)
+        response = self.client.patch(
+            f"/auth/user/{self.plain.id}/",
+            {"role": "superuser"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 403)
+        self.plain.refresh_from_db()
+        self.assertFalse(self.plain.is_superuser)
+
+    def test_admin_has_all_perms_except_user_management_write(self):
+        from auth.permissions import PermissionManager
+        self.admin.is_staff = True
+        self.admin.save(update_fields=['is_staff'])
+        self.assertTrue(PermissionManager.has_permission(self.admin, 'view_default'))
+        self.assertTrue(PermissionManager.has_permission(self.admin, 'change_default'))
+        self.assertTrue(PermissionManager.has_permission(self.admin, 'view_user'))
+        self.assertFalse(PermissionManager.has_permission(self.admin, 'change_user'))
+        self.client.force_authenticate(self.admin)
+        self.assertEqual(self.client.get("/auth/user/").status_code, 200)
+        self.assertEqual(self.client.get("/auth/group/").status_code, 200)
+
+    def test_admin_cannot_change_user_role(self):
+        self.admin.is_staff = True
+        self.admin.save(update_fields=['is_staff'])
+        self.client.force_authenticate(self.admin)
+        response = self.client.patch(
+            f"/auth/user/{self.plain.id}/",
+            {"role": "admin"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_cannot_demote_customers_superuser(self):
+        self.client.force_authenticate(self.superuser)
+        response = self.client.patch(
+            f"/auth/user/{self.superuser.id}/",
+            {"role": "admin"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 403)
+        self.superuser.refresh_from_db()
+        self.assertTrue(self.superuser.is_superuser)
+
+    def test_cannot_delete_customers_superuser(self):
+        self.client.force_authenticate(self.superuser)
+        response = self.client.delete(f"/auth/user/{self.superuser.id}/")
+        self.assertEqual(response.status_code, 403)
+        self.assertTrue(User.objects.filter(id=self.superuser.id).exists())
+
+    def test_admin_model_perms_block_user_mgmt_write_both_arg_orders(self):
+        from auth.permissions import PermissionManager
+        self.admin.is_staff = True
+        self.admin.save(update_fields=['is_staff'])
+        for args in (('user', 'auth'), ('auth', 'user'), ('group', 'auth'), ('auth', 'group')):
+            perms = PermissionManager.get_model_permissions(self.admin, *args)
+            self.assertTrue(perms['can_view'], args)
+            self.assertFalse(perms['can_add'], args)
+            self.assertFalse(perms['can_change'], args)
+            self.assertFalse(perms['can_delete'], args)
+        invoice_perms = PermissionManager.get_model_permissions(self.admin, 'invoice', 'billing')
+        self.assertTrue(invoice_perms['can_view'])
+        self.assertTrue(invoice_perms['can_change'])
+
+    def test_group_write_requires_superuser(self):
         self.client.force_authenticate(self.plain)
         self.assertEqual(self.client.delete(f"/auth/group/{self.group.id}/").status_code, 403)
-        self.client.force_authenticate(self.manager)
+        self.client.force_authenticate(self.admin)
         self.assertEqual(self.client.delete(f"/auth/group/{self.group.id}/").status_code, 403)
+        self.assertEqual(
+            self.client.patch(
+                f"/auth/group/{self.group.id}/",
+                {"name": "hacked", "user_ids": [], "permissions_data": []},
+                format="json",
+            ).status_code,
+            403,
+        )
         self.assertTrue(Group.objects.filter(id=self.group.id).exists())
 
-        self.client.force_authenticate(self.admin)
+        self.client.force_authenticate(self.superuser)
         self.assertEqual(self.client.delete(f"/auth/group/{self.group.id}/").status_code, 204)
         self.assertFalse(Group.objects.filter(id=self.group.id).exists())
+
+    def test_group_cannot_receive_user_management_write_perms(self):
+        from auth.utils import manage_group_permissions
+
+        manage_group_permissions(self.group, [{
+            'viewKey': 'view_user',
+            'changeKey': 'change_user',
+            'hasView': True,
+            'hasChange': True,
+        }])
+        codenames = set(self.group.permissions.values_list('codename', flat=True))
+        self.assertIn('view_user', codenames)
+        self.assertNotIn('change_user', codenames)
+        self.assertNotIn('add_user', codenames)
+        self.assertNotIn('delete_user', codenames)
 
     def test_permissions_action_only_requires_authentication(self):
         self.client.force_authenticate(self.plain)
         self.assertEqual(self.client.get("/auth/user/permissions/").status_code, 200)
         self.assertEqual(self.client.get("/auth/group/permissions/").status_code, 200)
+
+    def test_admin_role_django_has_perm_for_business_get(self):
+        """is_staff admin recupera has_perm de negoci (DRF permissions usen has_perm)."""
+        staff_admin = User.objects.create_user("staff-admin", "staff@example.com", "pwd", is_staff=True)
+        staff_admin = User.objects.get(pk=staff_admin.pk)  # refresca cache de backends
+        self.assertTrue(staff_admin.has_perm('service.view_exploitation'))
+        self.assertTrue(staff_admin.has_perm('order.view_order'))
+        self.assertTrue(staff_admin.has_perm('billing.view_billing'))
+        self.assertTrue(staff_admin.has_perm('auth.view_user'))
+        self.assertFalse(staff_admin.has_perm('auth.change_user'))
+        self.assertFalse(staff_admin.has_perm('auth.add_group'))
+        self.assertFalse(staff_admin.has_perm('auth.delete_permission'))
+        # Sense is_staff, has_perm de negoci no ve del backend d'admin
+        self.assertFalse(self.plain.has_perm('service.view_exploitation'))
+
+    def test_admin_can_get_exploitation_site_and_daily_document_pending(self):
+        staff_admin = User.objects.create_user("staff-get", "staff-get@example.com", "pwd", is_staff=True)
+        self.client.force_authenticate(staff_admin)
+        self.assertEqual(self.client.get("/service/exploitation-site/").status_code, 200)
+        # pending pot fallar per ConfigProject absent → 500; no ha de ser 403
+        pending = self.client.get("/statistics/daily-document/pending/")
+        self.assertNotEqual(pending.status_code, 403)
 
 
 class LoginBruteForceProtectionTest(TestCase):
@@ -218,3 +402,128 @@ class LoginBruteForceProtectionTest(TestCase):
             self.client.post(admin_url, {'username': 'victima', 'password': 'mala'}, REMOTE_ADDR='10.0.0.3')
         resp = self.client.post(admin_url, {'username': 'victima', 'password': 'correcta'}, REMOTE_ADDR='10.0.0.3')
         self.assertEqual(resp.status_code, 429)
+
+
+class PasswordValidationTest(TestCase):
+    """Les contrasenyes creades o canviades per l'API passen els validadors; els superusuaris, a més, la regla forta."""
+
+    def setUp(self):
+        MainPermission.objects.get_or_create(
+            name="users",
+            defaults={"view_key": "view_user", "change_key": "change_user",
+                      "affected_models": "auth.user,auth.group,auth.permission"},
+        )
+        self.client = APIClient()
+        self.superuser = User.objects.create_superuser("customers", "customers@example.com", "customers-pwd")
+        self.plain = User.objects.create_user("plain", "plain@example.com", "plain-pwd")
+        self.client.force_authenticate(self.superuser)
+
+    def create_user(self, password, role="none"):
+        return self.client.post("/auth/user/", {
+            "username": "nou", "email": "nou@example.com",
+            "new_pwd": password, "role": role,
+        }, format="json")
+
+    def test_weak_password_rejected_on_create(self):
+        for password in ("a", "12345678", "password"):
+            response = self.create_user(password)
+            self.assertEqual(response.status_code, 400, password)
+            self.assertIn("new_pwd", response.data)
+        self.assertFalse(User.objects.filter(username="nou").exists())
+
+    def test_weak_password_rejected_on_update(self):
+        response = self.client.patch(f"/auth/user/{self.plain.id}/", {"new_pwd": "1"}, format="json")
+        self.assertEqual(response.status_code, 400)
+        self.plain.refresh_from_db()
+        self.assertTrue(self.plain.check_password("plain-pwd"))
+
+    def test_regular_user_needs_a_number_but_not_special_character(self):
+        response = self.create_user("riublaucel")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("new_pwd", response.data)
+        self.assertEqual(self.create_user("riublau2026").status_code, 201)
+
+    def test_superuser_needs_letters_numbers_and_special_character(self):
+        # Només `customers` pot ser superuser; es valida amb un canvi de contrasenya seu.
+        for password in ("riublau2026", "riu-blau-cel", "2026-2027-28"):
+            response = self.client.patch(
+                f"/auth/user/{self.superuser.id}/", {"new_pwd": password}, format="json")
+            self.assertEqual(response.status_code, 400, password)
+        response = self.client.patch(
+            f"/auth/user/{self.superuser.id}/", {"new_pwd": "riu-blau-2026"}, format="json")
+        self.assertEqual(response.status_code, 200)
+        self.superuser.refresh_from_db()
+        self.assertTrue(self.superuser.check_password("riu-blau-2026"))
+
+    def test_promoting_to_superuser_is_forbidden_for_non_customers(self):
+        response = self.client.patch(
+            f"/auth/user/{self.plain.id}/",
+            {"role": "superuser", "new_pwd": "riu-blau-2026"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 403)
+        self.plain.refresh_from_db()
+        self.assertFalse(self.plain.is_superuser)
+        self.assertTrue(self.plain.check_password("plain-pwd"))
+
+    def test_existing_superuser_not_affected_without_password_change(self):
+        response = self.client.patch(
+            f"/auth/user/{self.superuser.id}/", {"first_name": "Nou"}, format="json")
+        self.assertEqual(response.status_code, 200)
+        self.superuser.refresh_from_db()
+        self.assertTrue(self.superuser.check_password("customers-pwd"))
+        self.assertEqual(self.superuser.first_name, "Nou")
+
+
+class GroupPermissionsTest(TestCase):
+    """Comprovacions de permisos de grups amb els arguments en l'ordre correcte i permissions_data validades."""
+
+    def setUp(self):
+        MainPermission.objects.get_or_create(
+            name="users",
+            defaults={
+                "view_key": "view_user",
+                "change_key": "change_user",
+                "affected_models": "auth.user,auth.group,auth.permission",
+                "is_default": True,
+            },
+        )
+        self.client = APIClient()
+        self.superuser = User.objects.create_superuser("customers", "customers@example.com", "customers-pwd")
+        self.manager = User.objects.create_user("manager", "manager@example.com", "manager-pwd")
+        self.manager.user_permissions.add(*Permission.objects.filter(
+            content_type__app_label="auth", codename__in=["view_user", "change_user", "view_group", "change_group", "add_group"]))
+
+    def test_model_permissions_use_model_then_app(self):
+        from auth.permissions import PermissionManager
+        permissions = PermissionManager.get_model_permissions(self.manager, "group", "auth")
+        self.assertTrue(permissions["can_view"])
+        self.assertTrue(permissions["can_change"])
+        self.assertFalse(permissions["can_delete"])
+
+    def test_group_create_still_requires_superuser(self):
+        self.client.force_authenticate(self.manager)
+        response = self.client.post("/auth/group/", {"name": "g", "user_ids": [], "permissions_data": []}, format="json")
+        self.assertEqual(response.status_code, 403)
+        self.client.force_authenticate(self.superuser)
+        response = self.client.post("/auth/group/", {"name": "g", "user_ids": [], "permissions_data": []}, format="json")
+        self.assertEqual(response.status_code, 201)
+
+    def test_malformed_permissions_data_returns_400(self):
+        self.client.force_authenticate(self.superuser)
+        for permissions_data in (["x"], [{"hasView": True}], [{"viewKey": "does_not_exist"}],
+                                 [{"viewKey": "view_user", "affected_data": "x"}]):
+            response = self.client.post(
+                "/auth/group/", {"name": "g", "user_ids": [], "permissions_data": permissions_data}, format="json")
+            self.assertEqual(response.status_code, 400, permissions_data)
+        self.assertFalse(Group.objects.filter(name="g").exists())
+
+    def test_valid_permissions_data_is_applied(self):
+        self.client.force_authenticate(self.superuser)
+        response = self.client.post("/auth/group/", {
+            "name": "g", "user_ids": [],
+            "permissions_data": [{"viewKey": "view_user", "hasView": True, "hasChange": False}],
+        }, format="json")
+        self.assertEqual(response.status_code, 201)
+        group = Group.objects.get(name="g")
+        self.assertTrue(group.permissions.filter(codename="view_user").exists())

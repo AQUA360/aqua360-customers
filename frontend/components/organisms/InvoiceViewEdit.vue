@@ -405,6 +405,10 @@ onMounted( async () => {
                 <label>{{ t('address_block.municipality') }}:</label>
                 <span>{{ item?.location_final }}</span>
               </p>
+              <p v-if="item?.supply_address" class="flex justify-between gap-4">
+                <label class="whitespace-nowrap">{{ t('service_block.supply_address') }}:</label>
+                <span class="text-right">{{ item?.supply_address }}</span>
+              </p>
               <p v-if="item?.persons_final" class="flex justify-between">
                 <label>{{ t('contract_block.total_persons') }}:</label>
                 <span>{{ item?.persons_final }}</span>

@@ -9,10 +9,11 @@ from django.utils.translation import gettext
 from contract.models import Contract
 from service.models import SupplyPoint
 from django.db.models import Min
-from .models import CallRegister, ConfigProject, Address, Person, PersonAddress, PersonContact, PersonPiggyBank, PersonPiggyBankMovement, PersonRecord, PostalCode, Country, Street, StreetNumber, StreetNumberType, StreetType, City, Province, PersonBank, PersonCNAE, CNAE, Bank, PersonDeliquency, PersonObservation, MainPermission, IdentificationType, ReturnReason
+from .models import CallRegister, ConfigProject, Address, Person, PersonAddress, PersonContact, PersonPiggyBank, PersonPiggyBankMovement, PersonRecord, PostalCode, Country, Street, StreetNumber, StreetNumberType, StreetType, City, Province, PersonBank, PersonCNAE, CNAE, Bank, PersonDeliquency, PersonObservation, PersonAnomaly, PersonAnomalyType, MainPermission, IdentificationType, ReturnReason
 from django.apps import apps
 from .street_types import resolve_street_type
 from .utils.person_bank_utils import fill_holder_dni, resolve_holder_dni
+from .utils.person_dni_utils import GENERIC_PERSON_TOKENS, normalize_person_dni, person_dni_exists
 from .utils.phone_utils import is_mobile_phone
 from coredata.utils.person_list_queryset import person_debt_amounts_by_person_id
 
@@ -954,6 +955,7 @@ class PersonBankSaveSerializer(serializers.ModelSerializer):
     class Meta:
         model = PersonBank
         fields = '__all__'
+        read_only_fields = ('origin',)
     
     def to_internal_value(self, data):
         mutable_data = data.copy()
@@ -967,6 +969,7 @@ class PersonBankSaveSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         fill_holder_dni(validated_data)
+        validated_data['origin'] = PersonBank.ORIGIN_MANUAL
         return super().create(validated_data)
 
     def update(self, instance, validated_data):
@@ -1041,6 +1044,7 @@ class PersonBankMinimalSerializer(serializers.ModelSerializer):
     class Meta:
         model = PersonBank
         fields = '__all__'
+        read_only_fields = ('origin',)
 
     def to_internal_value(self, data):
         mutable_data = data.copy()
@@ -1058,6 +1062,56 @@ class PersonObservationSerializer(serializers.ModelSerializer):
     class Meta:
         model = PersonObservation
         fields = '__all__'
+
+class PersonAnomalyTypeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PersonAnomalyType
+        fields = ['id', 'token', 'name', 'opens_process', 'position', 'is_active']
+
+
+class PersonAnomalySerializer(serializers.ModelSerializer):
+    anomaly_type = PersonAnomalyTypeSerializer(read_only=True)
+    anomaly_type_id = serializers.PrimaryKeyRelatedField(
+        queryset=PersonAnomalyType.objects.filter(is_active=True), source='anomaly_type', write_only=True,
+    )
+    user = UserMinimalSerializer(read_only=True)
+    is_current = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = PersonAnomaly
+        fields = [
+            'id', 'created_at', 'updated_at', 'person', 'anomaly_type', 'anomaly_type_id',
+            'start_date', 'end_date', 'observation', 'is_active', 'is_current', 'user',
+        ]
+        read_only_fields = ['is_active']
+
+    def validate(self, attrs):
+        if self.instance is not None and 'person' in attrs and attrs['person'] != self.instance.person:
+            raise serializers.ValidationError({'person': 'No es pot canviar la persona d\'una anomalia.'})
+        start_date = attrs.get('start_date', getattr(self.instance, 'start_date', None))
+        end_date = attrs.get('end_date', getattr(self.instance, 'end_date', None))
+        if start_date and end_date and end_date < start_date:
+            raise serializers.ValidationError({'end_date': 'La data de fi no pot ser anterior a la d\'inici.'})
+        return attrs
+
+
+def current_person_anomalies(person):
+    """Anomalies vigents d'una persona, serialitzades (per a la fitxa de la persona i el contracte)."""
+    if not person:
+        return []
+    anomalies = person.anomalies.filter(PersonAnomaly.current_q()).select_related('anomaly_type')
+    return [
+        {
+            'id': anomaly.id,
+            'token': anomaly.anomaly_type.token,
+            'name': anomaly.anomaly_type.name,
+            'start_date': anomaly.start_date,
+            'end_date': anomaly.end_date,
+            'observation': anomaly.observation,
+        }
+        for anomaly in anomalies
+    ]
+
 
 class PersonPiggyBankMovementSerializer(serializers.ModelSerializer):
     payment = serializers.SerializerMethodField()
@@ -1101,6 +1155,7 @@ class PersonSerializer(serializers.ModelSerializer):
     # contracts_related = serializers.SerializerMethodField()
     total_communications = serializers.SerializerMethodField()
     important_observations = serializers.SerializerMethodField()
+    current_anomalies = serializers.SerializerMethodField()
     records = PersonRecordSerializer(many=True, required=False, allow_null=True)
     current_record = serializers.SerializerMethodField()
 
@@ -1112,6 +1167,7 @@ class PersonSerializer(serializers.ModelSerializer):
     contracts_owner_count = serializers.SerializerMethodField()
     contracts_tenant_count = serializers.SerializerMethodField()
     observations_count = serializers.SerializerMethodField()
+    anomalies_count = serializers.SerializerMethodField()
     call_register_count = serializers.SerializerMethodField()
     communications_count = serializers.SerializerMethodField()
     
@@ -1173,6 +1229,12 @@ class PersonSerializer(serializers.ModelSerializer):
     
     def get_observations_count(self, instance):
         return instance.observations.filter(is_active=True).count()
+
+    def get_anomalies_count(self, instance):
+        return instance.anomalies.filter(is_active=True).count()
+
+    def get_current_anomalies(self, instance):
+        return current_person_anomalies(instance)
         
     def get_call_register_count(self, instance):
         return CallRegister.objects.filter(person_contact__person=instance).count()
@@ -1231,8 +1293,11 @@ class PersonSerializer(serializers.ModelSerializer):
         
         
         token = validated_data.get('token')
-        
-        if Person.objects.filter(token=token).exists() and token != '' and token != '99999999R':
+        if token is not None:
+            token = normalize_person_dni(token)
+            validated_data['token'] = token
+
+        if token not in GENERIC_PERSON_TOKENS and token is not None and person_dni_exists(Person.objects.all(), token):
             raise serializers.ValidationError({"token": "TOKEN_ALREADY_EXISTS"})
         
         person = Person.objects.create(**validated_data)
@@ -1253,6 +1318,7 @@ class PersonSerializer(serializers.ModelSerializer):
             for b in banks_data:
                 b['person'] = person
                 fill_holder_dni(b)
+                b['origin'] = PersonBank.ORIGIN_MANUAL
                 bank_person = PersonBank.objects.create(**b)
                 person.banks.add(bank_person)
         
@@ -1407,6 +1473,7 @@ class PersonSerializer(serializers.ModelSerializer):
                     else:
                         b.pop('id_save', None)
                         fill_holder_dni(b)
+                        b['origin'] = PersonBank.ORIGIN_MANUAL
                         bank_person = PersonBank.objects.create(**b)
                     instance.banks.add(bank_person)
             
@@ -1478,6 +1545,7 @@ class PersonContractMinimalSerializer(serializers.ModelSerializer):
     is_debtor = serializers.CharField(read_only=True, source='deliquency.is_debtor')
     debt_amount = serializers.DecimalField(read_only=True, source='deliquency.debt_amount', max_digits=10, decimal_places=2)
     current_record = serializers.SerializerMethodField()
+    current_anomalies = serializers.SerializerMethodField()
 
     class Meta:
         model = Person
@@ -1486,8 +1554,12 @@ class PersonContractMinimalSerializer(serializers.ModelSerializer):
             'surname', 'is_juridic', 'is_debtor', 
             'debt_amount', 'vulnerability_level', 'piggy_banks', 
             'total_communications', 'deliquency', 'addresses', 
-            'contacts', 'banks', 'cnaes', 'current_record'
+            'contacts', 'banks', 'cnaes', 'current_record',
+            'current_anomalies',
                 ]
+
+    def get_current_anomalies(self, instance):
+        return current_person_anomalies(instance)
     
     def get_current_record(self, instance):
         current_year = timezone.now().year
@@ -1620,6 +1692,7 @@ class PersonBankSerializer(serializers.ModelSerializer):
     class Meta:
         model = PersonBank
         fields = '__all__'
+        read_only_fields = ('origin',)
     
     def update(self, instance, validated_data):
         if validated_data.get('is_default'):
@@ -1660,7 +1733,10 @@ class MainPermissionSerializer(serializers.ModelSerializer):
     affected_data = serializers.SerializerMethodField()
     class Meta:
         model = MainPermission
-        fields = ['id', 'name', 'view_key', 'change_key', 'affected_data', 'is_default', 'all_recommended']
+        fields = [
+            'id', 'name', 'view_key', 'change_key', 'affected_data',
+            'is_default', 'all_recommended', 'change_requires_superuser',
+        ]
     
     def get_affected_data(self, instance):
         affected_models = instance.affected_models.split(',')

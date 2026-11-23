@@ -33,7 +33,6 @@
     "ol-contextmenu": "^5.5.0",
     "ol-ext": "^4.0.27",
     "pinia": "^2.3.0",
-    "quill": "^2.0.3",
     "vue": "^3.4.21",
     "vue-router": "^4.3.0",
     "vue-select": "^4.0.0-beta.6",
@@ -51,5 +50,13 @@
     "@iconify-json/healthicons": "^1.2.2",
     "@vesp/nuxt-fontawesome": "^1.0.4",
     "sass-embedded": "^1.85.0"
+  },
+  "overrides": {
+    "readdir-glob": {
+      "minimatch": "^11.0.1"
+    },
+    "@typescript-eslint/typescript-estree": {
+      "minimatch": "^11.0.1"
+    }
   }
 }

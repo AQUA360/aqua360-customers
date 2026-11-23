@@ -31,6 +31,7 @@ import PriceIntervalRegion from './PriceIntervalRegion.vue';
 import CalendarTaskEdit from '../molecules/CalendarTaskEdit.vue';
 import PiggyBankRegion from './PiggyBankRegion.vue';
 import ContractDebtRegion from './ContractDebtRegion.vue';
+import CommitmentDepositRegion from './CommitmentDepositRegion.vue';
 import EstimatedBagRegion from './EstimatedBagRegion.vue';
 import AddReading from '../molecules/AddReading.vue';
 import MassiveInvoiceDownload from './MassiveInvoiceDownload.vue';
@@ -757,6 +758,10 @@ const setActiveTab = (tab) => {
                 :isSubRegion="true" @changed="handleChange" @show-subregion="handleSubRegionEvent" />
             <ContractDebtRegion v-if="showRegionDetailComponent === 'ContractDebtRegion'" :id="parseInt(regionDetailId)"
                 :isSubRegion="true" @changed="getContractData(false)" @show-subregion="handleSubRegionEvent" />
+            <CommitmentDepositRegion v-if="showRegionDetailComponent === 'CommitmentDepositRegion'"
+                :id="parseInt(regionDetailId)" :isSubRegion="true" />
+            <OrganismsClaimRequestRegion v-if="showRegionDetailComponent === 'ClaimRequestRegion'"
+                :id="parseInt(regionDetailId)" :contractId="contract.id" :isSubRegion="true" />
             <EstimatedBagRegion v-if="showRegionDetailComponent === 'EstimatedBagRegion'" :id="parseInt(regionDetailId)"
                 :isSubRegion="true" />
             <AddReading v-if="showRegionDetailComponent === 'AddReading'" :contract="contract"

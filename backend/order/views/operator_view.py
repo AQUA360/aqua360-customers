@@ -1,6 +1,6 @@
 from rest_framework import viewsets, status
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
+from rest_framework.permissions import IsAuthenticated
 
 from ..filters.operator_filter import OperatorFilter
 from django_filters.rest_framework import DjangoFilterBackend
@@ -8,6 +8,7 @@ from rest_framework.filters import OrderingFilter, SearchFilter
 from auth.permissions import PermissionManager
 from rest_framework.decorators import action
 from ..models import Operator
+from ..permissions import OperatorPermission
 from ..serializers.operator_serializer import (
     OperatorSerializer,
     OperatorCreateSerializer,
@@ -17,7 +18,7 @@ from ..serializers.operator_serializer import (
 class OperatorViewSet(viewsets.ModelViewSet):
     queryset = Operator.objects.all().order_by('token')
     serializer_class = OperatorSerializer
-    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    permission_classes = [IsAuthenticated, OperatorPermission]
     filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
     filterset_class = OperatorFilter
     search_fields = ['token', 'name', 'surname']
@@ -76,7 +77,7 @@ class OperatorViewSet(viewsets.ModelViewSet):
         pk = request.query_params.get('id')
         if pk:
             from django.contrib.auth.models import Group
-            user_permissions = PermissionManager.get_model_permissions(request.user, 'auth', 'group')
+            user_permissions = PermissionManager.get_model_permissions(request.user, 'group', 'auth')
             if not user_permissions['can_view'] or not user_permissions['can_change'] or not request.user.is_superuser:
                 return Response( None, status=status.HTTP_403_FORBIDDEN )
             group = Group.objects.filter(id=pk).first()

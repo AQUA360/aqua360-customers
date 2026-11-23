@@ -4,19 +4,33 @@ from coredata.authentication import ExpiringTokenAuthentication
 from django.db.models import Q
 from rest_framework import status
 from rest_framework.exceptions import NotFound
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from auth.views import CustomAuthToken
 from ov.serializers import PropertyItemSerializer
 from pagination.ov_pagination import OVLimitPagination
 from service.models import Property
+
+from .permissions import GMAO_GROUP, IsGMAOUser
 
 _PROPERTY_SEARCH_SPLIT = re.compile(r"[\s,.;/]+")
 
 
 def _property_search_tokens(search):
     return [token for token in _PROPERTY_SEARCH_SPLIT.split(search) if token]
+
+
+class GMAOLoginView(CustomAuthToken):
+    """POST /gmao/v1/auth/login/ {username, password} → {username, token}
+
+    Login de la integració amb el GMAO. Mateixes proteccions que el login
+    general (límit d'intents per IP i bloqueig per usuari), però només dona
+    token als usuaris del grup `gmao`; la resta reben la mateixa resposta que
+    amb credencials incorrectes (400).
+    """
+
+    required_group = GMAO_GROUP
 
 
 class GMAOPropertySearchView(APIView):
@@ -29,11 +43,12 @@ class GMAOPropertySearchView(APIView):
     tracta com a separador: cada paraula ha de coincidir amb algun camp
     (carrer, número, ciutat, codi postal, nom o cadastral) i tots els termes
     es combinen amb AND. Els resultats es retornen paginats amb l'embolcall
-    `{count, page, limit, total_pages, results}`.
+    `{count, page, limit, total_pages, results}`. Només per a usuaris del
+    grup `gmao` (token de `POST /gmao/v1/auth/login/`).
     """
 
     authentication_classes = [ExpiringTokenAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsGMAOUser]
     pagination_class = OVLimitPagination
     min_search_length = 3
 

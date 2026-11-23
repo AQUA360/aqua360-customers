@@ -4,20 +4,23 @@ import os
 import shutil
 import tempfile
 import zipfile
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from io import BytesIO, StringIO
 from unittest.mock import patch
 
 from django.conf import settings
-from django.contrib.auth.models import User
+from django.contrib.auth.models import Group, Permission, User
+from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.cache import cache
 from django.db import connection
+from django.template import TemplateDoesNotExist
 from django.test import TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
 from django.urls import resolve, reverse
-from django.utils import translation
+from django.utils import timezone, translation
+from rest_framework.exceptions import ParseError
 from rest_framework.test import APIClient
 
 from billing.models import (
@@ -46,6 +49,7 @@ from coredata.models import (
     PostalCode,
     Street,
     StreetNumber,
+    StreetNumberType,
     StreetType,
 )
 from contract.models import (
@@ -63,6 +67,7 @@ from contract.models import (
     PaymentType,
     Variable,
 )
+from contract.utils.contract_pdf_service import ContractPdfGenerationError
 from documentmanager.models import Document
 from logger.models import LogContractRequestStatus, LogIncidentStatusChange
 from notification.models import Incident, IncidentStatus, IncidentType
@@ -87,12 +92,14 @@ from service.models import (
     RoutePosition,
     SupplyPoint,
 )
+from ov.parsers import LimitedJSONParser, RequestBodyTooLarge
 from ov.throttles import (
     ContractChangeProcedureThrottle,
     ContractProcedureThrottle,
     ContractTerminationProcedureThrottle,
     PaymentReceiptThrottle,
     PersonDataThrottle,
+    PersonInvoicesThrottle,
     QuickPayThrottle,
     ReturnRequestThrottle,
 )
@@ -103,6 +110,7 @@ from ov.views import (
     InvoiceReturnRequestOVView,
     PaymentReceiptOVView,
     PersonDataOVView,
+    PersonInvoicesOVView,
     QuickPayOVView,
 )
 
@@ -269,6 +277,11 @@ class MeterSerialNumberSerializationTests(TestCase):
         self.client.force_authenticate(self.user)
 
     def test_contract_serializer_endpoint_uses_meter_code(self):
+        # `contract-ov` amb token és la vista interna de contractes
+        # (/contract/contract-ov/<token>/), que demana permís de lectura.
+        self.user.user_permissions.add(
+            Permission.objects.get(content_type__app_label="contract", codename="view_contract")
+        )
         response = self.client.get(
             reverse(
                 "contract-ov",
@@ -2427,6 +2440,341 @@ class PropertiesOVTests(TestCase):
         response = anonymous.get(reverse("properties-ov"), {"search": "Major"})
 
         self.assertEqual(response.status_code, 401)
+
+
+class AddressesOVTests(TestCase):
+    """`GET /ov/addresses/?search=` — autocompletat d'adreces dels punts de
+    subministrament amb escala, pis i porta, sense duplicats, amb el sufix
+    del número, sense distingir accents i sense filtrar per l'estat del
+    punt."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(
+            username="ov-addresses-test", password="not-used"
+        )
+        cls.user.groups.add(Group.objects.get_or_create(name="ov")[0])
+        street_type = StreetType.objects.create(
+            abbreviation="C", name="Carrer"
+        )
+        number_type_n = StreetNumberType.objects.get_or_create(
+            type="N", defaults={"description": "Number"}
+        )[0]
+        country = Country.objects.create(name="Espanya", iso_code="ES")
+        city = City.objects.create(token="CITY-ADDR-1", name="Vilanova")
+        street_major = Street.objects.create(
+            name="Major", type=street_type, city=city
+        )
+        street_petit = Street.objects.create(name="Petit", city=city)
+        street_placa = Street.objects.create(name="Plaça Nova", city=city)
+        number_21 = StreetNumber.objects.create(
+            street=street_major, number=21, number_type=number_type_n
+        )
+        # Mateix valor que number_21 però en una altra fila
+        number_21_bis = StreetNumber.objects.create(
+            street=street_major, number=21, number_type=number_type_n
+        )
+        number_21a = StreetNumber.objects.create(
+            street=street_major,
+            number=21,
+            number_suffix="A",
+            number_type=number_type_n,
+        )
+        number_sn_b = StreetNumber.objects.create(
+            street=street_petit,
+            number_suffix="B",
+            number_type=StreetNumberType.objects.get_or_create(
+                type="SN", defaults={"description": "S/N"}
+            )[0],
+        )
+        cls.finca = Property.objects.create(token="PR-ADDR-1", is_active=True)
+        cls.finca_2 = Property.objects.create(token="PR-ADDR-2", is_active=True)
+
+        def make_address(street, number, **fields):
+            return Address.objects.create(
+                street=street,
+                street_number=number,
+                city=city,
+                country=country,
+                postal_code="08800",
+                **fields,
+            )
+
+        cls.address_2n1a = make_address(
+            street_major, number_21, stair="A", floor="2n", door="1a"
+        )
+        cls.address_1r2a = make_address(
+            street_major, number_21, stair="A", floor="1r", door="2a"
+        )
+        # Una altra fila amb els mateixos valors (com passa a les dades migrades)
+        cls.address_1r2a_copy = make_address(
+            street_major, number_21_bis, stair="A", floor="1r", door="2a"
+        )
+        cls.address_baixa = make_address(
+            street_major, number_21, stair="B", floor="3r", door="1a"
+        )
+        cls.address_without_sp = make_address(
+            street_major, number_21, stair="C", floor="4t", door="1a"
+        )
+        cls.address_21a = make_address(street_major, number_21a)
+        cls.address_petit = make_address(street_petit, None, floor="Baixos")
+        cls.address_placa = make_address(street_placa, None, door="Local")
+        cls.address_sn_b = make_address(street_petit, number_sn_b)
+
+        SupplyPoint.objects.create(
+            token="SP-ADDR-1", address=cls.address_2n1a, property=cls.finca
+        )
+        # Dos punts a la mateixa fila d'adreça i un tercer en una fila
+        # repetida: ha de sortir un sol cop amb els tres
+        SupplyPoint.objects.create(
+            token="SP-ADDR-2", address=cls.address_1r2a, property=cls.finca
+        )
+        SupplyPoint.objects.create(token="SP-ADDR-3", address=cls.address_1r2a)
+        SupplyPoint.objects.create(
+            token="SP-ADDR-5",
+            address=cls.address_1r2a_copy,
+            property=cls.finca_2,
+        )
+        # Punt de baixa: l'adreça també ha de sortir
+        SupplyPoint.objects.create(
+            token="SP-ADDR-OFF", address=cls.address_baixa, is_active=False
+        )
+        SupplyPoint.objects.create(token="SP-ADDR-4", address=cls.address_petit)
+        SupplyPoint.objects.create(token="SP-ADDR-6", address=cls.address_21a)
+        SupplyPoint.objects.create(token="SP-ADDR-7", address=cls.address_placa)
+        SupplyPoint.objects.create(token="SP-ADDR-8", address=cls.address_sn_b)
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def _search(self, term, **params):
+        return self.client.get(
+            reverse("addresses-ov"), {"search": term, **params}
+        )
+
+    def _addresses(self, response):
+        return [item["address"] for item in response.data["results"]]
+
+    def test_returns_formatted_address_atomic_fields_and_supply_points(self):
+        response = self._search("Major 21 2n")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.data["results"],
+            [
+                {
+                    "address": "C. Major, 21 Esc. A 2n-1a, Vilanova",
+                    "street_type": "C",
+                    "street_name": "Major",
+                    "street_number": 21,
+                    "street_number_suffix": None,
+                    "stair": "A",
+                    "building": None,
+                    "floor": "2n",
+                    "door": "1a",
+                    "address_extra": None,
+                    "postal_code": "08800",
+                    "city": "Vilanova",
+                    "supply_points": [
+                        {"token": "SP-ADDR-1", "property_token": "PR-ADDR-1"}
+                    ],
+                }
+            ],
+        )
+
+    def test_same_address_in_several_rows_is_returned_once(self):
+        response = self._search("Major 1r")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(
+            response.data["results"][0]["supply_points"],
+            [
+                {"token": "SP-ADDR-2", "property_token": "PR-ADDR-1"},
+                {"token": "SP-ADDR-3", "property_token": None},
+                {"token": "SP-ADDR-5", "property_token": "PR-ADDR-2"},
+            ],
+        )
+
+    def test_includes_inactive_supply_points_and_skips_addresses_without_sp(self):
+        response = self._search("Major 21")
+
+        self.assertEqual(response.status_code, 200)
+        # Ordre: carrer, número, sufix, escala, pis, porta
+        self.assertEqual(
+            self._addresses(response),
+            [
+                str(self.address_1r2a),
+                str(self.address_2n1a),
+                str(self.address_baixa),
+                "C. Major, 21-A, Vilanova",
+            ],
+        )
+
+    def test_number_suffix_is_shown_and_searchable(self):
+        for term in ("Major 21A", "Major 21-A", "Major 21 A"):
+            with self.subTest(term=term):
+                response = self._search(term)
+                self.assertEqual(response.status_code, 200)
+                self.assertIn("C. Major, 21-A, Vilanova", self._addresses(response))
+        item = self._search("Major 21A").data["results"][0]
+        self.assertEqual(
+            (item["street_number"], item["street_number_suffix"]), (21, "A")
+        )
+        # Cercar «21A» no torna el 21 sense sufix
+        self.assertEqual(self._search("Major 21A").data["count"], 1)
+        # El sufix d'un S/N també es veu
+        self.assertIn(
+            "Petit, S/N-B, Vilanova", self._addresses(self._search("Petit"))
+        )
+
+    def test_search_ignores_accents(self):
+        for term in ("Plaça", "Placa", "PLAÇA", "plaça nova"):
+            with self.subTest(term=term):
+                response = self._search(term)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(self._addresses(response), [str(self.address_placa)])
+
+    def test_search_matches_stair_floor_door_city_and_postal_code(self):
+        for term, expected in (
+            ("Major 21 B", [str(self.address_baixa)]),
+            ("Baixos", [str(self.address_petit)]),
+            ("Major 3r 1a", [str(self.address_baixa)]),
+            ("Petit Vilanova 08800 Baixos", [str(self.address_petit)]),
+            ("Local", [str(self.address_placa)]),
+        ):
+            with self.subTest(term=term):
+                response = self._search(term)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(self._addresses(response), expected)
+
+    def test_results_are_paginated(self):
+        response = self._search("Vilanova", limit=2, page=2)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["count"], 7)
+        self.assertEqual(response.data["total_pages"], 4)
+        self.assertEqual(len(response.data["results"]), 2)
+
+    def test_query_count_does_not_grow_with_results(self):
+        def count_queries(term):
+            with CaptureQueriesContext(connection) as queries:
+                response = self._search(term)
+            self.assertEqual(response.status_code, 200)
+            return len(response.data["results"]), len(queries)
+
+        one_result, one_queries = count_queries("Major 2n")
+        all_results, all_queries = count_queries("Vilanova")
+
+        self.assertEqual((one_result, all_results), (1, 7))
+        # Sense N+1: les mateixes consultes per a 1 adreça que per a 7
+        self.assertEqual(one_queries, all_queries)
+
+    def test_invalid_search_returns_400(self):
+        for term, error in (
+            ("", "Search is required"),
+            ("ab", "Search must be at least 3 characters"),
+            ("...", "Search must contain at least one valid term"),
+        ):
+            with self.subTest(term=term):
+                response = self._search(term)
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(response.data, {"error": error})
+
+    def test_requires_authentication(self):
+        response = APIClient().get(
+            reverse("addresses-ov"), {"search": "Major"}
+        )
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_equivalent_number_types_are_returned_once(self):
+        """Sense tipus, «N» i «S» es veuen igual: una sola adreça. El número
+        amagat d'un S/N tampoc separa adreces ni es pot cercar."""
+        city = City.objects.create(token="CITY-ADDR-2", name="Castellet")
+        country = Country.objects.get(iso_code="ES")
+        street = Street.objects.create(name="Riera", city=city)
+        types = {
+            code: StreetNumberType.objects.get_or_create(
+                type=code, defaults={"description": code}
+            )[0]
+            for code in ("N", "S", "SN")
+        }
+        numbers = [
+            StreetNumber.objects.create(street=street, number=7),
+            StreetNumber.objects.create(
+                street=street, number=7, number_type=types["N"]
+            ),
+            StreetNumber.objects.create(
+                street=street, number=7, number_type=types["S"]
+            ),
+            StreetNumber.objects.create(
+                street=street, number=3, number_type=types["SN"]
+            ),
+            StreetNumber.objects.create(
+                street=street, number=4, number_type=types["SN"]
+            ),
+        ]
+        for index, number in enumerate(numbers):
+            SupplyPoint.objects.create(
+                token=f"SP-RIERA-{index}",
+                address=Address.objects.create(
+                    street=street,
+                    street_number=number,
+                    city=city,
+                    country=country,
+                ),
+            )
+
+        response = self._search("Riera Castellet")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [
+                (item["address"], [sp["token"] for sp in item["supply_points"]])
+                for item in response.data["results"]
+            ],
+            [
+                ("Riera, 7, Castellet", ["SP-RIERA-0", "SP-RIERA-1", "SP-RIERA-2"]),
+                # Els S/N (sense número) van després dels números
+                ("Riera, S/N, Castellet", ["SP-RIERA-3", "SP-RIERA-4"]),
+            ],
+        )
+        self.assertEqual(self._search("Riera 3").data["count"], 0)
+        # El número amagat d'un S/N tampoc es retorna
+        self.assertIsNone(response.data["results"][1]["street_number"])
+
+    def test_group_is_matched_as_a_whole(self):
+        """Una fila del grup amb `city_name` diferent (que no es mostra perquè
+        hi ha població) no parteix el grup en cercar-lo."""
+        Address.objects.filter(pk=self.address_1r2a_copy.pk).update(
+            city_name="Altrevila"
+        )
+
+        self.assertEqual(self._search("Altrevila").data["count"], 0)
+        response = self._search("Major 1r Vilanova")
+        self.assertEqual(
+            [sp["token"] for sp in response.data["results"][0]["supply_points"]],
+            ["SP-ADDR-2", "SP-ADDR-3", "SP-ADDR-5"],
+        )
+
+    def test_requires_ov_group_or_superuser(self):
+        client = APIClient()
+        client.force_authenticate(
+            User.objects.create_user(username="no-ov", password="not-used")
+        )
+        self.assertEqual(
+            client.get(reverse("addresses-ov"), {"search": "Major"}).status_code,
+            403,
+        )
+        client.force_authenticate(
+            User.objects.create_superuser(username="admin-ov", password="not-used")
+        )
+        self.assertEqual(
+            client.get(reverse("addresses-ov"), {"search": "Major"}).status_code,
+            200,
+        )
 
 
 class PersonDataOVTests(TestCase):
@@ -4871,6 +5219,273 @@ class ContractProcedureOVTests(TestCase):
         self.assertNotEqual(sepa_match.url_name, "contract-procedure-ov")
 
 
+@override_settings(OV_SIGNED_CONTRACT_MAX_BYTES=1024)
+class ContractProcedureSepaSignedOVTests(TestCase):
+    """`POST /ov/procedures/contract/` amb el mandat SEPA signat en base64
+    (`sepa_signed`): es desa com a mandat de la forma de pagament de la
+    sol·licitud, i si el document no és vàlid no es crea res."""
+
+    PDF = b"%PDF-1.4 mandat signat de prova"
+
+    @classmethod
+    def setUpClass(cls):
+        cls._storage_dir = tempfile.mkdtemp()
+        cls._storage_override = override_settings(
+            DOCUMENT_STORAGE_PATH=cls._storage_dir
+        )
+        cls._storage_override.enable()
+        super().setUpClass()
+
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+        cls._storage_override.disable()
+        shutil.rmtree(cls._storage_dir, ignore_errors=True)
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(
+            username="ov-contract-procedure-sepa-test", password="not-used"
+        )
+        ContractRequestStatus.objects.update_or_create(
+            token="1", defaults={"name": "Esborrany", "is_default": True}
+        )
+        ContractRequestType.objects.update_or_create(
+            token="domestic", defaults={"name": "Domèstic", "is_active": True}
+        )
+        PaymentType.objects.update_or_create(
+            token="DIRECT_DEBIT", defaults={"name": "Domiciliació bancària"}
+        )
+        PaymentType.objects.update_or_create(
+            token="CASH", defaults={"name": "Efectiu"}
+        )
+        PriceRate.objects.create(token="TR-CHOSEN", name="Tarifa", is_active=True)
+        cls.holder = Person.objects.create(
+            token="12345678A", name="Anna", surname="Prova"
+        )
+        _new_holder_identification_types()
+        prop = Property.objects.create(token="PROP-1", name="Finca", is_active=True)
+        SupplyPoint.objects.create(token="SP-1", property=prop, is_active=True)
+
+    def setUp(self):
+        cache.clear()
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def _post(self, **overrides):
+        payload = {
+            "holder_dni": "12345678A",
+            "property_token": "PROP-1",
+            "procedure_type_token": "domestic",
+            "tariff_token": "TR-CHOSEN",
+            "payment_type_token": "DIRECT_DEBIT",
+            "iban": "ES91 2100 0418 4502 0005 1332",
+            "iban_holder_name": "Anna Prova",
+            "iban_holder_dni": "12345678A",
+            "iban_holder_swift": "CAIXESBBXXX",
+            "sepa_signed": base64.b64encode(self.PDF).decode(),
+        }
+        payload.update(overrides)
+        return self.client.post(
+            reverse("contract-procedure-ov"), payload, format="json"
+        )
+
+    def _mandate(self, response):
+        contract_request = ContractRequest.objects.get(
+            token=response.data["contract_request_token"]
+        )
+        return GeneralPaymentSepaDocument.objects.get(
+            general_payment=contract_request.payment
+        )
+
+    def _assert_nothing_created(self, response, expected_status):
+        self.assertEqual(response.status_code, expected_status)
+        self.assertFalse(ContractRequest.objects.exists())
+        self.assertFalse(GeneralPayment.objects.exists())
+        self.assertFalse(GeneralPaymentSepaDocument.objects.exists())
+        self.assertFalse(Document.objects.exists())
+
+    def test_without_document_works_as_before(self):
+        for overrides in ({"sepa_signed": None}, {"sepa_signed": ""}):
+            with self.subTest(overrides=overrides):
+                ContractRequest.objects.all().delete()
+                response = self._post(**overrides)
+
+                self.assertEqual(response.status_code, 201)
+                self.assertFalse(GeneralPaymentSepaDocument.objects.exists())
+
+        ContractRequest.objects.all().delete()
+        payload_without_fields = self._post()
+        self.assertEqual(payload_without_fields.status_code, 201)
+
+    def test_valid_document_is_archived_as_the_request_payment_mandate(self):
+        response = self._post(sepa_signed_filename="mandat.pdf")
+
+        self.assertEqual(response.status_code, 201)
+        mandate = self._mandate(response)
+        self.assertTrue(mandate.checked)
+        self.assertEqual(mandate.file.entity, "SEPA")
+        self.assertEqual(mandate.file.field, "CONTRACT")
+        self.assertEqual(mandate.file.document_name, "mandat.pdf")
+        with open(mandate.file.location, "rb") as stored:
+            self.assertEqual(stored.read(), self.PDF)
+        # La resposta no canvia: no exposa res del document.
+        self.assertNotIn("sepa_signed", response.data)
+
+    def test_default_filename_and_sanitized_filename(self):
+        cases = (
+            ({}, "mandat_sepa_signat.pdf"),
+            ({"sepa_signed_filename": None}, "mandat_sepa_signat.pdf"),
+            ({"sepa_signed_filename": "  "}, "mandat_sepa_signat.pdf"),
+            ({"sepa_signed_filename": "../../etc/mandat"}, "mandat.pdf"),
+            ({"sepa_signed_filename": "mandat signat.PDF"}, "mandat_signat.PDF"),
+        )
+        for overrides, expected in cases:
+            with self.subTest(overrides=overrides):
+                ContractRequest.objects.all().delete()
+                response = self._post(**overrides)
+
+                self.assertEqual(response.status_code, 201)
+                document = self._mandate(response).file
+                self.assertEqual(document.document_name, expected)
+                self.assertTrue(
+                    os.path.realpath(document.location).startswith(
+                        os.path.realpath(self._storage_dir) + os.sep
+                    )
+                )
+
+    def test_base64_with_line_breaks_is_accepted(self):
+        encoded = base64.encodebytes(self.PDF * 3).decode()
+        self.assertIn("\n", encoded)
+
+        response = self._post(sepa_signed=encoded)
+
+        self.assertEqual(response.status_code, 201)
+        with open(self._mandate(response).file.location, "rb") as stored:
+            self.assertEqual(stored.read(), self.PDF * 3)
+
+    def test_invalid_base64_returns_400_and_creates_nothing(self):
+        response = self._post(sepa_signed="no és base64!!")
+
+        self._assert_nothing_created(response, 400)
+        self.assertIn("sepa_signed", response.data)
+
+    def test_non_pdf_returns_400_and_creates_nothing(self):
+        response = self._post(
+            sepa_signed=base64.b64encode(b"PK\x03\x04 un zip").decode()
+        )
+
+        self._assert_nothing_created(response, 400)
+        self.assertIn("sepa_signed", response.data)
+
+    def test_too_large_document_returns_413_and_creates_nothing(self):
+        # Tant si el text en base64 ja passa del límit com si només el passen
+        # els bytes descodificats (1025 bytes caben en 1368 caràcters).
+        for content in (b"%PDF-" + b"x" * 2000, b"%PDF-" + b"x" * 1020):
+            with self.subTest(size=len(content)):
+                response = self._post(
+                    sepa_signed=base64.b64encode(content).decode()
+                )
+
+                self._assert_nothing_created(response, 413)
+                self.assertIn("sepa_signed", response.data)
+
+    def test_document_at_the_limit_is_accepted(self):
+        content = b"%PDF-" + b"x" * 1019
+
+        response = self._post(sepa_signed=base64.b64encode(content).decode())
+
+        self.assertEqual(response.status_code, 201)
+
+    @override_settings(OV_SIGNED_CONTRACT_MAX_BYTES=10 * 1024 * 1024)
+    def test_document_over_django_memory_limit_is_accepted(self):
+        # El JSON passa de DATA_UPLOAD_MAX_MEMORY_SIZE (2,5 MiB): el middleware
+        # de registre no pot llegir `request.body`, però DRF llegeix el cos
+        # igualment i l'alta es crea.
+        content = b"%PDF-" + os.urandom(3 * 1024 * 1024)
+        self.assertGreater(
+            len(base64.b64encode(content)), settings.DATA_UPLOAD_MAX_MEMORY_SIZE
+        )
+
+        response = self._post(sepa_signed=base64.b64encode(content).decode())
+
+        self.assertEqual(response.status_code, 201)
+        with open(self._mandate(response).file.location, "rb") as stored:
+            self.assertEqual(stored.read(), content)
+
+    def test_body_without_content_length_is_limited_by_the_parser(self):
+        class TinyParser(LimitedJSONParser):
+            def get_max_bytes(self):
+                return 20
+
+        parser = TinyParser()
+        self.assertEqual(parser.parse(BytesIO(b'{"a": "b"}')), {"a": "b"})
+        with self.assertRaises(RequestBodyTooLarge):
+            parser.parse(BytesIO(b'{"a": "' + b"x" * 30 + b'"}'))
+        with self.assertRaises(ParseError) as raised:
+            parser.parse(BytesIO(b"{no json"))
+        # Sense el detall de l'excepció de Python.
+        self.assertEqual(str(raised.exception.detail), "JSON parse error.")
+
+    def test_view_uses_the_limited_json_parser(self):
+        json_parsers = [
+            parser
+            for parser in ContractProcedureOVView.parser_classes
+            if parser.media_type == "application/json"
+        ]
+        self.assertEqual(len(json_parsers), 1)
+        self.assertTrue(issubclass(json_parsers[0], LimitedJSONParser))
+
+    def test_too_large_body_returns_413_before_reading_it(self):
+        response = self.client.post(
+            reverse("contract-procedure-ov"),
+            data=b"{}",
+            content_type="application/json",
+            CONTENT_LENGTH=str(10 * 1024 * 1024),
+        )
+
+        self.assertEqual(response.status_code, 413)
+        self.assertFalse(ContractRequest.objects.exists())
+
+    def test_new_holder_not_created_when_document_is_invalid(self):
+        response = self._post(
+            holder_dni="87654321X",
+            holder_name="Nou",
+            holder_surname="Titular",
+            holder_email="nou@example.com",
+            holder_phone="600000000",
+            sepa_signed="%%%",
+        )
+
+        self._assert_nothing_created(response, 400)
+        self.assertFalse(Person.objects.filter(token="87654321X").exists())
+
+    def test_document_with_non_direct_debit_returns_400_and_creates_nothing(self):
+        response = self._post(payment_type_token="CASH")
+
+        self._assert_nothing_created(response, 400)
+        self.assertIn("sepa_signed", response.data)
+
+    def test_archive_failure_rolls_back_the_request(self):
+        with patch(
+            "ov.views.upload_document", side_effect=OSError("disc ple")
+        ):
+            with self.assertRaises(OSError):
+                self._post()
+
+        self.assertFalse(ContractRequest.objects.exists())
+        self.assertFalse(GeneralPaymentSepaDocument.objects.exists())
+
+    def test_post_log_masks_the_document(self):
+        with self.assertLogs("post_requests", level="INFO") as logs:
+            response = self._post()
+
+        self.assertEqual(response.status_code, 201)
+        output = "\n".join(logs.output)
+        self.assertNotIn(base64.b64encode(self.PDF).decode(), output)
+        self.assertIn("***REDACTED***", output)
+
+
 class ContractRequestStatusOVTests(TestCase):
     """`GET /ov/procedures/contract/<contract_request_token>/` — seguiment de
     l'estat d'una sol·licitud d'alta: `contract_token` `null` mentre estigui
@@ -4961,6 +5576,327 @@ class ContractRequestStatusOVTests(TestCase):
 
     def test_inactive_request_returns_404(self):
         self.assertEqual(self._get("CR-OFF").status_code, 404)
+
+
+
+class ContractRequestPdfOVTests(TestCase):
+    """`GET /ov/procedures/contract/<contract_request_token>/pdf/` — PDF del
+    contracte d'una sol·licitud d'alta per signar-lo fora d'Aqua360: es
+    reutilitza el ja generat o es genera (i es desa) amb la plantilla de
+    l'enviament a signar."""
+
+    PDF_BYTES = b"%PDF-1.4 contracte generat"
+
+    @classmethod
+    def setUpClass(cls):
+        cls._media_dir = tempfile.mkdtemp()
+        cls._media_override = override_settings(MEDIA_ROOT=cls._media_dir)
+        cls._media_override.enable()
+        super().setUpClass()
+
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+        cls._media_override.disable()
+        shutil.rmtree(cls._media_dir, ignore_errors=True)
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(
+            username="ov-contract-request-pdf-test", password="not-used"
+        )
+        cls.user.groups.add(Group.objects.get_or_create(name="ov")[0])
+        cls.other_user = User.objects.create_user(
+            username="ov-contract-request-pdf-other", password="not-used"
+        )
+        cls.status, _ = ContractRequestStatus.objects.update_or_create(
+            token="1", defaults={"name": "Esborrany", "is_default": True}
+        )
+        cls.contract_request = ContractRequest.objects.create(
+            token="CR-PDF", status=cls.status
+        )
+        cls.inactive_request = ContractRequest.objects.create(
+            token="CR-PDF-OFF", status=cls.status, is_active=False
+        )
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def _get(self, token="CR-PDF"):
+        return self.client.get(reverse("contract-request-pdf-ov", args=[token]))
+
+    @staticmethod
+    def _content(response):
+        return b"".join(response.streaming_content)
+
+    @patch("ov.views.generate_contract_pdf_bytes")
+    def test_generates_saves_and_returns_pdf_when_missing(self, generate):
+        generate.return_value = self.PDF_BYTES
+
+        response = self._get()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/pdf")
+        self.assertIn('filename="CR-PDF.pdf"', response["Content-Disposition"])
+        self.assertEqual(self._content(response), self.PDF_BYTES)
+        # Mateixes opcions que l'enviament a signar (Aqua360 Sign).
+        generate.assert_called_once_with(
+            self.contract_request, include_requested_at=True
+        )
+        self.contract_request.refresh_from_db()
+        self.assertTrue(self.contract_request.contract_file_template)
+        with self.contract_request.contract_file_template.open("rb") as stored:
+            self.assertEqual(stored.read(), self.PDF_BYTES)
+
+    @patch("ov.views.generate_contract_pdf_bytes")
+    def test_reuses_already_generated_pdf(self, generate):
+        self.contract_request.contract_file_template.save(
+            "CR-PDF.pdf", ContentFile(b"%PDF-1.4 ja generat")
+        )
+
+        response = self._get()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self._content(response), b"%PDF-1.4 ja generat")
+        generate.assert_not_called()
+
+    @patch("ov.views.generate_contract_pdf_bytes")
+    def test_regenerates_when_stored_file_is_missing(self, generate):
+        generate.return_value = self.PDF_BYTES
+        self.contract_request.contract_file_template.save(
+            "CR-PDF.pdf", ContentFile(b"%PDF-1.4 perdut")
+        )
+        os.remove(self.contract_request.contract_file_template.path)
+
+        response = self._get()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self._content(response), self.PDF_BYTES)
+        generate.assert_called_once()
+
+    @patch("ov.views.generate_contract_pdf_bytes")
+    def test_generation_error_returns_500(self, generate):
+        generate.side_effect = ContractPdfGenerationError("plantilla")
+
+        response = self._get()
+
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(
+            response.data, {"error": "Contract PDF could not be generated"}
+        )
+        self.contract_request.refresh_from_db()
+        self.assertFalse(self.contract_request.contract_file_template)
+
+    @patch("ov.views.generate_contract_pdf_bytes")
+    def test_unexpected_generation_error_returns_same_500(self, generate):
+        # P. ex. la plantilla configurada no existeix: peta abans de pisa.
+        generate.side_effect = TemplateDoesNotExist("contract_template.html")
+
+        response = self._get()
+
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(
+            response.data, {"error": "Contract PDF could not be generated"}
+        )
+
+    def test_unknown_request_returns_404(self):
+        self.assertEqual(self._get("CR-NOPE").status_code, 404)
+
+    def test_inactive_request_returns_404(self):
+        self.assertEqual(self._get("CR-PDF-OFF").status_code, 404)
+
+    def test_user_outside_ov_group_gets_403(self):
+        self.client.force_authenticate(self.other_user)
+        self.assertEqual(self._get().status_code, 403)
+
+    def test_anonymous_gets_401(self):
+        self.client.force_authenticate(None)
+        self.assertEqual(self._get().status_code, 401)
+
+class ContractRequestSignedUploadOVTests(TestCase):
+    """`POST /ov/procedures/contract/<contract_request_token>/signed/` —
+    contracte d'una sol·licitud d'alta signat fora d'Aqua360: es desa com el
+    que torna Aqua360 Sign (sol·licitud i, si n'hi ha, contracte) i no canvia
+    l'estat de la sol·licitud."""
+
+    PDF_BYTES = b"%PDF-1.4 contracte signat"
+
+    @classmethod
+    def setUpClass(cls):
+        cls._storage_dir = tempfile.mkdtemp()
+        cls._storage_override = override_settings(
+            DOCUMENT_STORAGE_PATH=cls._storage_dir,
+            DOCUMENT_MANAGER_SERVICES={
+                **settings.DOCUMENT_MANAGER_SERVICES,
+                "contract": "hdd",
+            },
+        )
+        cls._storage_override.enable()
+        super().setUpClass()
+
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+        cls._storage_override.disable()
+        shutil.rmtree(cls._storage_dir, ignore_errors=True)
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(
+            username="ov-contract-request-signed-test", password="not-used"
+        )
+        cls.user.groups.add(Group.objects.get_or_create(name="ov")[0])
+        cls.other_user = User.objects.create_user(
+            username="ov-contract-request-signed-other", password="not-used"
+        )
+        cls.status, _ = ContractRequestStatus.objects.update_or_create(
+            token="1", defaults={"name": "Esborrany", "is_default": True}
+        )
+        cls.contract_request = ContractRequest.objects.create(
+            token="CR-SIGNED", status=cls.status
+        )
+        cls.inactive_request = ContractRequest.objects.create(
+            token="CR-SIGNED-OFF", status=cls.status, is_active=False
+        )
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def _post(self, token="CR-SIGNED", content=None, name="signat.pdf", **data):
+        if content is not None or name is not None:
+            data.setdefault(
+                "file",
+                SimpleUploadedFile(
+                    name,
+                    self.PDF_BYTES if content is None else content,
+                    content_type="application/pdf",
+                ),
+            )
+        return self.client.post(
+            reverse("contract-request-signed-ov", args=[token]),
+            data,
+            format="multipart",
+        )
+
+    @staticmethod
+    def _stored_bytes(document):
+        with open(document.location, "rb") as stored:
+            return stored.read()
+
+    def test_saves_signed_pdf_on_request(self):
+        response = self._post()
+
+        self.assertEqual(response.status_code, 201)
+        self.contract_request.refresh_from_db()
+        document = self.contract_request.contract_file
+        self.assertIsNotNone(document)
+        self.assertEqual(
+            response.data,
+            {
+                "contract_request_token": "CR-SIGNED",
+                "document_id": document.id,
+                "success": True,
+            },
+        )
+        self.assertEqual(self._stored_bytes(document), self.PDF_BYTES)
+        # Només s'afegeix el document: l'estat no canvia ni es registra.
+        self.assertEqual(self.contract_request.status, self.status)
+        self.assertFalse(
+            LogContractRequestStatus.objects.filter(
+                object=self.contract_request
+            ).exists()
+        )
+
+    def test_also_saves_on_contract_if_created(self):
+        # El signal `terminate_contract_update_bail` el llegeix en desar el
+        # contracte.
+        ConfigProject.objects.get_or_create(
+            token="contract_terminated_status", defaults={"value": "-1"}
+        )
+        contract = Contract.objects.create(
+            token="C-SIGNED",
+            status=ContractStatus.objects.get_or_create(
+                token="1", defaults={"name": "Active"}
+            )[0],
+            contract_request=self.contract_request,
+        )
+
+        response = self._post()
+
+        self.assertEqual(response.status_code, 201)
+        contract.refresh_from_db()
+        self.assertEqual(contract.contract_file_id, response.data["document_id"])
+
+    def test_new_upload_replaces_previous(self):
+        first = self._post(content=b"%PDF-1.4 primer").data["document_id"]
+
+        response = self._post(content=b"%PDF-1.4 segon")
+
+        self.assertEqual(response.status_code, 201)
+        self.assertNotEqual(response.data["document_id"], first)
+        self.contract_request.refresh_from_db()
+        self.assertEqual(
+            self.contract_request.contract_file_id, response.data["document_id"]
+        )
+        self.assertEqual(
+            self._stored_bytes(self.contract_request.contract_file),
+            b"%PDF-1.4 segon",
+        )
+
+    def test_missing_file_returns_400(self):
+        response = self._post(name=None)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("file", response.data)
+
+    def test_non_pdf_extension_returns_400(self):
+        response = self._post(name="signat.png")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("file", response.data)
+
+    def test_non_pdf_content_returns_400(self):
+        response = self._post(content=b"no soc un pdf")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("file", response.data)
+
+    @override_settings(OV_SIGNED_CONTRACT_MAX_BYTES=10)
+    def test_too_large_file_returns_400(self):
+        response = self._post()
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("file", response.data)
+        self.contract_request.refresh_from_db()
+        self.assertIsNone(self.contract_request.contract_file)
+
+    @override_settings(OV_SIGNED_CONTRACT_MAX_BYTES=10)
+    @patch("ov.views.SignedContractUploadSerializer")
+    def test_body_larger_than_limit_returns_413_without_parsing(self, serializer):
+        # Més gran que el límit + el marge del multipart: es rebutja per la
+        # capçalera, abans de llegir el cos.
+        response = self._post(content=b"%PDF-" + b"0" * (70 * 1024))
+
+        self.assertEqual(response.status_code, 413)
+        serializer.assert_not_called()
+        self.contract_request.refresh_from_db()
+        self.assertIsNone(self.contract_request.contract_file)
+
+    def test_unknown_request_returns_404(self):
+        self.assertEqual(self._post("CR-NOPE").status_code, 404)
+
+    def test_inactive_request_returns_404(self):
+        self.assertEqual(self._post("CR-SIGNED-OFF").status_code, 404)
+
+    def test_user_outside_ov_group_gets_403(self):
+        self.client.force_authenticate(self.other_user)
+        self.assertEqual(self._post().status_code, 403)
+
+    def test_anonymous_gets_401(self):
+        self.client.force_authenticate(None)
+        self.assertEqual(self._post().status_code, 401)
 
 
 class BillingPeriodsViewTests(TestCase):
@@ -6538,4 +7474,522 @@ class ContractChangeProcedureOVTests(TestCase):
         self.assertIs(
             resolve(reverse("contract-procedure-ov")).func.view_class,
             ContractProcedureOVView,
+        )
+
+
+class FutureInvoiceVisibilityOVTests(TestCase):
+    """Les factures amb data d'emissió futura no es veuen a l'OV fins aquell
+    dia: ni al llistat ni en cap endpoint que les busqui per token o número.
+    Les que no tenen data es continuen mostrant."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(
+            username="ov-future-invoices-test", password="not-used"
+        )
+        for token, value in (
+            ("contract_termination_completed_token", "3"),
+            ("contract_terminated_status", "-1"),
+            ("invoice_type_invoice_token", "F"),
+            ("invoice_status_paid_token", "0"),
+            ("invoice_status_cancelled_token", "-6"),
+        ):
+            ConfigProject.objects.update_or_create(
+                token=token, defaults={"value": value}
+            )
+        cls.contract = Contract.objects.create(token="FUT-CONTRACT")
+        cls.sent_status = InvoiceStatus.objects.create(token="3", name="Enviada")
+        today = timezone.localdate()
+        cls.invoices = {}
+        for key, issue_date in (
+            ("today", today),
+            ("past", today - timedelta(days=1)),
+            ("future", today + timedelta(days=1)),
+            ("no_date", None),
+        ):
+            cls.invoices[key] = Invoice.objects.create(
+                token=f"FUT-INV-{key}",
+                serie_final=f"FC/FUT/{key}",
+                contract=cls.contract,
+                status=cls.sent_status,
+                type_final="F",
+                issue_date=issue_date,
+                total_final=Decimal("10.00"),
+                left_to_pay=Decimal("10.00"),
+            )
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def _tokens(self, data):
+        return {item["invoice_token"] for item in data}
+
+    def test_list_hides_future_invoices(self):
+        response = self.client.get(
+            reverse("invoices-ov"), {"contract_token": self.contract.token}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            self._tokens(response.data),
+            {"FUT-INV-today", "FUT-INV-past", "FUT-INV-no_date"},
+        )
+
+    def test_unpayed_hides_future_invoices(self):
+        response = self.client.get(
+            reverse("unpayed-invoices-ov"),
+            {"contract_token": self.contract.token, "statuses": "3"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("FUT-INV-future", self._tokens(response.data))
+        self.assertIn("FUT-INV-today", self._tokens(response.data))
+
+    def test_invoice_detail_hides_future_invoice(self):
+        for key, expected in (("today", 200), ("future", 400)):
+            with self.subTest(key=key):
+                response = self.client.get(
+                    reverse("invoice-ov"),
+                    {
+                        "contract_token": self.contract.token,
+                        "invoice_token": self.invoices[key].token,
+                    },
+                )
+                self.assertEqual(response.status_code, expected)
+
+    def test_full_detail_hides_future_invoice(self):
+        response = self.client.get(
+            reverse(
+                "invoice-detail-by-token-ov",
+                kwargs={"token": self.invoices["future"].token},
+            )
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_pdf_hides_future_invoice_by_token_and_number(self):
+        future = self.invoices["future"]
+        with patch("ov.views.generate_report_invoice_pdf") as generate:
+            for invoice_token in (future.token, future.serie_final):
+                with self.subTest(invoice_token=invoice_token):
+                    response = self.client.get(
+                        reverse("invoice-pdf-ov"),
+                        {
+                            "contract_token": self.contract.token,
+                            "invoice_token": invoice_token,
+                        },
+                    )
+                    self.assertEqual(response.status_code, 404)
+        generate.assert_not_called()
+
+    def test_batch_download_rejects_future_invoice(self):
+        url = (
+            reverse("batch-invoice-download-ov")
+            + f"?contract_token={self.contract.token}"
+        )
+        response = self.client.post(
+            url,
+            {"invoice_tokens": [self.invoices["future"].token]},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("invoice_tokens", response.data)
+
+    def test_quick_pay_does_not_find_future_invoice(self):
+        response = self.client.post(
+            reverse("quick-pay-ov"),
+            {
+                "contract_number": self.contract.token,
+                "invoice_number": self.invoices["future"].serie_final,
+                "amount": "10.00",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_invoice_paid_does_not_find_future_invoice(self):
+        response = self.client.post(
+            reverse("invoice-paid-ov"),
+            {
+                "contract_token": self.contract.token,
+                "invoice_token": self.invoices["future"].token,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.invoices["future"].refresh_from_db()
+        self.assertEqual(self.invoices["future"].status, self.sent_status)
+
+    def test_last_invoice_date_ignores_future_invoices(self):
+        from ov.serializers import ContractSerializer
+
+        Invoice.objects.filter(pk=self.invoices["future"].pk).update(
+            created_at=timezone.now() + timedelta(minutes=5)
+        )
+        expected = (
+            Invoice.objects.filter(contract=self.contract)
+            .exclude(pk=self.invoices["future"].pk)
+            .order_by("-created_at")
+            .values_list("created_at", flat=True)
+            .first()
+        )
+
+        last_invoice_date = ContractSerializer().get_last_invoice_date(self.contract)
+
+        self.assertIsNotNone(last_invoice_date)
+        self.assertEqual(last_invoice_date, expected)
+
+
+class PersonInvoicesOVTests(TestCase):
+    """`GET /ov/person-invoices/?dni=` — factures on la persona ha estat
+    titular o pagadora segons les dades congelades a la factura, agrupades per
+    contracte."""
+
+    URL_NAME = "person-invoices-ov"
+    DNI = "11111111H"
+    OTHER_DNI = "22222222J"
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(
+            username="ov-person-invoices-test", password="not-used"
+        )
+        # Compte de servei de l'OV: l'endpoint només l'admet a ell.
+        cls.user.groups.add(Group.objects.get_or_create(name="ov")[0])
+        cls.internal_user = User.objects.create_user(
+            username="ov-person-invoices-internal", password="not-used"
+        )
+        for token, value in (
+            ("contract_termination_completed_token", "3"),
+            ("contract_terminated_status", "-1"),
+            ("invoice_status_paid_token", "0"),
+            ("invoice_status_cancelled_token", "-1"),
+        ):
+            if not ConfigProject.objects.filter(token=token).exists():
+                ConfigProject.objects.create(token=token, value=value)
+        cls.contract_status = ContractStatus.objects.create(token="1", name="Alta")
+        cls.dropped_status = ContractStatus.objects.create(token="-1", name="Baixa")
+        cls.invoice_status = InvoiceStatus.objects.create(token="3", name="Enviada")
+        cls.preinvoice_status = InvoiceStatus.objects.create(
+            token="1", name="Prefactura"
+        )
+
+        street_type = StreetType.objects.create(abbreviation="C", name="Carrer")
+        city = City.objects.create(token="CITY-PINV", name="Ciutat")
+        street = Street.objects.create(name="Major", type=street_type, city=city)
+        number = StreetNumber.objects.create(street=street, number=10)
+        country = Country.objects.create(name="Espanya", iso_code="ES")
+        address = Address.objects.create(
+            token="ADDRESS-PINV",
+            street=street,
+            street_number=number,
+            city=city,
+            country=country,
+        )
+        supply_point = SupplyPoint.objects.create(token="SP-PINV", address=address)
+
+        cls.contract = Contract.objects.create(
+            token="CTR-PINV-1",
+            status=cls.contract_status,
+            supply_point_default=supply_point,
+        )
+        # Contracte de baixa: les factures hi continuen sortint.
+        cls.dropped_contract = Contract.objects.create(
+            token="CTR-PINV-2", status=cls.dropped_status
+        )
+
+        def invoice(token, contract, issue_date, customer, payer=None, **extra):
+            return Invoice.objects.create(
+                token=token,
+                serie_final=f"F-{token}",
+                contract=contract,
+                status=extra.pop("status", cls.invoice_status),
+                issue_date=issue_date,
+                customer_token_final=customer,
+                payer_token_final=payer,
+                total_final=Decimal("100.00"),
+                left_to_pay=Decimal("40.00"),
+                **extra,
+            )
+
+        # Titular, sense pagador: és titular i pagadora.
+        cls.holder_no_payer = invoice(
+            "PINV-1", cls.contract, date(2026, 1, 15), cls.DNI
+        )
+        # Titular amb un altre pagador.
+        cls.holder_only = invoice(
+            "PINV-2", cls.contract, date(2026, 2, 15), cls.DNI, cls.OTHER_DNI
+        )
+        # Pagadora d'un altre titular.
+        cls.payer_only = invoice(
+            "PINV-3", cls.dropped_contract, date(2026, 3, 15), cls.OTHER_DNI, cls.DNI
+        )
+        # Titular i pagadora explícita alhora.
+        cls.both = invoice(
+            "PINV-4", cls.contract, date(2026, 4, 15), cls.DNI, cls.DNI
+        )
+        # Canvi de titular: el contracte és el mateix, però aquesta factura és
+        # d'un altre titular i no ha de sortir.
+        cls.other_holder = invoice(
+            "PINV-5", cls.contract, date(2026, 5, 15), cls.OTHER_DNI
+        )
+        # Prefactura de la persona: s'exclou.
+        cls.preinvoice = invoice(
+            "PINV-6",
+            cls.contract,
+            date(2026, 6, 15),
+            cls.DNI,
+            status=cls.preinvoice_status,
+        )
+        # Factura sense contracte (escomesa, reclamació...).
+        cls.no_contract = invoice("PINV-7", None, date(2026, 2, 1), cls.DNI)
+
+    def setUp(self):
+        cache.clear()
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def _get(self, **params):
+        return self.client.get(reverse(self.URL_NAME), params)
+
+    @staticmethod
+    def _invoices(response):
+        return {
+            item["invoice_token"]: item
+            for group in response.data["results"]
+            for item in group["invoices"]
+        }
+
+    @staticmethod
+    def _group(response, contract_number):
+        for group in response.data["results"]:
+            if group["contract_number"] == contract_number:
+                return group
+        return None
+
+    # --- quines factures ---------------------------------------------------
+
+    def test_returns_invoices_as_holder_and_payer(self):
+        response = self._get(dni=self.DNI)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            set(self._invoices(response)),
+            {"PINV-1", "PINV-2", "PINV-3", "PINV-4", "PINV-7"},
+        )
+
+    def test_holder_flags(self):
+        invoices = self._invoices(self._get(dni=self.DNI))
+
+        self.assertTrue(invoices["PINV-2"]["is_holder"])
+        self.assertFalse(invoices["PINV-2"]["is_payer"])
+
+    def test_payer_flags(self):
+        invoices = self._invoices(self._get(dni=self.DNI))
+
+        self.assertFalse(invoices["PINV-3"]["is_holder"])
+        self.assertTrue(invoices["PINV-3"]["is_payer"])
+
+    def test_holder_and_payer_appears_once_with_both_flags(self):
+        response = self._get(dni=self.DNI)
+        tokens = [
+            item["invoice_token"]
+            for group in response.data["results"]
+            for item in group["invoices"]
+        ]
+
+        self.assertEqual(tokens.count("PINV-4"), 1)
+        item = self._invoices(response)["PINV-4"]
+        self.assertTrue(item["is_holder"])
+        self.assertTrue(item["is_payer"])
+
+    def test_empty_payer_means_holder_is_payer(self):
+        item = self._invoices(self._get(dni=self.DNI))["PINV-1"]
+
+        self.assertTrue(item["is_holder"])
+        self.assertTrue(item["is_payer"])
+
+    def test_holder_change_uses_invoice_data_not_current_contract(self):
+        mine = self._invoices(self._get(dni=self.DNI))
+        others = self._invoices(self._get(dni=self.OTHER_DNI))
+
+        self.assertNotIn("PINV-5", mine)
+        self.assertIn("PINV-5", others)
+        self.assertNotIn("PINV-1", others)
+
+    def test_preinvoices_are_excluded(self):
+        self.assertNotIn("PINV-6", self._invoices(self._get(dni=self.DNI)))
+
+    def test_future_dated_invoices_are_hidden(self):
+        future = Invoice.objects.create(
+            token="PINV-FUTURE",
+            serie_final="F-PINV-FUTURE",
+            contract=self.contract,
+            status=self.invoice_status,
+            issue_date=timezone.localdate() + timedelta(days=1),
+            customer_token_final=self.DNI,
+        )
+        today = Invoice.objects.create(
+            token="PINV-TODAY",
+            serie_final="F-PINV-TODAY",
+            contract=self.contract,
+            status=self.invoice_status,
+            issue_date=timezone.localdate(),
+            customer_token_final=self.DNI,
+        )
+
+        invoices = self._invoices(self._get(dni=self.DNI))
+
+        self.assertNotIn(future.token, invoices)
+        self.assertIn(today.token, invoices)
+
+    def test_invoices_without_contract_are_grouped(self):
+        group = self._group(self._get(dni=self.DNI), None)
+
+        self.assertIsNotNone(group)
+        self.assertIsNone(group["contract_status"])
+        self.assertIsNone(group["supply_address"])
+        self.assertEqual(
+            [item["invoice_token"] for item in group["invoices"]], ["PINV-7"]
+        )
+
+    def test_dni_with_different_format_is_normalized(self):
+        response = self._get(dni=" 11.111.111-h ")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("PINV-1", self._invoices(response))
+
+    def test_unknown_dni_returns_empty_results(self):
+        response = self._get(dni="99999999R")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, {"results": []})
+
+    # --- forma de la resposta ----------------------------------------------
+
+    def test_group_contains_contract_data(self):
+        response = self._get(dni=self.DNI)
+        group = self._group(response, "CTR-PINV-1")
+        dropped = self._group(response, "CTR-PINV-2")
+
+        self.assertEqual(group["contract_status"], {"token": "1", "name": "Alta"})
+        self.assertEqual(group["supply_address"], "C. Major, 10, Ciutat")
+        self.assertEqual(dropped["contract_status"], {"token": "-1", "name": "Baixa"})
+        self.assertIsNone(dropped["supply_address"])
+
+    def test_invoices_sorted_newest_first_within_group(self):
+        group = self._group(self._get(dni=self.DNI), "CTR-PINV-1")
+
+        self.assertEqual(
+            [item["invoice_token"] for item in group["invoices"]],
+            ["PINV-4", "PINV-2", "PINV-1"],
+        )
+
+    def test_amount_is_total_and_pending_is_separate(self):
+        item = self._invoices(self._get(dni=self.DNI))["PINV-1"]
+
+        self.assertEqual(item["invoice_amount"], 100.0)
+        self.assertEqual(item["pending_amount"], 40.0)
+        self.assertEqual(item["invoice_number"], "F-PINV-1")
+        self.assertEqual(item["invoice_date"], "2026-01-15")
+        self.assertEqual(item["invoice_status"], "Enviada")
+        self.assertEqual(item["status"], {"token": "3", "name": "Enviada"})
+        self.assertTrue(item["pdf_available"])
+
+    def test_pdf_available_reads_config_once_per_request(self):
+        ConfigProject.objects.create(token="ov_pdf_from", value="2026-02-01")
+
+        with CaptureQueriesContext(connection) as queries:
+            response = self._get(dni=self.DNI)
+
+        invoices = self._invoices(response)
+        self.assertFalse(invoices["PINV-1"]["pdf_available"])
+        self.assertTrue(invoices["PINV-2"]["pdf_available"])
+        config_queries = [
+            q for q in queries.captured_queries if "ov_pdf_from" in q["sql"]
+        ]
+        self.assertEqual(len(config_queries), 1)
+        # Factures + configuració, sense consultes per factura (N+1). Es
+        # descompten les dels middlewares (grups de l'usuari i auditoria).
+        data_queries = [
+            q["sql"]
+            for q in queries.captured_queries
+            if q["sql"].startswith('SELECT "') and "auth_" not in q["sql"]
+        ]
+        self.assertEqual(len(data_queries), 2, data_queries)
+
+    # --- filtre de dates ---------------------------------------------------
+
+    def test_date_from_only(self):
+        invoices = self._invoices(self._get(dni=self.DNI, date_from="2026-03-01"))
+
+        self.assertEqual(set(invoices), {"PINV-3", "PINV-4"})
+
+    def test_date_to_only(self):
+        invoices = self._invoices(self._get(dni=self.DNI, date_to="2026-02-01"))
+
+        self.assertEqual(set(invoices), {"PINV-1", "PINV-7"})
+
+    def test_date_range_bounds_are_inclusive(self):
+        response = self._get(dni=self.DNI, date_from="2026-02-15", date_to="2026-03-15")
+
+        self.assertEqual(set(self._invoices(response)), {"PINV-2", "PINV-3"})
+
+    def test_contracts_without_invoices_in_range_are_omitted(self):
+        response = self._get(dni=self.DNI, date_from="2026-03-01", date_to="2026-03-31")
+
+        self.assertEqual(
+            [group["contract_number"] for group in response.data["results"]],
+            ["CTR-PINV-2"],
+        )
+
+    def test_invalid_date_format_returns_400(self):
+        for value in ("15/01/2026", "2026-1-5", "2026-02-30", "abc"):
+            with self.subTest(value=value):
+                self.assertEqual(
+                    self._get(dni=self.DNI, date_from=value).status_code, 400
+                )
+                self.assertEqual(
+                    self._get(dni=self.DNI, date_to=value).status_code, 400
+                )
+
+    def test_inverted_range_returns_400(self):
+        response = self._get(dni=self.DNI, date_from="2026-03-01", date_to="2026-02-01")
+
+        self.assertEqual(response.status_code, 400)
+
+    # --- seguretat i encaminament ------------------------------------------
+
+    def test_missing_dni_returns_400(self):
+        self.assertEqual(self._get().status_code, 400)
+        self.assertEqual(self._get(dni=" - ").status_code, 400)
+
+    def test_requires_authentication(self):
+        response = APIClient().get(reverse(self.URL_NAME), {"dni": self.DNI})
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_internal_user_outside_ov_group_is_forbidden(self):
+        client = APIClient()
+        client.force_authenticate(self.internal_user)
+
+        response = client.get(reverse(self.URL_NAME), {"dni": self.DNI})
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_endpoint_uses_dedicated_throttle(self):
+        self.assertEqual(
+            PersonInvoicesOVView.throttle_classes, [PersonInvoicesThrottle]
+        )
+        self.assertEqual(PersonInvoicesThrottle.scope, "ov_person_invoices_dni")
+        self.assertEqual(PersonInvoicesThrottle.rate, "35/min")
+
+    def test_route(self):
+        self.assertEqual(reverse(self.URL_NAME), "/ov/person-invoices/")
+        self.assertIs(
+            resolve(reverse(self.URL_NAME)).func.view_class, PersonInvoicesOVView
         )

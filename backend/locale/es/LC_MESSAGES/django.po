@@ -2742,6 +2742,10 @@ msgstr "Exento"
 msgid "Ramader quota 0"
 msgstr "Ganadero cuota 0"
 
+#: statistics/utils/report_billing_service.py
+msgid "Vol. consumit d'ús agrícola"
+msgstr "Vol. consumido de uso agrícola"
+
 #: statistics/utils/report_billing_service.py:1172
 #: statistics/utils/report_billing_service.py:2119
 msgid "Factura"
@@ -6366,3 +6370,254 @@ msgstr "Esta remesa ya se ha enviado y no se puede modificar."
 #: billing/views/invoice_view.py
 msgid "La factura no té lectures"
 msgstr "La factura no tiene lecturas"
+
+#: auth/validators.py
+#, python-format
+msgid "The password must have at least %(min_length)d characters."
+msgstr "La contraseña debe tener como mínimo %(min_length)d caracteres."
+
+#: auth/validators.py
+msgid "The password must contain at least one letter."
+msgstr "La contraseña debe contener como mínimo una letra."
+
+#: auth/validators.py
+msgid "The password must contain at least one number."
+msgstr "La contraseña debe contener como mínimo un número."
+
+#: auth/validators.py
+msgid "The password must contain at least one special character."
+msgstr "La contraseña debe contener como mínimo un carácter especial."
+
+#: auth/serializers.py
+msgid "Invalid permission data."
+msgstr "Los datos de permisos no son válidos."
+
+#: communication/utils/send_errors.py
+#, python-format
+msgid "The email could not be sent: %(detail)s"
+msgstr "No se ha podido enviar el correo: %(detail)s"
+
+#: communication/utils/send_errors.py
+msgid "The email could not be sent. Unknown error from the mail server."
+msgstr "No se ha podido enviar el correo. Error desconocido del servidor de correo."
+
+#: communication/utils/send_errors.py
+msgid "The email could not be prepared. Check the message and the company's email configuration."
+msgstr "No se ha podido preparar el correo. Revise el mensaje y la configuración de correo de la empresa."
+
+#: communication/utils/send_errors.py
+msgid "The email could not be sent: the communication has no company configuration."
+msgstr "No se ha podido enviar el correo: la comunicación no tiene ninguna configuración de empresa."
+
+#: communication/utils/send_errors.py
+msgid "The email could not be sent: the recipient has no email address."
+msgstr "No se ha podido enviar el correo: el destinatario no tiene ninguna dirección de correo."
+
+#: communication/utils/send_errors.py
+msgid "The email could not be sent: there is no sender address configured."
+msgstr "No se ha podido enviar el correo: no hay ninguna dirección de remitente configurada."
+
+#: communication/utils/send_errors.py
+msgid "the recipient's address is not valid."
+msgstr "la dirección del destinatario no es válida."
+
+#: communication/utils/send_errors.py
+msgid "the mail server rejected the recipient's address (the mailbox does not exist or does not accept emails)."
+msgstr "el servidor de correo ha rechazado la dirección del destinatario (el buzón no existe o no acepta correos)."
+
+#: communication/utils/send_errors.py
+msgid "the recipient's mailbox is full."
+msgstr "el buzón del destinatario está lleno."
+
+#: communication/utils/send_errors.py
+msgid "the email is larger than the mail server allows. Reduce the size or the number of attachments."
+msgstr "el correo supera el tamaño máximo que permite el servidor. Reduzca el tamaño o el número de adjuntos."
+
+#: communication/utils/send_errors.py
+msgid "the mail server has temporarily limited the number of emails sent. Try again later."
+msgstr "el servidor de correo ha limitado temporalmente los envíos. Vuelva a intentarlo más tarde."
+
+#: communication/utils/send_errors.py
+msgid "the mail server is temporarily unavailable. Try again later."
+msgstr "el servidor de correo no está disponible temporalmente. Vuelva a intentarlo más tarde."
+
+#: communication/utils/send_errors.py
+msgid "the mail server rejected the sender's credentials. Check the email configuration."
+msgstr "el servidor de correo ha rechazado las credenciales del remitente. Revise la configuración de correo."
+
+#: communication/utils/send_errors.py
+msgid "the email account is not allowed to send from the sender's address. Check the email configuration."
+msgstr "la cuenta de correo no tiene permiso para enviar desde la dirección del remitente. Revise la configuración de correo."
+
+#: communication/utils/send_errors.py
+msgid "the sender's mailbox does not exist or is not enabled to send emails."
+msgstr "el buzón del remitente no existe o no está habilitado para enviar correos."
+
+#: communication/utils/send_errors.py
+msgid "the sender's mailbox has exceeded its storage quota."
+msgstr "el buzón del remitente ha superado la cuota de almacenamiento."
+
+#: communication/utils/send_errors.py
+msgid "the mail server does not accept the sender's address."
+msgstr "el servidor de correo no acepta la dirección del remitente."
+
+#: communication/utils/send_errors.py
+msgid "the mail server rejected the message because of its policy (for example, a spam filter)."
+msgstr "el servidor de correo ha rechazado el mensaje por sus políticas (por ejemplo, un filtro de correo no deseado)."
+
+#: communication/utils/send_errors.py
+msgid "could not connect to the mail server. Check the server configuration or try again later."
+msgstr "no se ha podido conectar con el servidor de correo. Revise la configuración del servidor o vuelva a intentarlo más tarde."
+
+#: communication/utils/send_errors.py
+msgid "the mail server did not respond in time. Try again later."
+msgstr "el servidor de correo no ha respondido a tiempo. Vuelva a intentarlo más tarde."
+
+#: communication/utils/send_errors.py
+msgid "the secure connection (SSL/TLS) with the mail server failed. Check the SSL/TLS configuration."
+msgstr "ha fallado la conexión segura (SSL/TLS) con el servidor de correo. Revise la configuración SSL/TLS."
+
+#: communication/utils/send_errors.py
+msgid "the email service is not configured correctly."
+msgstr "el servicio de correo no está bien configurado."
+
+#: communication/utils/send_errors.py
+msgid "The SMS could not be sent: the SMS service rejected the credentials. Check the SMS configuration."
+msgstr "No se ha podido enviar el SMS: el servicio de SMS ha rechazado las credenciales. Revise la configuración de SMS."
+
+#: communication/utils/send_errors.py
+msgid "The SMS could not be sent: the SMS service has temporarily limited the number of messages. Try again later."
+msgstr "No se ha podido enviar el SMS: el servicio de SMS ha limitado temporalmente los envíos. Vuelva a intentarlo más tarde."
+
+#: communication/utils/send_errors.py
+msgid "The SMS could not be sent: the SMS service is temporarily unavailable. Try again later."
+msgstr "No se ha podido enviar el SMS: el servicio de SMS no está disponible temporalmente. Vuelva a intentarlo más tarde."
+
+#: communication/utils/send_errors.py
+msgid "The SMS could not be sent: could not connect to the SMS service. Try again later."
+msgstr "No se ha podido enviar el SMS: no se ha podido conectar con el servicio de SMS. Vuelva a intentarlo más tarde."
+
+#: communication/utils/send_errors.py
+msgid "The SMS could not be sent. Unknown error from the SMS service."
+msgstr "No se ha podido enviar el SMS. Error desconocido del servicio de SMS."
+
+#: communication/utils/communication_service.py
+msgid "The SMS could not be sent: the communication has no SMS message."
+msgstr "No se ha podido enviar el SMS: la comunicación no tiene ningún mensaje de SMS."
+
+#: integrations/outbound/broadcaster/client.py
+msgid "The SMS could not be sent: the SMS service is not configured."
+msgstr "No se ha podido enviar el SMS: el servicio de SMS no está configurado."
+
+#: integrations/outbound/broadcaster/client.py
+msgid "The SMS could not be sent: the SMS has no text."
+msgstr "No se ha podido enviar el SMS: el SMS no tiene texto."
+
+#: integrations/outbound/broadcaster/client.py
+#, python-format
+msgid "The SMS could not be sent: the phone %(phone)s cannot receive SMS."
+msgstr "No se ha podido enviar el SMS: el teléfono %(phone)s no puede recibir SMS."
+
+#: integrations/outbound/broadcaster/client.py
+msgid "The SMS could not be sent: there is no phone number."
+msgstr "No se ha podido enviar el SMS: no hay ningún teléfono."
+
+#: billing/views/invoice_view.py
+msgid "Only a pre-invoice can be billed to the new contract."
+msgstr "Solo se puede pasar a la nueva alta una prefactura."
+
+#: billing/views/invoice_view.py
+msgid "The invoice does not belong to a billing."
+msgstr "La factura no pertenece a ninguna facturación."
+
+#: billing/views/invoice_view.py
+msgid "The contract has no pending termination."
+msgstr "El contrato no tiene ninguna baja pendiente."
+
+#: billing/views/invoice_view.py
+msgid "The pending termination has no active new contract."
+msgstr "La baja pendiente no tiene ningún alta nueva activa."
+
+#: billing/views/invoice_view.py
+msgid "The new contract has billing blocked."
+msgstr "La nueva alta tiene la facturación bloqueada."
+
+#: billing/views/invoice_view.py
+msgid "The invoice has no readings."
+msgstr "La factura no tiene lecturas."
+
+#: billing/views/invoice_view.py
+msgid "The invoice has readings of another contract."
+msgstr "La factura tiene lecturas de otro contrato."
+
+#: billing/views/invoice_view.py
+msgid "The invoice has readings of a supply point that is not in the new contract."
+msgstr "La factura tiene lecturas de un punto de suministro que no es de la nueva alta."
+
+#: billing/views/invoice_view.py
+msgid "The new contract has no initial reading for the meter."
+msgstr "La nueva alta no tiene lectura inicial del contador."
+
+#: billing/views/invoice_view.py
+msgid "The invoice has readings prior to the new contract's initial reading."
+msgstr "La factura tiene lecturas anteriores a la lectura inicial de la nueva alta."
+
+#: billing/views/invoice_view.py
+msgid "Part of the consumption is prior to the new contract: review the readings."
+msgstr "Parte del consumo es anterior a la nueva alta: revisad las lecturas."
+
+#: billing/views/invoice_view.py
+msgid "The new contract already has this reading."
+msgstr "La nueva alta ya tiene esta lectura."
+
+#: billing/views/invoice_view.py
+msgid "The invoice of the new contract could not be generated."
+msgstr "No se ha podido generar la factura de la nueva alta."
+
+#: billing/views/invoice_view.py
+msgid "An unexpected error has occurred."
+msgstr "Se ha producido un error inesperado."
+
+#: billing/utils/remittance_bank_check.py
+msgid "bank account"
+msgstr "cuenta bancaria"
+
+#: billing/utils/remittance_bank_check.py
+msgid "company name"
+msgstr "nombre de la empresa"
+
+#: billing/utils/remittance_bank_check.py
+msgid "company tax ID (NIF)"
+msgstr "NIF de la empresa"
+
+#: billing/utils/remittance_bank_check.py
+msgid "IBAN"
+msgstr "IBAN"
+
+#: billing/utils/remittance_bank_check.py
+msgid "BIC/SWIFT"
+msgstr "BIC/SWIFT"
+
+#: billing/utils/remittance_bank_check.py
+msgid "SEPA creditor identifier"
+msgstr "identificador de acreedor SEPA"
+
+#: billing/utils/remittance_bank_check.py
+msgid "a valid IBAN (the current one is not correct)"
+msgstr "un IBAN válido (el actual no es correcto)"
+
+#: billing/utils/remittance_bank_check.py
+msgid "a valid BIC/SWIFT (the current one is not correct)"
+msgstr "un BIC/SWIFT válido (el actual no es correcto)"
+
+#: billing/utils/remittance_bank_check.py
+msgid "The account {account} is not linked to any company. Assign it to a company before generating the remittance."
+msgstr "La cuenta {account} no está asignada a ninguna empresa. Asígnela a una empresa antes de generar la remesa."
+
+#: billing/utils/remittance_bank_check.py
+msgid "The account {account} of {company} is missing: {fields}. Fill it in in the company's bank details and search again."
+msgstr "A la cuenta {account} de {company} le falta: {fields}. Complételo en los datos bancarios de la empresa y vuelva a buscar."
+
+#: billing/views/sepa_payment_document_generate_view.py
+msgid "The bank accounts selected for the remittance are not valid. Search again and check them."
+msgstr "Las cuentas seleccionadas para la remesa no son válidas. Vuelva a buscar y revíselas."

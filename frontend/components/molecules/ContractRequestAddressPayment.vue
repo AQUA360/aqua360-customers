@@ -1,4 +1,5 @@
 <script setup>
+import AppLoading from '~/components/atoms/AppLoading.vue';
 // components/molecules/ContractRequestAddressPayment.vue
 import { ref, onMounted, watch, computed, nextTick } from 'vue';
 import { useDebounceFn } from '@vueuse/core';
@@ -959,8 +960,13 @@ const loadPersons = async () => {
 };
 
 // onMounted
+const initialLoading = ref(true);
 onMounted(async () => {
-  await loadData();
+  try {
+    await loadData();
+  } finally {
+    initialLoading.value = false;
+  }
 });
 
 /** Estat actual de telèfons (font de veritat al guardar des del pare). */
@@ -1050,7 +1056,11 @@ const handleSubRegionEvent = (show) => {
 </script>
 
 <template>
-  <div class="region__content pr-2 relative pb-24" :class="{ 'h-full overflow-y-auto': !isSubRegion }">
+  <div class="region__content pr-2 relative pb-24" :class="{ 'h-full overflow-y-auto': !isSubRegion, 'min-h-[260px]': initialLoading }">
+    <!-- Animació de càrrega fins que s'han carregat totes les dades del pas -->
+    <div v-if="initialLoading" class="absolute inset-0 z-20 bg-white flex justify-center items-start pt-10">
+      <AppLoading :text="$t('common.loading')" />
+    </div>
     <div id="wrapper" class="text-base">
       <!-- Títol -->
 

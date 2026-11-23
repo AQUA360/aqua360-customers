@@ -119,4 +119,5 @@ class Command(BaseCommand):
                 },
             )
             declaration.line_items.set(result.line_ids)
+            declaration.invoices.set(result.agricultural_invoice_ids)
         self.stdout.write(self.style.SUCCESS(f"Declaració {declaration} congelada"))

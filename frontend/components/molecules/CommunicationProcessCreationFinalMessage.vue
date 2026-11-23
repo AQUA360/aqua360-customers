@@ -156,8 +156,6 @@ const emitChange = () => {
         due_date: props.final_data?.due_date,
         description: props.final_data?.description,
         messages_data: messages.value,
-        attach_letter: props.final_data?.attach_letter || false,
-        attach_invoices: props.final_data?.attach_invoices || false,
         use_type: props.final_data?.use_type,
     }
     emit('change', finalData.value)

@@ -8,6 +8,7 @@ import FieldDetail from '~/components/atoms/FieldDetail.vue';
 import OptionsDropdown from '~/components/molecules/OptionsDropdown.vue';
 import DropdownOption from '~/components/atoms/DropdownOption.vue';
 import { formatDate } from '~/utils/date';
+import { openAuthenticatedFileUrl } from '~/utils/open-authenticated-file';
 import Time from '~/components/atoms/Time.vue';
 
 const { $AddressHelper } = useNuxtApp();
@@ -67,7 +68,8 @@ const address = computed(() => {
 
   <div role="row" class="grid grid-cols-2">
     <FieldDetail :label='$t("service_block.bulletin")' :value=data.report_file>
-      <a v-if="data.report_file" :href="data.report_file" target="_blank" class="text-left">
+      <!-- /media/ exigeix el token: un enllaç directe no l'envia -->
+      <a v-if="data.report_file" :href="data.report_file" class="text-left" @click.prevent="openAuthenticatedFileUrl(data.report_file).catch(() => {})">
         <Icon name="fa6-solid:file-pdf" class="display-inline mr-2 text-lg" /> {{ t('common.download') }}
       </a>
       <span>-</span>

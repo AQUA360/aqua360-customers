@@ -48,16 +48,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 COPY requirements.ubuntu.txt /app/requirements.txt
-RUN pip install --upgrade pip && pip install -r /app/requirements.txt
+# pip a una versió fixa (els paquets ja ho són a requirements): dues construccions del mateix commit
+# han de donar la mateixa imatge.
+RUN pip install pip==26.3 && pip install -r /app/requirements.txt
 
 COPY . /app/
 
 RUN chmod +x /app/docker-entrypoint.sh \
-    && chmod +x /app/docker-celery-worker.sh /app/docker-celery-beat.sh
+    && chmod +x /app/docker-celery-worker.sh /app/docker-celery-beat.sh /app/docker-check-writable.sh
 
 # Informació del deploy (versió, commit i data del build) per al NavSidebar. La passa
 # .github/workflows/imatges.yml; el context del build no porta .git ni la imatge té git.
 # Sense args (build al servidor), la versió i el commit surten de l'etapa `gitinfo`.
+# Aquest pas carrega els settings sense .env: DEBUG=True només per a aquesta ordre, perquè
+# no exigeixi una SECRET_KEY real (no queda a la imatge; en execució mana el .env).
 ARG APP_VERSION=
 ARG GIT_COMMIT=
 ARG GIT_COMMIT_DATE=
@@ -65,8 +69,29 @@ ARG GIT_BRANCH=
 ARG BUILD_DATE=
 RUN --mount=type=bind,from=gitinfo,source=/deploy-git.env,target=/tmp/deploy-git.env \
     APP_VERSION="$APP_VERSION" GIT_COMMIT="$GIT_COMMIT" GIT_COMMIT_DATE="$GIT_COMMIT_DATE" \
-    GIT_BRANCH="$GIT_BRANCH" BUILD_DATE="$BUILD_DATE" \
+    GIT_BRANCH="$GIT_BRANCH" BUILD_DATE="$BUILD_DATE" DEBUG=True \
     python -m customers.deploy_info /app/deploy_info.json /tmp/deploy-git.env
+
+# El procés no s'executa com a root. L'usuari `app` (uid/gid 1001, fix perquè els volums del
+# host hi puguin casar) només és propietari d'on l'aplicació escriu: media i staticfiles (volums
+# del compose), logs (el crea settings.py en arrencar), locale (compilemessages de l'entrypoint)
+# i /var/lib/celery (estat del celery-beat). El codi queda de root i només de lectura.
+# Els volums muntats d'un servidor que ja funcionava com a root s'han de passar a l'usuari 1001
+# abans d'arrencar aquesta imatge: `chown -R 1001 docker-data/media docker-data/static`
+# (docker-check-writable.sh atura l'arrencada amb aquesta ordre si no s'ha fet).
+RUN groupadd --system --gid 1001 app \
+    && useradd --system --uid 1001 --gid app --home-dir /home/app --create-home \
+       --shell /usr/sbin/nologin app \
+    && mkdir -p /app/media /app/staticfiles /app/logs /var/lib/celery \
+    && chown -R app:app /app/media /app/staticfiles /app/logs /app/locale /var/lib/celery
+
+USER app
+
+# Prova de salut per a qui aixequi la imatge sense la del docker-compose. La mateixa imatge corre el
+# backend, el celery i el consumidor del GMAO: l'script mira quin és el procés. Les migracions de
+# l'arrencada poden trigar: fins als 5 minuts els errors no compten.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=300s --retries=3 \
+    CMD ["python", "/app/docker-healthcheck.py"]
 
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
 

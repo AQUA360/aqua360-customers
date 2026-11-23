@@ -3,6 +3,7 @@ import { ref, onMounted, computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import _ from 'lodash';
 import { useToast } from 'vue-toastification';
+import { usePermissions } from '~/middleware/permission';
 import GroupPermissionsEdit from './GroupPermissionsEdit.vue';
 import GroupUsersEdit from './GroupUsersEdit.vue';
 
@@ -12,8 +13,10 @@ const props = defineProps({
 
 const { t } = useI18n();
 const { $GroupApiService, $ConfiglistApiService } = useNuxtApp();
+const { permissions: userPermissions } = usePermissions();
 
 const toast = useToast();
+const canManageUsers = computed(() => Boolean(userPermissions?.value?.permissions?.change_user));
 
 const attemptedSave = ref(false);
 const loading = ref(true);
@@ -104,12 +107,19 @@ const setPermissionData = () => {
     }
   });
 
-  let data = permissionTypes.map(type => ({
-    ...type,
-    hasView: permissions.value[type.viewKey] || false,
-    hasChange: permissions.value[type.changeKey] || false,
-    hasAny: permissions.value[type.viewKey] || permissions.value[type.changeKey] || false
-  }))
+  let data = permissionTypes.map(type => {
+    const mainPerm = mainPermissions.value.find(perm => perm.view_key === type.viewKey);
+    const changeRequiresSuperuser = Boolean(mainPerm?.change_requires_superuser);
+    const hasView = permissions.value[type.viewKey] || false;
+    const hasChange = changeRequiresSuperuser ? false : (permissions.value[type.changeKey] || false);
+    return {
+      ...type,
+      hasView,
+      hasChange,
+      hasAny: hasView || hasChange,
+      changeRequiresSuperuser,
+    };
+  })
   savePermissionData.value = data;
 }
 
@@ -128,6 +138,10 @@ const updateUsers = async (datausers, removeusers) => {
 
 const save = async () => {
   attemptedSave.value = true;
+  if (!canManageUsers.value) {
+    toast.error(t('common.no_permissions'));
+    return;
+  }
   if (!isValid()) return;
   if (savePermissionData.value.every(permission => !permission.hasAny)) {
     toast.warning(t('warning_block.save_permissions_warning'));
@@ -222,12 +236,13 @@ const handleSubRegionEvent = (value) => {
           <div>
             <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('common.name') }}</label>
             <input type="text" v-model="name" class="input"
-              :class="{ 'invalid': attemptedSave && (name == null || name == '') }" />
+              :disabled="!canManageUsers"
+              :class="{ 'invalid': attemptedSave && (name == null || name == ''), 'opacity-50 cursor-not-allowed': !canManageUsers }" />
           </div>
           <div class="mt-3 grid grid-rows-[auto,1fr]">
             <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('users') }}</label>
             <div class="relative group">
-              <button @click="showDetail('GroupUsersEdit', null)"
+              <button v-if="canManageUsers" @click="showDetail('GroupUsersEdit', null)"
                 class="absolute top-1 right-1 w-7 h-7 border border-slate-300 rounded-md bg-white hover:bg-slate-300 group-hover:opacity-100 opacity-0 transition-all duration-300">
                 <Icon name="fa6-solid:pencil" class="text-slate-500" />
               </button>
@@ -251,7 +266,7 @@ const handleSubRegionEvent = (value) => {
         <div>
           <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('permissions') }}</label>
           <div class="relative group">
-            <button @click="showDetail('GroupPermissionsEdit', null)"
+            <button v-if="canManageUsers" @click="showDetail('GroupPermissionsEdit', null)"
               class="absolute top-1 right-1 w-7 h-7 border border-slate-400 rounded-md bg-white hover:bg-slate-300 group-hover:opacity-100 opacity-0 transition-all duration-300">
               <Icon name="fa6-solid:pencil" class="text-slate-500" />
             </button>
@@ -278,7 +293,7 @@ const handleSubRegionEvent = (value) => {
 
 
       <hr class="mb-2 col-span-2" />
-      <div class="col-span-2 flex flex-row-reverse gap-3 mt-4">
+      <div v-if="canManageUsers" class="col-span-2 flex flex-row-reverse gap-3 mt-4">
         <button v-if="id != null" @click="deleteItem" :disabled="saving" class="button-default">
           <Icon name="fa6-solid:trash" />&nbsp;{{ $t('common.delete') }}
         </button>

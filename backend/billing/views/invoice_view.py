@@ -675,6 +675,39 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         logger.exception("Error inesperat")
         return Response({'error': "Ha ocorregut un error inesperat."}, status=status.HTTP_400_BAD_REQUEST)
 
+  @action(detail=True, methods=['post'], url_path='bill-to-new-contract')
+  def bill_to_new_contract(self, request, pk=None):
+    """Passa la prefactura d'un contracte amb la baixa iniciada a la nova alta (canvi de titular)."""
+    from billing.utils.pending_termination_service import (
+        PendingTerminationTransferError,
+        bill_invoice_to_successor,
+    )
+    messages = {
+        'not_pre_invoice': _("Only a pre-invoice can be billed to the new contract."),
+        'not_in_billing': _("The invoice does not belong to a billing."),
+        'no_open_termination': _("The contract has no pending termination."),
+        'no_successor': _("The pending termination has no active new contract."),
+        'successor_blocked': _("The new contract has billing blocked."),
+        'no_readings': _("The invoice has no readings."),
+        'foreign_reading': _("The invoice has readings of another contract."),
+        'other_supply_point': _("The invoice has readings of a supply point that is not in the new contract."),
+        'no_initial_reading': _("The new contract has no initial reading for the meter."),
+        'reading_before_successor': _("The invoice has readings prior to the new contract's initial reading."),
+        'consumption_before_successor': _("Part of the consumption is prior to the new contract: review the readings."),
+        'successor_has_reading': _("The new contract already has this reading."),
+        'not_generated': _("The invoice of the new contract could not be generated."),
+    }
+    invoice = self.get_object()
+    try:
+        new_invoice = bill_invoice_to_successor(invoice.id)
+    except PendingTerminationTransferError as exc:
+        return Response({'error': messages.get(exc.code, _("An unexpected error has occurred.")), 'code': exc.code}, status=status.HTTP_400_BAD_REQUEST)
+    except Exception:
+        logger.exception("No s'ha pogut passar la factura %s a la nova alta", invoice.id)
+        return Response({'error': _("An unexpected error has occurred.")}, status=status.HTTP_400_BAD_REQUEST)
+    serializer = InvoiceFullSerializer(new_invoice, context={'request': request})
+    return Response(serializer.data, status=status.HTTP_200_OK)
+
   @action(detail=True, methods=['put'], url_path='save-to-piggy-bank')
   @transaction.atomic
   def save_to_piggy_bank(self, request, pk=None):
@@ -717,7 +750,7 @@ class InvoiceViewSet(viewsets.ModelViewSet):
   def permissions(self, request):
       pk = request.query_params.get('id')
       if pk:
-          user_permissions = PermissionManager.get_model_permissions(request.user, 'auth', 'group')
+          user_permissions = PermissionManager.get_model_permissions(request.user, 'group', 'auth')
           if not user_permissions['can_view'] or not user_permissions['can_change'] or not request.user.is_superuser:
               return Response( None, status=status.HTTP_403_FORBIDDEN )
           group = Group.objects.filter(id=pk).first()

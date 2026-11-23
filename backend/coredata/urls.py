@@ -4,6 +4,7 @@ from rest_framework import routers
 from documentmanager.views_export.generic_export_view import GenericExportView
 
 from coredata.views.config_project_view import ConfigProjectViewSet
+from coredata.views.db_sync_view import DbSyncView
 from coredata.views.deploy_info_view import DeployInfoView
 from coredata.views.identification_type_view import IdentificationTypeViewSet
 from coredata.views.person_contact_view import PersonContactViewSet
@@ -23,6 +24,7 @@ from coredata.views.person_cnae_serializer import PersonCnaeViewSet
 from coredata.views.street_number_view import StreetNumberViewSet
 from coredata.views.person_deliquency_view import PersonDeliquencyViewSet
 from coredata.views.person_observation_view import PersonObservationViewSet
+from coredata.views.person_anomaly_view import PersonAnomalyTypeViewSet, PersonAnomalyViewSet
 from coredata.views.main_permission_view import MainPermissionViewSet
 from coredata.views.call_register_view import CallRegisterViewSet
 from coredata.views.return_reason_view import ReturnReasonViewSet
@@ -37,6 +39,8 @@ router.register(r'person-contact', PersonContactViewSet)
 router.register(r'person-cnae', PersonCnaeViewSet)
 router.register(r'person-deliquency', PersonDeliquencyViewSet)
 router.register(r'person-observation', PersonObservationViewSet)
+router.register(r'person-anomaly', PersonAnomalyViewSet)
+router.register(r'person-anomaly-type', PersonAnomalyTypeViewSet)
 router.register(r'street', StreetViewSet)
 router.register(r'street-type', StreetTypeViewSet)
 router.register(r'street-number', StreetNumberViewSet)
@@ -60,6 +64,7 @@ urlpatterns = [
     path('person/export/', GenericExportView.as_view(entity='person'), name='person-export'),
     path('street/export/', GenericExportView.as_view(entity='street'), name='street-export'),
     path('deploy-info/', DeployInfoView.as_view(), name='deploy-info'),
+    path('db-sync/', DbSyncView.as_view(), name='db-sync'),
     path('', include(router.urls)),
     path('province/<int:id>/cities/', ProvinceCitiesViewSet.as_view({'get': 'list'}), name='province-cities'),
     path('person/token/<str:token>/', PersonByTokenViewSet.as_view({'get': 'retrieve'}), name='user-by-token'),

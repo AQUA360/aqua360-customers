@@ -92,8 +92,8 @@
 
     </br>
 
-    <div style="display: flex; width: 100%;">
-        <table style="display: flex; justify-content: space-around; width: 100%;">
+    <div style="width: 100%;">
+        <table style="width: 100%;">
             <tr>
 
                 <td style="width: 47%; vertical-align: top; ">
@@ -245,7 +245,7 @@
                     TOTAL A PAGAR
                     <span style="font-weight: bold; font-family: 'OpenSansBold'; ">
                         {% if payment_amount %}
-                        {{ payment_amount | floatformat:2 }}
+                        {{ total_with_fees|default:payment_amount | floatformat:2 }}
                         {% else %}
                         {{ invoice.left_to_pay | floatformat:2 }}
                         {% endif %}
@@ -330,10 +330,10 @@
                     <table style="width: 100%;">
                         <tr>
                             <td style="width: 100%; border: none;">
-                                <div style="display: flex; justify-content: flex-end;">
+                                <div>
                                     {% if payment_type_token == 'BANK_TRANSFER' or payment_type_token == 'DIRECT_DEBIT' %}
                                         <div style="text-align: right; margin-top: 10px;">
-                                            <span style="font-size: 14px; font-weight: bold; color: {{ main_color }}">IMPORT A PAGAR: {{ payment_amount | floatformat:2 }} €</span>
+                                            <span style="font-size: 14px; font-weight: bold; color: {{ main_color }}">IMPORT A PAGAR: {{ total_with_fees|default:payment_amount | floatformat:2 }} €</span>
                                             <br />
                                             <span style="font-size: 12px; font-weight: bold;">Referència: {{ reference }}</span>
                                         </div>
@@ -386,7 +386,7 @@
                                         </td>
                                         <td style="width: 15%; border: 1px solid #ccc; padding: 3px;">
                                             {% if payment_amount %}
-                                            {{ payment_amount | floatformat:2 }} €
+                                            {{ total_with_fees|default:payment_amount | floatformat:2 }} €
                                             {% else %}
                                             {{ invoice.left_to_pay | floatformat:2 }} €
                                             {% endif %}

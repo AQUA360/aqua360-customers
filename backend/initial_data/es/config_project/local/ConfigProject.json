@@ -3166,5 +3166,29 @@
             "value": "false",
             "file": null
         }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 267,
+        "fields": {
+            "created_at": "2026-11-19T00:00:00.000Z",
+            "updated_at": "2026-11-19T00:00:00.000Z",
+            "token": "invoice_warning_pending_termination",
+            "name": "Token del aviso de factura de contrato con baja pendiente",
+            "value": "pending_termination",
+            "file": null
+        }
+    },
+    {
+        "model": "coredata.configproject",
+        "pk": 268,
+        "fields": {
+            "created_at": "2026-11-20T00:00:00.000Z",
+            "updated_at": "2026-11-20T00:00:00.000Z",
+            "token": "invoice_warning_terminated_contract",
+            "name": "Token del aviso de factura de contrato de baja",
+            "value": "terminated_contract",
+            "file": null
+        }
     }
 ]

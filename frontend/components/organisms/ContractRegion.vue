@@ -829,6 +829,8 @@ const addWalletBalance = () => {
           :isSubRegion="true" @show-subregion="handleSubRegionEvent" @changed="handleChange" />
         <CommitmentDepositRegion v-if="showRegionDetailComponent === 'CommitmentDepositRegion'"
           :id="parseInt(regionDetailId)" :isSubRegion="true" />
+        <OrganismsClaimRequestRegion v-if="showRegionDetailComponent === 'ClaimRequestRegion'"
+          :id="parseInt(regionDetailId)" :contractId="props.id" :isSubRegion="true" />
         <InvoiceRegion v-if="showRegionDetailComponent === 'InvoiceRegion'" :id="regionDetailId" :isSubRegion="true"
           @update-id="(newId) => regionDetailId = newId" @changed="handleChange(false)"
           @pdf-generated="onInvoicePdfGenerated" />

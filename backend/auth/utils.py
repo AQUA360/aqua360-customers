@@ -32,7 +32,12 @@ def manage_group_permissions(group, permissions):
         main_permission = MainPermission.objects.get(view_key=permission['viewKey'])
         affected_models = main_permission.affected_models.split(',')
         can_view = permission.get('hasView', False)
-        can_change = permission.get('hasChange', False)
+        # Gestió d'usuaris/grups: mai assignar add/change/delete a un grup.
+        can_change = (
+            False
+            if main_permission.change_requires_superuser
+            else permission.get('hasChange', False)
+        )
         affected_data_list = permission.get('affected_data') or []
 
         for affected_model in affected_models:

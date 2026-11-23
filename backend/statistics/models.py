@@ -159,6 +159,11 @@ class BillingConsumption(models.Model):
     tax_amount = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
     net_amount = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
     
+    # Barra del gràfic de consum del PDF (veure billing.utils.charts_service.invoice_chart_bar): data de
+    # l'última lectura activa de la factura i consum facturat. De moment el gràfic encara no les llegeix.
+    chart_date = models.DateField(null=True, blank=True)
+    chart_consumption = models.FloatField(null=True, blank=True)
+
     is_active = models.BooleanField(default=True)
 
     class Meta:
@@ -429,6 +434,8 @@ class AcaDeclaration(models.Model):
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='aca_declarations')
 
     line_items = models.ManyToManyField('billing.InvoiceLineItem', related_name='aca_declarations', blank=True)
+    # Factures declarades sense cap línia de cànon (ús agrícola, amb només el volum consumit)
+    invoices = models.ManyToManyField('billing.Invoice', related_name='aca_declarations', blank=True)
 
     class Meta:
         constraints = [

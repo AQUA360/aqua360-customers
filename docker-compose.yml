@@ -1,7 +1,7 @@
 x-django-env: &django-env
   DJANGO_SETTINGS_MODULE: customers.settings
-  SECRET_KEY: ${SECRET_KEY:-dev-insecure-change-me}
-  DEBUG: ${DEBUG:-True}
+  SECRET_KEY: ${SECRET_KEY:?Cal definir SECRET_KEY al .env (una clau llarga i aleatòria)}
+  DEBUG: ${DEBUG:-False}
   ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1,backend}
   DATABASE_NAME: ${POSTGRES_DB:-avsis_customers}
   DATABASE_USER: ${POSTGRES_USER:-postgres}
@@ -80,6 +80,9 @@ services:
     volumes:
       - ./docker-data/media:/app/media
       - ./docker-data/static:/app/staticfiles
+      # Carpeta de control de la sincronització prod → test (només servidors de test):
+      # l'aplicació hi deixa el fitxer `disabled` i el restore.sh nocturn de l'host el respecta.
+      - ./docker-data/sync-control:/app/sync-control
     healthcheck:
       test:
         [
@@ -158,8 +161,12 @@ services:
         NUXT_PUBLIC_DEFAULT_LOCALE: ${LANGUAGE:-ca}
         NUXT_PUBLIC_ENV: ${ENV:-test}
     restart: unless-stopped
-    env_file:
-      - .env
+    # Sense `env_file`: el frontend no ha de rebre els secrets del backend (SECRET_KEY, contrasenyes
+    # de la BD, del correu...). Només les variables que llegeix en temps d'execució (`nuxt.config.ts`
+    # i `docker-entrypoint.sh`). Una variable sense valor es pren de l'entorn de qui executa
+    # `docker compose` o, si no hi és, del `.env`; si no és enlloc, no es defineix al contenidor (el
+    # valor del build continua manant). Una variable nova que el frontend llegeixi en engegar s'ha
+    # d'afegir aquí.
     environment:
       NODE_ENV: production
       HOST: 0.0.0.0
@@ -167,6 +174,19 @@ services:
       # Nuxt 3: runtimeConfig.public es sobreescriu amb NUXT_PUBLIC_* (no amb LANGUAGE/ENV genèrics)
       NUXT_PUBLIC_DEFAULT_LOCALE: ${LANGUAGE:-ca}
       NUXT_PUBLIC_ENV: ${ENV:-test}
+      # Noms històrics que tradueix `docker-entrypoint.sh`. LANGUAGE i ENV no hi són: ja arriben com
+      # els dos NUXT_PUBLIC_* de dalt, i passats sense valor agafarien el LANGUAGE del locale del shell.
+      NUXT_EXTERNAL_GOT:
+      VERIFACTU_ENABLED:
+      # Els NUXT_PUBLIC_* que Nitro aplica directament a runtimeConfig.public.
+      NUXT_PUBLIC_API_HOST:
+      NUXT_PUBLIC_EXTERNAL_GOT:
+      NUXT_PUBLIC_VERIFACTU_ENABLED:
+      NUXT_PUBLIC_EXPLOITATION_SITES:
+      NUXT_PUBLIC_I18N_DEFAULT_LOCALE:
+      # Node: zona horària i opcions de memòria.
+      TZ:
+      NODE_OPTIONS:
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
     depends_on:

@@ -147,7 +147,7 @@ watch(() => props.data, (newData) => {
       <FieldDetail class="" :label='$t("user")' :value=localData.user.username />
     </div>
     <FieldDetail v-if="localData.rejection_reason" class="col-span-2" :label="$t('customer_service_block.rejection_reason')">
-      <span class="inline-block rounded border border-amber-200 bg-amber-50 px-2 py-0.5 text-amber-900">{{ localData.rejection_reason }}</span>
+      <span class="inline-block whitespace-pre-line rounded border border-amber-200 bg-amber-50 px-2 py-0.5 text-amber-900">{{ localData.rejection_reason }}</span>
     </FieldDetail>
   </div>
 </template>

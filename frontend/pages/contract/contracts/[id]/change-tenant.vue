@@ -11,6 +11,7 @@
 // holder_id/owner_id); no és una subrogació, que a més mouria pagament, adreces
 // i contactes (això es fa des de /contract/contracts/[id]/surrogate).
 // El llogater manté el seu circuit propi (ContractTenantChange) amb documentació.
+// Els representants també es canvien aquí (representatives_save al mateix PUT).
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { checkPermission } from '~/middleware/permission';
@@ -63,7 +64,19 @@ const selectedDocumentTypes = ref([])
 const loading_doc_types = ref(true);
 const doc_types = ref([]);
 
+// Representants: { person, type } tal com estan desats i tal com queden a la pantalla.
+const originalRepresentatives = ref([]);
+const selectedRepresentatives = ref([]);
+const representativeTypes = ref([]);
+const editingRepresentative = ref(false);
+
 const personId = (person) => person?.id ?? null;
+
+const snapshotRepresentatives = (reps) => JSON.stringify(
+  (reps || []).map((rep) => ({ person: personId(rep.person), type: rep.type?.id ?? null })),
+);
+const representativesChanged = computed(() =>
+  snapshotRepresentatives(selectedRepresentatives.value) !== snapshotRepresentatives(originalRepresentatives.value));
 
 const hasRoleChanged = (roleKey) => personId(selectedPersons.value[roleKey]) !== personId(originalPersons.value[roleKey]);
 
@@ -71,7 +84,7 @@ const hasRoleChanged = (roleKey) => personId(selectedPersons.value[roleKey]) !==
 const personFormTitle = computed(() => `${t('common.select')} ${t('common.or')} ${t('common.add')} ${t('contract_block.' + personFormTarget.value)}`);
 
 const tenantChanged = computed(() => hasRoleChanged('tenant'));
-const hasChanges = computed(() => roles.some(role => hasRoleChanged(role.key)));
+const hasChanges = computed(() => roles.some(role => hasRoleChanged(role.key)) || representativesChanged.value);
 
 /** Persona que deixa el contracte: és la que pot haver-hi deixat dades (IBAN, adreces,
  * contactes) carregades al pas 2 i que cal netejar-ne. */
@@ -204,7 +217,22 @@ const getData = async function () {
   };
   selectedPersons.value = { ...originalPersons.value };
 
-  await Promise.all([getDocTypes(), getDocumentTypes()]);
+  await Promise.all([getDocTypes(), getDocumentTypes(), getRepresentativeTypes()]);
+
+  originalRepresentatives.value = (contract.value.representatives || []).map((rep) => ({
+    person: rep.person,
+    type: representativeTypes.value.find(type => type.id === rep.type?.id) || rep.type || null,
+  }));
+  selectedRepresentatives.value = originalRepresentatives.value.map((rep) => ({ ...rep }));
+}
+
+const getRepresentativeTypes = async () => {
+  try {
+    const data = await $ConfiglistApiService.getAll('contract/contract-representative-type');
+    representativeTypes.value = data.results || [];
+  } catch (error) {
+    console.error('Error fetching representative types:', error);
+  }
 }
 
 const hasMissingDocType = () => {
@@ -230,12 +258,16 @@ const validateChanges = () => {
 
 const goNext = async () => {
   if (!validateChanges()) return;
+  // Canviar el titular aquí no és un canvi de nom (que crea un contracte nou amb la seva
+  // sol·licitud): es demana confirmació perquè no es faci servir per error.
+  if (hasRoleChanged('holder') && !confirm(t('confirmation_text_block.confirm_holder_change_not_name_change'))) return;
 
   // El pas 2 (adreces i pagament) treballa amb les persones del contracte, així que
   // hi apliquem les triades per oferir les seves adreces, comptes i contactes.
   contract.value.holder = selectedPersons.value.holder;
   contract.value.owner = selectedPersons.value.owner;
   contract.value.tenant = selectedPersons.value.tenant;
+  contract.value.representatives = selectedRepresentatives.value.map((rep) => ({ ...rep }));
 
   currentStep.value++
 }
@@ -285,6 +317,12 @@ const save = async () => {
     }
     if (hasRoleChanged('owner')) {
       contract_options.owner_id = personId(selectedPersons.value.owner);
+    }
+    if (representativesChanged.value) {
+      contract_options.representatives_save = selectedRepresentatives.value.map((rep) => ({
+        person: personId(rep.person),
+        type: rep.type?.id ?? null,
+      }));
     }
     await $ContractApiService.save(contract_options)
   } catch (error) {
@@ -343,7 +381,33 @@ const save = async () => {
 
 const closeAllRegions = () => {
   editingPerson.value = false;
+  editingRepresentative.value = false;
   showRegion.value = false;
+};
+
+const openRepresentativeForm = () => {
+  closeAllRegions();
+  editingRepresentative.value = true;
+  showRegion.value = true;
+};
+
+const onRepresentativeSelected = (person) => {
+  closeAllRegions();
+  if (!person?.id) return;
+  if (selectedRepresentatives.value.some(rep => personId(rep.person) === person.id)) return;
+  selectedRepresentatives.value.push({
+    person,
+    type: representativeTypes.value.find(type => type.is_default) || null,
+  });
+};
+
+const removeRepresentative = (index) => {
+  selectedRepresentatives.value.splice(index, 1);
+};
+
+/** Desfà els canvis de representants i torna als desats. */
+const resetRepresentatives = () => {
+  selectedRepresentatives.value = originalRepresentatives.value.map((rep) => ({ ...rep }));
 };
 
 const fetchPerson = async (item) => {
@@ -390,7 +454,7 @@ onMounted(async () => {
     </div>
     <div v-else>
       <div class="flex justify-between items-center mb-6">
-        <H1>{{ $t(`contract_block.tenant_change`) + ' ' + (contract.supply_point_default ?
+        <H1>{{ $t(`contract_block.change_persons`) + ' ' + (contract.supply_point_default ?
           contract.supply_point_default.address_complete : contract.token)
         }}</H1>
       </div>
@@ -438,6 +502,12 @@ onMounted(async () => {
               </ButtonSeleccio>
             </div>
 
+            <div v-if="role.key === 'holder' && hasRoleChanged('holder')"
+              class="max-w-xl mt-2 flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
+              <Icon name="fa6-solid:triangle-exclamation" class="mt-0.5 shrink-0 text-base" />
+              <span>{{ $t('contract_block.holder_change_not_name_change') }}</span>
+            </div>
+
             <!-- Què hi havia abans, quan el rol s'ha tocat -->
             <div v-if="hasRoleChanged(role.key)" class="max-w-xl mt-2 flex items-center gap-3 text-sm text-slate-500">
               <span>
@@ -454,6 +524,50 @@ onMounted(async () => {
             </div>
           </div>
           <!-- /end Selecció de persones per rols -->
+
+          <!-- Representants -->
+          <div class="mb-4 max-w-xl">
+            <label class="flex items-center text-sm font-medium text-gray-700 mb-3 gap-2">
+              <Icon v-show="selectedRepresentatives.length" name="fa6-solid:circle-check" class="text-xl text-emerald-600" />
+              <Icon v-show="!selectedRepresentatives.length" name="fa6-solid:circle" class="text-lg text-slate-400" />
+              <span>{{ $t('contract_block.representatives') }}</span>
+              <span v-if="representativesChanged"
+                class="px-2 py-0.5 text-xs rounded-full bg-amber-100 text-amber-800 border border-amber-300">
+                {{ $t('common.modified') }}
+              </span>
+            </label>
+
+            <div v-for="(rep, index) in selectedRepresentatives" :key="personId(rep.person) ?? index"
+              class="bg-yellow-100 p-4 rounded relative mb-2 pr-14 group">
+              <p class="font-semibold flex flex-wrap gap-x-3">
+                <span>{{ rep.person.name }} {{ rep.person.surname }}</span>
+                <span class="text-sm text-gray-500">{{ rep.person.token }}</span>
+              </p>
+              <label class="block mt-2 text-sm font-medium text-gray-700">{{ $t('contract_block.representative_type') }}:</label>
+              <select v-model="rep.type" class="input mt-1">
+                <option :value="null">-- {{ $t('common.select') }} {{ $t('common.type') }} --</option>
+                <option v-for="type in representativeTypes" :key="type.id" :value="type">
+                  {{ type.name }}
+                </option>
+              </select>
+              <button type="button" @click="removeRepresentative(index)"
+                class="absolute cursor-pointer shadow-md border text-sm w-8 h-8 bg-white right-3 top-3 rounded-md text-red-600 opacity-0 transition-all duration-300 group-hover:opacity-100"
+                :title="`${t('common.unlink')} ${t('contract_block.representative')}`">
+                <Icon name="fa6-solid:trash" />
+              </button>
+            </div>
+
+            <ButtonSeleccio @click="openRepresentativeForm" class="py-2">
+              + {{ $t('common.add') }} {{ $t('contract_block.representative') }}
+            </ButtonSeleccio>
+
+            <div v-if="representativesChanged" class="mt-2 text-sm">
+              <button type="button" @click="resetRepresentatives" class="text-sky-600 hover:underline">
+                {{ $t('common.undo') }}
+              </button>
+            </div>
+          </div>
+          <!-- /end Representants -->
 
           <!-- La documentació és pròpia del canvi de llogater -->
           <div v-if="tenantChanged && availableDocumentTypes.length > 0" class="mb-4 max-w-xl">
@@ -545,6 +659,8 @@ onMounted(async () => {
         <PersonSearch v-if="editingPerson" @saved="fetchPerson"
           :personLabel="`contract_block.${personFormTarget}`"
           isExistingLabel="contract_block.is_existing_person" :title="personFormTitle" />
+        <PersonSearch v-if="editingRepresentative" @saved="onRepresentativeSelected"
+          :title="`${t('common.select')} ${t('common.or')} ${t('common.add')} ${t('contract_block.representative')}`" />
       </div>
     </div>
   </div>

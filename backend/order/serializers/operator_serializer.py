@@ -3,12 +3,13 @@ from rest_framework import serializers
 from ..models import Operator
 from lecturapp.serializers import ReadingOperatorCreateSerializer
 from lecturapp.models import ReadingOperator
+from lecturapp.validators import check_operator_password
 
 
 class ReadingOperatorNestedCreateSerializer(serializers.ModelSerializer):
     """Serializer for creating ReadingOperator with password (nested in Operator creation)"""
     
-    password = serializers.CharField(write_only=True, min_length=6, required=True)
+    password = serializers.CharField(write_only=True, required=True)
     password_confirm = serializers.CharField(write_only=True, required=True)
     
     class Meta:
@@ -18,13 +19,16 @@ class ReadingOperatorNestedCreateSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         if attrs['password'] != attrs['password_confirm']:
             raise serializers.ValidationError({"password": "Passwords don't match"})
+        check_operator_password(
+            attrs['password'], username=attrs.get('username'), name=attrs.get('name'), surname=attrs.get('surname'),
+        )
         return attrs
 
 
 class ReadingOperatorNestedUpdateSerializer(serializers.ModelSerializer):
     """Serializer for updating ReadingOperator (nested in Operator update) - password is optional"""
     
-    password = serializers.CharField(write_only=True, min_length=6, required=False)
+    password = serializers.CharField(write_only=True, required=False)
     password_confirm = serializers.CharField(write_only=True, required=False)
     
     class Meta:
@@ -43,6 +47,10 @@ class ReadingOperatorNestedUpdateSerializer(serializers.ModelSerializer):
                 })
             if password != password_confirm:
                 raise serializers.ValidationError({"password": "Passwords don't match"})
+            check_operator_password(
+                password, operator=self.instance, username=attrs.get('username'),
+                name=attrs.get('name'), surname=attrs.get('surname'),
+            )
         
         return attrs
 
@@ -106,8 +114,13 @@ class OperatorUpdateSerializer(serializers.ModelSerializer):
                     })
                 if password != password_confirm:
                     raise serializers.ValidationError({"password": "Passwords don't match"})
-                if len(password) < 6:
-                    raise serializers.ValidationError({"password": "Password must be at least 6 characters"})
+                # app_user és un JSONField: la contrasenya podria no ser text
+                if not isinstance(password, str):
+                    raise serializers.ValidationError({"password": "Not a valid string."})
+                check_operator_password(
+                    password, operator=self.instance.app_user if self.instance else None,
+                    username=value.get('username'), name=value.get('name'), surname=value.get('surname'),
+                )
             
             # If we're updating an existing operator with an app_user
             if self.instance and self.instance.app_user:
@@ -130,8 +143,6 @@ class OperatorUpdateSerializer(serializers.ModelSerializer):
     
     def update(self, instance, validated_data):
         app_user_data = validated_data.pop('app_user', None)
-        
-        print(f"App user data: {app_user_data}")
         
         # Update the operator first
         operator = super().update(instance, validated_data)

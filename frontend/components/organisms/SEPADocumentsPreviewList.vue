@@ -124,15 +124,16 @@ watch(() => props.sepaFiles, () => {
             <table class="w-full text-sm">
               <thead class="bg-slate-50 sticky top-0 border-b border-slate-100 z-[1]">
                 <tr>
-                  <th class="px-4 py-2 text-left font-medium text-slate-500 w-3/12">{{ $t('billing_block.remittance_line_origin') }}</th>
-                  <th class="px-4 py-2 text-left font-medium text-slate-500 w-4/12">{{ $t('common.client') }}</th>
-                  <th class="px-4 py-2 text-left font-medium text-slate-500 w-3/12">{{ $t('contract') }}</th>
+                  <th class="px-4 py-2 text-left font-medium text-slate-500 w-2/12">{{ $t('billing_block.remittance_line_origin') }}</th>
+                  <th class="px-4 py-2 text-left font-medium text-slate-500 w-3/12">{{ $t('common.client') }}</th>
+                  <th class="px-4 py-2 text-left font-medium text-slate-500 w-2/12">{{ $t('contract') }}</th>
+                  <th class="px-4 py-2 text-left font-medium text-slate-500 w-3/12">{{ $t('billing_block.sepa_concept') }}</th>
                   <th class="px-4 py-2 text-right font-medium text-slate-500 w-2/12">{{ $t('billing_block.total_amount') }}</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-50">
                 <tr v-if="!file.invoices || !file.invoices.length">
-                  <td colspan="4" class="px-4 py-3 text-center text-slate-400 italic">{{ $t('common.no_invoice') }}</td>
+                  <td colspan="5" class="px-4 py-3 text-center text-slate-400 italic">{{ $t('common.no_invoice') }}</td>
                 </tr>
                 <!-- Cada línia és un pagament: la factura, el compromís o la
                      devolució de saldo (sense factura) que l'origina. -->
@@ -175,6 +176,11 @@ watch(() => props.sepaFiles, () => {
                       </button>
                       <AtomsRedirectButton :id="line.contract_id" :path="'/contract/contracts/'" />
                     </div>
+                    <span v-else class="text-slate-400">-</span>
+                  </td>
+                  <!-- Concepte (Ustrd) tal com el veurà el client al banc. -->
+                  <td class="px-4 py-2 text-xs text-slate-600 break-words" :title="line.concept">
+                    <template v-if="line.concept">{{ line.concept }}</template>
                     <span v-else class="text-slate-400">-</span>
                   </td>
                   <td class="px-4 py-2 text-right font-medium">

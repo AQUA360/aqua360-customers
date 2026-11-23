@@ -418,6 +418,7 @@ TARIFF_TYPES = ('D', 'I', 'Q', 'M', 'A', 'E', 'G', 'X')
 # Exempts i mesurament directe: només es declara el volum consumit
 CONSUMPTION_ONLY_TARIFF_TYPES = ('E', 'G', 'X', 'M')
 ALTA_USE_ACA = 'L'
+AGRICULTURAL_USE_ACA = 'G'
 LEAK_QUANTITY_TOKEN = 'diferencia_fuita'
 VULNERABLE_LEVEL = 2
 # Part fixa obligatòria (alarma) per a consums des d'aquesta data
@@ -872,6 +873,14 @@ def _aca_lines_q(aca_product_token, field='product__token'):
     return q if q else Q(pk__in=[])
 
 
+def use_aca_invoices_q(use_aca):
+    """Factures amb aquest ús ACA: el desat a la factura o, si no en té, el del contracte (o el de la baixa)."""
+    return Q(used_aca=use_aca) | Q(
+        Q(used_aca__isnull=True) | Q(used_aca=''),
+        Q(contract__use_aca=use_aca) | Q(contract__isnull=True, contract_termination__contract__use_aca=use_aca),
+    )
+
+
 def _is_valid_in_period(start_at, end_at, period_start, period_end):
     """La vigència [start_at, end_at] (sense límit si falta) toca el període de consum de la factura."""
     return (
@@ -1058,14 +1067,18 @@ def _factdeta_detail_data(invoice, aca_lines, exploitation, config, context):
 
 def generate_factdeta_normal_document(exploitations, invoices, config, company, line_items_q=None):
     """Un fitxer FDCCCC_MMMMMM_AAAA.txt per municipi (explotació) i any de facturació, amb un
-    registre de detall per factura amb cànon, inclosos els usos exempts i els abonaments.
+    registre de detall per factura amb cànon, inclosos els usos exempts i els abonaments, i per factura
+    d'ús agrícola encara que no en tingui.
     `line_items_q` tria les línies de cànon: per defecte les actives; amb els mesos de la Declaració
     ACA ja presentats, les que s'hi van declarar."""
     if line_items_q is None:
         line_items_q = Q(is_active=True)
     files = []
+    # Els usos agrícoles no paguen cànon però es declaren amb el volum consumit, encara que la
+    # factura no tingui cap línia de cànon
     aca_invoices = invoices.filter(
-        id__in=InvoiceLineItem.objects.filter(_aca_lines_q(config.aca_product_token), line_items_q).values('invoice_id'),
+        Q(id__in=InvoiceLineItem.objects.filter(_aca_lines_q(config.aca_product_token), line_items_q).values('invoice_id'))
+        | use_aca_invoices_q(AGRICULTURAL_USE_ACA),
         type_final=config.invoice_type,
     ).exclude(
         status__token=config.invoice_token_pending,

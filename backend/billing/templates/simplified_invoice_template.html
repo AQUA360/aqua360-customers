@@ -90,8 +90,8 @@
         </table>
     </div>
 
-    <div class="body-data" style="display: flex; margin: 15px 0 0 0;">
-        <table style="display: flex; justify-content: space-around;">
+    <div class="body-data">
+        <table>
             <tr>
                 {% comment %} <td style="width: 50%; margin-top: 10px;">
                     <div style="margin-top:10px; ">
@@ -373,7 +373,7 @@
     </div>
     </br>
 
-    <div style="align-content: right; width: 27%; display:flex; justify-content: flex-end; margin-right: 50px;">
+    <div style="align-content: right; width: 27%;">
         <table>
             <tr>
                 <td style="text-align: left; width: 40%; vertical-align: bottom;">
@@ -442,7 +442,7 @@
     </div>
 
     <div style="margin-top:20px;">
-        <table style="display: flex; justify-content: space-around;">
+        <table>
             <tr>
                 <td style="width: 70%; margin-top: 10px;">
                     <div style="margin-top:20px; ">
@@ -571,8 +571,8 @@
     <div id="footer_content">
 
         {% if iban and not invoice.payment_type_token_final == 'DIRECT_DEBIT' %}
-        <p style="justify-content: space-between;">
-            <span style="justify-content: space-between;">
+        <p>
+            <span>
                 L’import de la factura serà carregat pròximament al compte núm. IBAN
                 {{ iban }} de BANC 222XXXXXXXX. Els dígits s’han ocultat per la vostra seguretat. El pagament d'aquesta
                 factura s'acreditarà mitjançant el corresponent dèbit bancari o rebut de caixa
@@ -642,8 +642,8 @@
         </table>
         {% endif %}
 
-        <p style="font-size: 6px; justify-content: space-between;">
-            <span style="font-size: 6px; justify-content: space-between;">
+        <p style="font-size: 6px;">
+            <span style="font-size: 6px;">
                 1.- Responsable: {{ company.alias }}. 2.- Finalitat: Gestió comercial i administrativa. 3.- Legitimació:
                 Execució d’un contracte, comanda o relació comercial. 4.- Destinataris: No es cediran
                 dades a tercers, excepte en els supòsits d’impagament o existència d’obligació legal. 5.- Drets: Accés,

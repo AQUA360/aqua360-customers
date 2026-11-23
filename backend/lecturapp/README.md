@@ -83,7 +83,7 @@ Authorization: Bearer your-token-here
 
 ### Creating a Super Operator
 ```bash
-python3 manage.py createsuperoperator --username admin --password secret123 --name Admin --surname User
+python3 manage.py createsuperoperator --username admin --password Lect-pass-2024 --name Admin --surname User
 ```
 
 ### Authentication via API
@@ -91,7 +91,7 @@ python3 manage.py createsuperoperator --username admin --password secret123 --na
 # Login and get token
 curl -X POST http://localhost:8000/lecturapp/auth/login/ \
   -H "Content-Type: application/json" \
-  -d '{"username": "admin", "password": "secret123"}'
+  -d '{"username": "admin", "password": "Lect-pass-2024"}'
 
 # Response will include a token:
 # {
