@@ -762,6 +762,15 @@ class ClaimExcelAddressAndVariablesTests(TestCase):
             set(result[self.contract.id].split(', ')), {'FLAG', 'TEXT: SI', 'OLD', 'CARD: ABC 01/01/2026'}
         )
 
+    def test_address_text_is_neutralized_for_spreadsheets(self):
+        from claimrequest.views.claim_request_excel_generate_view import neutralize_formula
+
+        self.assertEqual(neutralize_formula('=SUM(A1)'), "'=SUM(A1)")
+        self.assertEqual(neutralize_formula('@cmd'), "'@cmd")
+        self.assertEqual(neutralize_formula('-1'), '-1')
+        self.assertEqual(neutralize_formula('Major'), 'Major')
+        self.assertEqual(neutralize_formula(''), '')
+
     def test_false_flag_is_not_listed(self):
         from claimrequest.views.claim_request_excel_generate_view import contract_variables_by_contract
         from contract.models import Variable, VariableType

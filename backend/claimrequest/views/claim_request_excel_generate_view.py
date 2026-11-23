@@ -1,4 +1,5 @@
 import io
+import re
 from django.conf import settings
 from django.db.models import Q
 import pandas as pd
@@ -25,6 +26,18 @@ from statistics.utils.report_service import delete_file_later
 TRUE_VALUES = {'1', 'true', 'si', 'sí', 's', 'yes', 'y'}
 
 
+FORMULA_PREFIXES = ('=', '+', '-', '@', '\t', '\r')
+NUMBER_PATTERN = re.compile(r'^[+-]?\d+([.,]\d+)?$')
+
+
+def neutralize_formula(value):
+    # Evita que un full de càlcul interpreti un text lliure com a fórmula.
+    # Els números (p. ex. un pis «-1») es deixen tal com són.
+    if value and value.startswith(FORMULA_PREFIXES) and not NUMBER_PATTERN.match(value):
+        return "'" + value
+    return value
+
+
 def split_supply_address(address):
     # Carrer sense el tipus de via, i el municipi en una columna a part
     if not address:
@@ -44,10 +57,10 @@ def split_supply_address(address):
     ]
     city = str(address.city) if address.city else (address.city_name or '')
     return {
-        'street': street.strip(),
+        'street': neutralize_formula(street.strip()),
         'number': number if number != 'None' else '',
-        'floor_door': ' '.join([p for p in extra_parts if p]),
-        'city': city,
+        'floor_door': neutralize_formula(' '.join([p for p in extra_parts if p])),
+        'city': neutralize_formula(city),
     }
 
 
