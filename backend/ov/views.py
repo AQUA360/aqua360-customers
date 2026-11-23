@@ -57,6 +57,7 @@ from rest_framework.views import APIView
 from rest_framework.generics import RetrieveAPIView
 from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
+from rest_framework.settings import api_settings
 from contract.models import (
     Contract,
     ContractLog,
@@ -136,6 +137,7 @@ from ov.serializers import (
     ContractTerminationProcedureResponseSerializer,
 )
 from pagination.ov_pagination import OVLimitPagination, OVConsumptionPagination
+from ov.parsers import LimitedJSONParser
 from ov.permissions import IsOVUser
 from ov.throttles import (
     ContractProcedureThrottle,
@@ -2827,9 +2829,18 @@ CONTRACT_PROCEDURE_BODY_MARGIN_RATIO = 1.1
 CONTRACT_PROCEDURE_BODY_OVERHEAD_BYTES = 64 * 1024
 
 
+def _contract_procedure_max_body_bytes():
+    """Mida màxima del cos de l'alta: el JSON amb el mandat SEPA més gran."""
+    return int(
+        base64_max_length(settings.OV_SIGNED_CONTRACT_MAX_BYTES)
+        * CONTRACT_PROCEDURE_BODY_MARGIN_RATIO
+        + CONTRACT_PROCEDURE_BODY_OVERHEAD_BYTES
+    )
+
+
 def _contract_procedure_body_too_large(request):
-    """`True` si la capçalera Content-Length de l'alta passa del que pot fer
-    un JSON amb el mandat SEPA més gran admès, o no és un número."""
+    """`True` si la capçalera Content-Length de l'alta passa de la mida
+    màxima del cos, o no és un número."""
     content_length = request.META.get("CONTENT_LENGTH")
     if not content_length:
         return False
@@ -2837,12 +2848,15 @@ def _contract_procedure_body_too_large(request):
         length = int(content_length)
     except (TypeError, ValueError):
         return True
-    max_length = (
-        base64_max_length(settings.OV_SIGNED_CONTRACT_MAX_BYTES)
-        * CONTRACT_PROCEDURE_BODY_MARGIN_RATIO
-        + CONTRACT_PROCEDURE_BODY_OVERHEAD_BYTES
-    )
-    return length > max_length
+    return length > _contract_procedure_max_body_bytes()
+
+
+class ContractProcedureJSONParser(LimitedJSONParser):
+    """JSON de l'alta: admet el mandat SEPA en base64 (fins a ~15 MB) tot i el
+    límit de 2,5 MiB de Django per a la resta de l'aplicació."""
+
+    def get_max_bytes(self):
+        return _contract_procedure_max_body_bytes()
 
 
 def _has_error_code(serializer, field, code):
@@ -2874,6 +2888,13 @@ class ContractProcedureOVView(APIView):
 
     permission_classes = [IsAuthenticated]
     throttle_classes = [ContractProcedureThrottle]
+    # El JSON amb el mandat en base64 passa del límit de Django; la resta de
+    # formats s'accepten com fins ara.
+    parser_classes = [ContractProcedureJSONParser] + [
+        parser
+        for parser in api_settings.DEFAULT_PARSER_CLASSES
+        if parser.media_type != "application/json"
+    ]
 
     def post(self, request):
         """Create a request in the default status with payment and tariff records.

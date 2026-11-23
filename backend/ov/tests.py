@@ -20,6 +20,7 @@ from django.test import TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
 from django.urls import resolve, reverse
 from django.utils import timezone, translation
+from rest_framework.exceptions import ParseError
 from rest_framework.test import APIClient
 
 from billing.models import (
@@ -91,6 +92,7 @@ from service.models import (
     RoutePosition,
     SupplyPoint,
 )
+from ov.parsers import LimitedJSONParser, RequestBodyTooLarge
 from ov.throttles import (
     ContractChangeProcedureThrottle,
     ContractProcedureThrottle,
@@ -5410,6 +5412,27 @@ class ContractProcedureSepaSignedOVTests(TestCase):
         self.assertEqual(response.status_code, 201)
         with open(self._mandate(response).file.location, "rb") as stored:
             self.assertEqual(stored.read(), content)
+
+    def test_body_without_content_length_is_limited_by_the_parser(self):
+        class TinyParser(LimitedJSONParser):
+            def get_max_bytes(self):
+                return 20
+
+        parser = TinyParser()
+        self.assertEqual(parser.parse(BytesIO(b'{"a": "b"}')), {"a": "b"})
+        with self.assertRaises(RequestBodyTooLarge):
+            parser.parse(BytesIO(b'{"a": "' + b"x" * 30 + b'"}'))
+        with self.assertRaises(ParseError):
+            parser.parse(BytesIO(b"{no json"))
+
+    def test_view_uses_the_limited_json_parser(self):
+        json_parsers = [
+            parser
+            for parser in ContractProcedureOVView.parser_classes
+            if parser.media_type == "application/json"
+        ]
+        self.assertEqual(len(json_parsers), 1)
+        self.assertTrue(issubclass(json_parsers[0], LimitedJSONParser))
 
     def test_too_large_body_returns_413_before_reading_it(self):
         response = self.client.post(
