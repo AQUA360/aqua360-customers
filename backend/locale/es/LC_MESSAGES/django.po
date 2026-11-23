@@ -6621,3 +6621,11 @@ msgstr "A la cuenta {account} de {company} le falta: {fields}. Complételo en lo
 #: billing/views/sepa_payment_document_generate_view.py
 msgid "The bank accounts selected for the remittance are not valid. Search again and check them."
 msgstr "Las cuentas seleccionadas para la remesa no son válidas. Vuelva a buscar y revíselas."
+
+#: claimrequest/views/claim_request_excel_generate_view.py
+msgid "Carrer"
+msgstr "Calle"
+
+#: claimrequest/views/claim_request_excel_generate_view.py
+msgid "Pis-porta"
+msgstr "Piso-puerta"
