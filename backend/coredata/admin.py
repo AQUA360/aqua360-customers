@@ -84,3 +84,63 @@ class DeployRecordAdmin(admin.ModelAdmin):
     list_display = ('deployed_at', 'component', 'release', 'commit', 'branch', 'built_at')
     list_filter = ('component',)
     search_fields = ('release', 'commit')
+
+
+# --- Tokens d'accés: mostren quan caduquen ---------------------------------
+from datetime import timedelta
+
+from django.conf import settings
+from django.utils import timezone
+from rest_framework.authtoken.admin import TokenAdmin as DRFTokenAdmin
+from rest_framework.authtoken.models import TokenProxy
+
+from coredata.authentication import is_integration_user
+from coredata.models import AuthSessionToken
+
+
+@admin.register(AuthSessionToken)
+class AuthSessionTokenAdmin(admin.ModelAdmin):
+    """Tokens de sessió de les persones. Caduquen per inactivitat o per antiguitat."""
+    list_display = ('user', 'created', 'last_used', 'expires_at', 'is_expired')
+    search_fields = ('user__username', 'user__email')
+    ordering = ('-created',)
+    raw_id_fields = ('user',)
+    readonly_fields = ('key', 'created', 'last_used', 'expires_at', 'is_expired')
+    fields = ('user', 'key', 'created', 'last_used', 'expires_at', 'is_expired')
+
+    @admin.display(description='Caduca')
+    def expires_at(self, obj):
+        # El primer límit que s'arribi: antiguitat màxima o inactivitat des de l'últim ús.
+        return min(
+            obj.created + timedelta(days=settings.AUTH_TOKEN_MAX_AGE_DAYS),
+            obj.last_used + timedelta(hours=settings.AUTH_TOKEN_IDLE_HOURS),
+        )
+
+    @admin.display(description='Caducat', boolean=True)
+    def is_expired(self, obj):
+        return obj.is_expired()
+
+
+admin.site.unregister(TokenProxy)
+
+
+@admin.register(TokenProxy)
+class TokenAdmin(DRFTokenAdmin):
+    """Tokens de DRF: només serveixen per als usuaris d'integració i caduquen."""
+    list_display = ('key', 'user', 'created', 'expires_at', 'is_expired', 'is_integration')
+
+    @admin.display(description='Caduca')
+    def expires_at(self, obj):
+        if not is_integration_user(obj.user):
+            return None
+        return obj.created + timedelta(days=settings.AUTH_INTEGRATION_TOKEN_MAX_AGE_DAYS)
+
+    @admin.display(description='Caducat', boolean=True)
+    def is_expired(self, obj):
+        expires_at = self.expires_at(obj)
+        # Un token de DRF d'una persona no s'accepta mai: compta com a caducat.
+        return True if expires_at is None else expires_at <= timezone.now()
+
+    @admin.display(description='Integració', boolean=True)
+    def is_integration(self, obj):
+        return is_integration_user(obj.user)
