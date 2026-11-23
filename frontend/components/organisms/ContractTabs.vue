@@ -893,7 +893,7 @@ const groupedPriceRates = computed(() => {
         <AtomsDownloadXlsxButton v-if="showInvoiceViewToggle && invoiceExportRows.length"
           :rows="invoiceExportRows" :columns="invoiceExportColumns" :file-name="invoiceExportFileName"
           :sheet-name="invoiceListLabel" class="!px-2.5 !py-1 text-xs"
-          :class="{ 'pointer-events-none opacity-60': invoicesByPeriod.loading }" />
+          :disabled="invoicesByPeriod.loading || invoicesByPeriod.error" />
 
         <template v-if="canChange">
         <!-- Amb l'enviament agrupat actiu, el botó per cancel·lar-lo queda a la vista -->

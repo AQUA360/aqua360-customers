@@ -31,14 +31,25 @@ const title = (anomaly) => {
 const trigger = ref(null);
 const open = ref(false);
 const pinned = ref(false);
-const position = ref({ top: 0, left: 0 });
+const position = ref({ top: 0, left: 0, maxHeight: 0, openUp: false });
 
+// S'obre a sota si hi cap; si no, a sobre. L'altura es limita a l'espai disponible (amb scroll intern).
 const place = () => {
   if (!trigger.value) return;
   const rect = trigger.value.getBoundingClientRect();
   const width = 288;
-  const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8));
-  position.value = { top: rect.bottom + 6, left };
+  const margin = 8;
+  const gap = 6;
+  const left = Math.max(margin, Math.min(rect.left, window.innerWidth - width - margin));
+  const spaceBelow = window.innerHeight - rect.bottom - gap - margin;
+  const spaceAbove = rect.top - gap - margin;
+  const openUp = spaceBelow < 200 && spaceAbove > spaceBelow;
+  position.value = {
+    left,
+    openUp,
+    top: openUp ? rect.top - gap : rect.bottom + gap,
+    maxHeight: Math.max(openUp ? spaceAbove : spaceBelow, 120),
+  };
 };
 
 const show = () => {
@@ -83,8 +94,9 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocumentClick));
       </span>
     </button>
     <Teleport to="body">
-      <div v-if="open" class="fixed z-[60] w-72 rounded-md border border-amber-300 bg-white shadow-lg p-3 text-sm"
-        :style="{ top: `${position.top}px`, left: `${position.left}px` }"
+      <div v-if="open" class="fixed z-[60] w-72 rounded-md border border-amber-300 bg-white shadow-lg p-3 text-sm overflow-y-auto"
+        :style="{ top: `${position.top}px`, left: `${position.left}px`, maxHeight: `${position.maxHeight}px`,
+          transform: position.openUp ? 'translateY(-100%)' : null }"
         @click.stop @mouseenter="open = true" @mouseleave="hide">
         <p class="font-semibold text-amber-800 mb-2 flex items-center gap-2">
           <Icon name="fa6-solid:triangle-exclamation" />

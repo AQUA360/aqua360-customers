@@ -72,6 +72,32 @@ class PersonAnomalyTestCase(TestCase):
     def test_create_requires_change_permission(self):
         self.assertEqual(self._create(user=self.viewer).status_code, 403)
 
+    def test_resolve_requires_change_permission(self):
+        anomaly_id = self._create().data['id']
+        creator = User.objects.create_user('anomaly-creator-2633', 'anomaly-creator-2633@example.com', 'x')
+        creator.user_permissions.add(_perm('coredata.view_person'), _perm('coredata.add_person'))
+        response = self._call({'post': 'resolve'}, 'post', creator, {}, pk=anomaly_id)
+        self.assertEqual(response.status_code, 403)
+        changer = User.objects.create_user('anomaly-changer-2633', 'anomaly-changer-2633@example.com', 'x')
+        changer.user_permissions.add(_perm('coredata.view_person'), _perm('coredata.change_person'))
+        response = self._call({'post': 'resolve'}, 'post', changer, {}, pk=anomaly_id)
+        self.assertEqual(response.status_code, 200, response.data)
+
+    def test_observation_change_is_logged(self):
+        anomaly_id = self._create(observation='Primera').data['id']
+        response = self._call({'patch': 'partial_update'}, 'patch', self.editor, {'observation': 'Segona'}, pk=anomaly_id)
+        self.assertEqual(response.status_code, 200, response.data)
+        last_log = PersonLog.objects.filter(person=self.person, field_name='anomaly').order_by('-id').first()
+        self.assertIn('Primera', last_log.old_value)
+        self.assertIn('Segona', last_log.new_value)
+
+    def test_types_require_person_read_permission(self):
+        no_perms = User.objects.create_user('anomaly-noperms-2633', 'anomaly-noperms-2633@example.com', 'x')
+        request = self.factory.get('/coredata/person-anomaly-type/')
+        force_authenticate(request, user=no_perms)
+        response = PersonAnomalyTypeViewSet.as_view({'get': 'list'})(request)
+        self.assertEqual(response.status_code, 403)
+
     def test_end_date_before_start_date_is_rejected(self):
         response = self._create(end_date=(self.today - timedelta(days=1)).isoformat())
         self.assertEqual(response.status_code, 400)

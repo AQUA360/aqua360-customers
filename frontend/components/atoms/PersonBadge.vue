@@ -30,7 +30,7 @@ const getName = () => {
   <span class="flex justify-between inline-block rounded px-2 py-0.5 text-sm w-full"
   :class="[props.color? 'badge-' + props.color: 'badge-gray', props.clickable ? 'cursor-pointer hover:brightness-95' : 'cursor-default']"
   :role="props.clickable ? 'button' : undefined" :tabindex="props.clickable ? 0 : undefined"
-  @keydown.enter="props.clickable && $event.target.click()">
+  @keydown.enter.self="props.clickable && $event.currentTarget.click()">
     <slot>
       <span>{{ getName() }}</span>
       <span>{{ person?.token || "" }}</span>

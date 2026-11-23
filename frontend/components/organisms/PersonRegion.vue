@@ -137,9 +137,11 @@ const handleAnomalyAdded = async () => {
 
 // Refresca les anomalies vigents i el comptador sense recarregar tota la fitxa
 const refreshAnomalies = async () => {
+  const personId = props.id;
   try {
-    const result = await $PersonApiService.getDetail(props.id);
-    if (data.value) {
+    const result = await $PersonApiService.getDetail(personId);
+    // Si mentrestant s'ha obert una altra persona, la resposta ja no és seva
+    if (data.value && props.id === personId) {
       data.value.current_anomalies = result.current_anomalies;
       data.value.anomalies_count = result.anomalies_count;
     }

@@ -157,7 +157,7 @@ export function useContractInvoicesByPeriod(getContractId) {
     listPagination.value = { ...listPagination.value, page: 1, total: 0, totalPages: 0 };
     loading.value = false;
     error.value = false;
-    listMode.value = readStoredListMode();
+    // listMode es manté: és la tria de l'usuari (desada al navegador o, si no es pot desar, en memòria)
   };
 
   // Keeps the "send" button in sync after a PDF is generated, without reloading.
