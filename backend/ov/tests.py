@@ -5217,6 +5217,250 @@ class ContractProcedureOVTests(TestCase):
         self.assertNotEqual(sepa_match.url_name, "contract-procedure-ov")
 
 
+@override_settings(OV_SIGNED_CONTRACT_MAX_BYTES=1024)
+class ContractProcedureSepaSignedOVTests(TestCase):
+    """`POST /ov/procedures/contract/` amb el mandat SEPA signat en base64
+    (`sepa_signed`): es desa com a mandat de la forma de pagament de la
+    sol·licitud, i si el document no és vàlid no es crea res."""
+
+    PDF = b"%PDF-1.4 mandat signat de prova"
+
+    @classmethod
+    def setUpClass(cls):
+        cls._storage_dir = tempfile.mkdtemp()
+        cls._storage_override = override_settings(
+            DOCUMENT_STORAGE_PATH=cls._storage_dir
+        )
+        cls._storage_override.enable()
+        super().setUpClass()
+
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+        cls._storage_override.disable()
+        shutil.rmtree(cls._storage_dir, ignore_errors=True)
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(
+            username="ov-contract-procedure-sepa-test", password="not-used"
+        )
+        ContractRequestStatus.objects.update_or_create(
+            token="1", defaults={"name": "Esborrany", "is_default": True}
+        )
+        ContractRequestType.objects.update_or_create(
+            token="domestic", defaults={"name": "Domèstic", "is_active": True}
+        )
+        PaymentType.objects.update_or_create(
+            token="DIRECT_DEBIT", defaults={"name": "Domiciliació bancària"}
+        )
+        PaymentType.objects.update_or_create(
+            token="CASH", defaults={"name": "Efectiu"}
+        )
+        PriceRate.objects.create(token="TR-CHOSEN", name="Tarifa", is_active=True)
+        cls.holder = Person.objects.create(
+            token="12345678A", name="Anna", surname="Prova"
+        )
+        _new_holder_identification_types()
+        prop = Property.objects.create(token="PROP-1", name="Finca", is_active=True)
+        SupplyPoint.objects.create(token="SP-1", property=prop, is_active=True)
+
+    def setUp(self):
+        cache.clear()
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def _post(self, **overrides):
+        payload = {
+            "holder_dni": "12345678A",
+            "property_token": "PROP-1",
+            "procedure_type_token": "domestic",
+            "tariff_token": "TR-CHOSEN",
+            "payment_type_token": "DIRECT_DEBIT",
+            "iban": "ES91 2100 0418 4502 0005 1332",
+            "iban_holder_name": "Anna Prova",
+            "iban_holder_dni": "12345678A",
+            "iban_holder_swift": "CAIXESBBXXX",
+            "sepa_signed": base64.b64encode(self.PDF).decode(),
+        }
+        payload.update(overrides)
+        return self.client.post(
+            reverse("contract-procedure-ov"), payload, format="json"
+        )
+
+    def _mandate(self, response):
+        contract_request = ContractRequest.objects.get(
+            token=response.data["contract_request_token"]
+        )
+        return GeneralPaymentSepaDocument.objects.get(
+            general_payment=contract_request.payment
+        )
+
+    def _assert_nothing_created(self, response, expected_status):
+        self.assertEqual(response.status_code, expected_status)
+        self.assertFalse(ContractRequest.objects.exists())
+        self.assertFalse(GeneralPayment.objects.exists())
+        self.assertFalse(GeneralPaymentSepaDocument.objects.exists())
+        self.assertFalse(Document.objects.exists())
+
+    def test_without_document_works_as_before(self):
+        for overrides in ({"sepa_signed": None}, {"sepa_signed": ""}):
+            with self.subTest(overrides=overrides):
+                ContractRequest.objects.all().delete()
+                response = self._post(**overrides)
+
+                self.assertEqual(response.status_code, 201)
+                self.assertFalse(GeneralPaymentSepaDocument.objects.exists())
+
+        ContractRequest.objects.all().delete()
+        payload_without_fields = self._post()
+        self.assertEqual(payload_without_fields.status_code, 201)
+
+    def test_valid_document_is_archived_as_the_request_payment_mandate(self):
+        response = self._post(sepa_signed_filename="mandat.pdf")
+
+        self.assertEqual(response.status_code, 201)
+        mandate = self._mandate(response)
+        self.assertTrue(mandate.checked)
+        self.assertEqual(mandate.file.entity, "SEPA")
+        self.assertEqual(mandate.file.field, "CONTRACT")
+        self.assertEqual(mandate.file.document_name, "mandat.pdf")
+        with open(mandate.file.location, "rb") as stored:
+            self.assertEqual(stored.read(), self.PDF)
+        # La resposta no canvia: no exposa res del document.
+        self.assertNotIn("sepa_signed", response.data)
+
+    def test_default_filename_and_sanitized_filename(self):
+        cases = (
+            ({}, "mandat_sepa_signat.pdf"),
+            ({"sepa_signed_filename": None}, "mandat_sepa_signat.pdf"),
+            ({"sepa_signed_filename": "  "}, "mandat_sepa_signat.pdf"),
+            ({"sepa_signed_filename": "../../etc/mandat"}, "mandat.pdf"),
+            ({"sepa_signed_filename": "mandat signat.PDF"}, "mandat_signat.PDF"),
+        )
+        for overrides, expected in cases:
+            with self.subTest(overrides=overrides):
+                ContractRequest.objects.all().delete()
+                response = self._post(**overrides)
+
+                self.assertEqual(response.status_code, 201)
+                document = self._mandate(response).file
+                self.assertEqual(document.document_name, expected)
+                self.assertTrue(
+                    os.path.realpath(document.location).startswith(
+                        os.path.realpath(self._storage_dir) + os.sep
+                    )
+                )
+
+    def test_base64_with_line_breaks_is_accepted(self):
+        encoded = base64.encodebytes(self.PDF * 3).decode()
+        self.assertIn("\n", encoded)
+
+        response = self._post(sepa_signed=encoded)
+
+        self.assertEqual(response.status_code, 201)
+        with open(self._mandate(response).file.location, "rb") as stored:
+            self.assertEqual(stored.read(), self.PDF * 3)
+
+    def test_invalid_base64_returns_400_and_creates_nothing(self):
+        response = self._post(sepa_signed="no és base64!!")
+
+        self._assert_nothing_created(response, 400)
+        self.assertIn("sepa_signed", response.data)
+
+    def test_non_pdf_returns_400_and_creates_nothing(self):
+        response = self._post(
+            sepa_signed=base64.b64encode(b"PK\x03\x04 un zip").decode()
+        )
+
+        self._assert_nothing_created(response, 400)
+        self.assertIn("sepa_signed", response.data)
+
+    def test_too_large_document_returns_413_and_creates_nothing(self):
+        # Tant si el text en base64 ja passa del límit com si només el passen
+        # els bytes descodificats (1025 bytes caben en 1368 caràcters).
+        for content in (b"%PDF-" + b"x" * 2000, b"%PDF-" + b"x" * 1020):
+            with self.subTest(size=len(content)):
+                response = self._post(
+                    sepa_signed=base64.b64encode(content).decode()
+                )
+
+                self._assert_nothing_created(response, 413)
+                self.assertIn("sepa_signed", response.data)
+
+    def test_document_at_the_limit_is_accepted(self):
+        content = b"%PDF-" + b"x" * 1019
+
+        response = self._post(sepa_signed=base64.b64encode(content).decode())
+
+        self.assertEqual(response.status_code, 201)
+
+    @override_settings(OV_SIGNED_CONTRACT_MAX_BYTES=10 * 1024 * 1024)
+    def test_document_over_django_memory_limit_is_accepted(self):
+        # El JSON passa de DATA_UPLOAD_MAX_MEMORY_SIZE (2,5 MiB): el middleware
+        # de registre no pot llegir `request.body`, però DRF llegeix el cos
+        # igualment i l'alta es crea.
+        content = b"%PDF-" + os.urandom(3 * 1024 * 1024)
+        self.assertGreater(
+            len(base64.b64encode(content)), settings.DATA_UPLOAD_MAX_MEMORY_SIZE
+        )
+
+        response = self._post(sepa_signed=base64.b64encode(content).decode())
+
+        self.assertEqual(response.status_code, 201)
+        with open(self._mandate(response).file.location, "rb") as stored:
+            self.assertEqual(stored.read(), content)
+
+    def test_too_large_body_returns_413_before_reading_it(self):
+        response = self.client.post(
+            reverse("contract-procedure-ov"),
+            data=b"{}",
+            content_type="application/json",
+            CONTENT_LENGTH=str(10 * 1024 * 1024),
+        )
+
+        self.assertEqual(response.status_code, 413)
+        self.assertFalse(ContractRequest.objects.exists())
+
+    def test_new_holder_not_created_when_document_is_invalid(self):
+        response = self._post(
+            holder_dni="87654321X",
+            holder_name="Nou",
+            holder_surname="Titular",
+            holder_email="nou@example.com",
+            holder_phone="600000000",
+            sepa_signed="%%%",
+        )
+
+        self._assert_nothing_created(response, 400)
+        self.assertFalse(Person.objects.filter(token="87654321X").exists())
+
+    def test_document_with_non_direct_debit_returns_400_and_creates_nothing(self):
+        response = self._post(payment_type_token="CASH")
+
+        self._assert_nothing_created(response, 400)
+        self.assertIn("sepa_signed", response.data)
+
+    def test_archive_failure_rolls_back_the_request(self):
+        with patch(
+            "ov.views.upload_document", side_effect=OSError("disc ple")
+        ):
+            with self.assertRaises(OSError):
+                self._post()
+
+        self.assertFalse(ContractRequest.objects.exists())
+        self.assertFalse(GeneralPaymentSepaDocument.objects.exists())
+
+    def test_post_log_masks_the_document(self):
+        with self.assertLogs("post_requests", level="INFO") as logs:
+            response = self._post()
+
+        self.assertEqual(response.status_code, 201)
+        output = "\n".join(logs.output)
+        self.assertNotIn(base64.b64encode(self.PDF).decode(), output)
+        self.assertIn("***REDACTED***", output)
+
+
 class ContractRequestStatusOVTests(TestCase):
     """`GET /ov/procedures/contract/<contract_request_token>/` — seguiment de
     l'estat d'una sol·licitud d'alta: `contract_token` `null` mentre estigui

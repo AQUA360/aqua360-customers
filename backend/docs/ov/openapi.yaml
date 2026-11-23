@@ -2127,6 +2127,17 @@ paths:
         suministro, y que el tipo de trámite y la tarifa estén activos. Si el pago es por domiciliación
         (`DIRECT_DEBIT`) se exigen los datos bancarios. Si la propiedad tiene
         más de un punto de suministro activo debe enviarse `supply_point_token`.
+
+        **Mandato SEPA firmado (opcional).** Con domiciliación se puede adjuntar
+        en la misma llamada el mandato SEPA firmado: el PDF codificado en base64
+        en `sepa_signed` y, opcionalmente, su nombre en `sepa_signed_filename`.
+        Se archiva en el gestor documental como mandato de la forma de pago de
+        la solicitud, y el contrato que se cree a partir de ella lo conserva.
+        Solo PDF (cabecera `%PDF-`) y hasta 10 MB (unos 13,4 MB en base64);
+        los saltos de línea del base64 se ignoran. El documento se valida antes
+        de crear nada: si no es válido no se crea la solicitud (`400`, o `413`
+        si supera el tamaño). Sin estos campos, o con `null`, el endpoint se
+        comporta igual que antes.
       operationId: requestContractProcedure
       security:
         - tokenAuth: []
@@ -2136,19 +2147,37 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/ContractProcedureRequest"
-            example:
-              holder_dni: "12345678A"
-              property_token: PROV-0001
-              supply_point_token: "1234/1234"
-              procedure_type_token: domestic
-              tariff_token: TD-2.0TD
-              payment_type_token: DIRECT_DEBIT
-              iban: ES9121000418450200051332
-              iban_holder_name: Nombre Titular
-              iban_holder_dni: "12345678A"
-              iban_holder_swift: CAIXESBBXXX
-              language: ca
-              observation: Alta solicitada desde la OV
+            examples:
+              sinMandato:
+                summary: Alta sin mandato SEPA
+                value:
+                  holder_dni: "12345678A"
+                  property_token: PROV-0001
+                  supply_point_token: "1234/1234"
+                  procedure_type_token: domestic
+                  tariff_token: TD-2.0TD
+                  payment_type_token: DIRECT_DEBIT
+                  iban: ES9121000418450200051332
+                  iban_holder_name: Nombre Titular
+                  iban_holder_dni: "12345678A"
+                  iban_holder_swift: CAIXESBBXXX
+                  language: ca
+                  observation: Alta solicitada desde la OV
+              conMandato:
+                summary: Alta con el mandato SEPA firmado (PDF en base64, recortado)
+                value:
+                  holder_dni: "12345678A"
+                  property_token: PROV-0001
+                  supply_point_token: "1234/1234"
+                  procedure_type_token: domestic
+                  tariff_token: TD-2.0TD
+                  payment_type_token: DIRECT_DEBIT
+                  iban: ES9121000418450200051332
+                  iban_holder_name: Nombre Titular
+                  iban_holder_dni: "12345678A"
+                  iban_holder_swift: CAIXESBBXXX
+                  sepa_signed: JVBERi0xLjQKJcfsj6IKNSAwIG9iago8PC9MZW5ndGggNiAwIFI+PgpzdHJlYW0K...
+                  sepa_signed_filename: mandato_sepa_firmado.pdf
       responses:
         "201":
           description: Solicitud de contrato creada (estado borrador)
@@ -2176,17 +2205,33 @@ paths:
           description: |
             Campos obligatorios ausentes o inválidos, datos personales
             ausentes o inválidos cuando el DNI no existe (titular nuevo),
-            datos bancarios incompletos para domiciliación, o propiedad con
-            varios puntos de suministro sin `supply_point_token`.
+            datos bancarios incompletos para domiciliación, propiedad con
+            varios puntos de suministro sin `supply_point_token`, o mandato
+            SEPA (`sepa_signed`) que no es base64 válido, no es un PDF o se
+            envía con una forma de pago que no es domiciliación.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ValidationErrors"
-              example:
-                holder_name:
-                  - This field is required when the holder does not exist.
-                holder_email:
-                  - This field is required when the holder does not exist.
+              examples:
+                nuevoTitular:
+                  value:
+                    holder_name:
+                      - This field is required when the holder does not exist.
+                    holder_email:
+                      - This field is required when the holder does not exist.
+                mandatoBase64:
+                  value:
+                    sepa_signed:
+                      - Invalid base64 content.
+                mandatoNoPdf:
+                  value:
+                    sepa_signed:
+                      - Invalid file type. Only PDF files are allowed.
+                mandatoSinDomiciliacion:
+                  value:
+                    sepa_signed:
+                      - The SEPA mandate is only allowed for direct debit.
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
@@ -2221,6 +2266,25 @@ paths:
               example:
                 error: Contract request already exists
                 contract_request_token: "20261026001"
+        "413":
+          description: |
+            El mandato SEPA (`sepa_signed`) supera los 10 MB, o el cuerpo de la
+            petición es mayor de lo que puede ocupar con él (se rechaza sin
+            leerlo). No se crea nada.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ValidationErrors"
+                  - $ref: "#/components/schemas/ErrorMessage"
+              examples:
+                mandato:
+                  value:
+                    sepa_signed:
+                      - File too large. Maximum size is 10 MB.
+                cuerpo:
+                  value:
+                    error: Request body too large
         "429":
           $ref: "#/components/responses/TooManyRequests"
         "500":
@@ -4279,6 +4343,24 @@ components:
           nullable: true
           maxLength: 1000
           description: Observación que se registra en el historial de estados
+        sepa_signed:
+          type: string
+          format: byte
+          nullable: true
+          description: |
+            Mandato SEPA firmado: contenido del PDF en base64 (hasta 10 MB
+            descodificado; se ignoran los saltos de línea). Solo con
+            `payment_type_token` = `DIRECT_DEBIT`. Vacío o `null`: sin mandato.
+          example: JVBERi0xLjQKJcfsj6IKNSAwIG9iago8PC9MZW5ndGggNiAwIFI+PgpzdHJlYW0K...
+        sepa_signed_filename:
+          type: string
+          nullable: true
+          maxLength: 100
+          description: |
+            Nombre del fichero del mandato. Se eliminan las rutas y los
+            caracteres no válidos y se añade `.pdf` si no lo lleva. Si no se
+            envía: `mandat_sepa_signat.pdf`.
+          example: mandato_sepa_firmado.pdf
 
     ContractProcedureResponse:
       type: object
