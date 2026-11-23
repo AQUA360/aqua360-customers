@@ -642,3 +642,55 @@ class ClaimLetterAddressTests(TestCase):
             with self.subTest(supply_point=supply_point):
                 self.contract.supply_point_default = supply_point
                 self.assertEqual(claim_letter_address(self.contract), self.supply_person_address.address)
+
+
+class ClaimRequestTotalInvoicesTests(TestCase):
+    """«Total factura» del detall: factures diferents dels pagaments no exclosos, com l'import."""
+
+    def setUp(self):
+        from billing.models import Invoice, Payment, PaymentStatus
+        from claimrequest.models import ClaimRequest, ClaimRequestPayment
+
+        # Els signals de contracte, factura i pagament llegeixen aquests valors en desar.
+        for token, value in (
+            ('contract_terminated_status', '99'),
+            ('payment_status_paid_token', '0'),
+            ('payment_status_expired_token', '-1'),
+            ('payment_status_returned_token', '-2'),
+            ('payment_status_cancelled_token', '-4'),
+            ('invoice_status_paid_token', 'PAID'),
+            ('invoice_status_cancelled_token', 'CANCELLED'),
+            # Els llegeix el detall de la gestió
+            ('order_type_remove_meter_token', 'remove_meter'),
+            ('order_type_supply_cut_token', 'cut_supply'),
+            ('vulnerability_request_status_pending_token', 'pending'),
+            ('vulnerability_request_status_accepted_token', 'accepted'),
+        ):
+            ConfigProject.objects.get_or_create(token=token, defaults={'value': value})
+
+        contract = Contract.objects.create(token='C-CLAIM', supply_point_default=SupplyPoint.objects.create(token='SP-CLAIM'))
+        expired = PaymentStatus.objects.get_or_create(token='-1', defaults={'name': 'Vençut'})[0]
+        self.claim = ClaimRequest.objects.create(token='CR-TEST')
+
+        def add_payment(invoice, amount, is_excluded=False):
+            payment = Payment.objects.create(invoice=invoice, status=expired, amount=amount)
+            ClaimRequestPayment.objects.create(
+                claim_request=self.claim, payment=payment, contract=contract, is_excluded=is_excluded,
+            )
+
+        # Una factura amb dos pagaments (compta un cop), una amb un pagament i una d'exclosa.
+        two_payments = Invoice.objects.create(contract=contract)
+        add_payment(two_payments, 10)
+        add_payment(two_payments, 5)
+        add_payment(Invoice.objects.create(contract=contract), 20)
+        add_payment(Invoice.objects.create(contract=contract), 40, is_excluded=True)
+
+        self.client = APIClient()
+        self.client.force_authenticate(User.objects.create_superuser('admin-claim', 'admin@test.local', 'x'))
+
+    def test_detail_counts_invoices_of_not_excluded_payments(self):
+        response = self.client.get(f'/claimrequest/claim-request/{self.claim.id}/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['total_invoices'], 2)
+        self.assertEqual(response.data['amount'], 35)

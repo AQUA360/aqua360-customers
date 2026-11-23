@@ -38,6 +38,7 @@ SIGNING_BASE_URL=https://sign.aqua360.cloud
 SIGNING_API_KEY=
 SIGNING_CALLBACK_URL=https://customers.aqua360.cloud/signing/callback/
 SIGNING_TIMEOUT=30
+# Obligatòria: la mateixa que el callback_api_key del client a Sign
 SIGN_CALLBACK_API_KEY=
 
 # Només si Sign no pot arribar al webhook (IP privada) o com a xarxa de seguretat
@@ -50,7 +51,7 @@ SIGNING_POLL_MINUTES=10
 | `SIGNING_BASE_URL` | Host de Sign, sense barra final. El client hi afegeix `/api/sessions/`. |
 | `SIGNING_API_KEY` | Clau del Client a Sign. Capçalera outbound `X-API-Key`. Ha de coincidir amb la del tenant a l'admin de Sign. |
 | `SIGNING_CALLBACK_URL` | URL que el PA envia com a `callback_url` si la petició no en porta una. Ha de ser accessible **des de Sign**. |
-| `SIGN_CALLBACK_API_KEY` | Si té valor, el webhook inbound exigeix la mateixa clau a `X-API-Key` (també accepta `Aqua360-Api-Key`). Si és buit, el webhook no valida la clau. A Sign és el `callback_api_key` del Client. |
+| `SIGN_CALLBACK_API_KEY` | **Obligatòria.** El webhook inbound exigeix la mateixa clau a `X-API-Key` (també accepta `Aqua360-Api-Key`). Si és buida, el webhook ho rebutja tot amb `403`. A Sign és el `callback_api_key` del Client: ha de ser la mateixa als dos costats. |
 | `SIGNING_POLL_ENABLED` | Programa `poll_signing_sessions` al Celery beat. |
 | `SIGNING_POLL_MINUTES` | Cada quants minuts (per defecte 10). |
 
@@ -134,7 +135,7 @@ En finalitzar l'alta, el `DocumentSign` de la sol·licitud es vincula també al 
 ```
 POST /signing/callback/
 Content-Type: application/json
-X-API-Key: <SIGN_CALLBACK_API_KEY>    # només si està configurada
+X-API-Key: <SIGN_CALLBACK_API_KEY>    # obligatòria
 User-Agent: Aqua360-Sign/1.0
 ```
 
@@ -163,15 +164,15 @@ User-Agent: Aqua360-Sign/1.0
 
 | Camp | Notes |
 |------|-------|
-| `event` | `session.signed` (el que envia Sign) o `session.expired` |
+| `event` | Només `session.signed` (és l'únic que envia Sign). La caducitat la recull el sondeig. |
 | `external_reference` | Token o id de la sol·licitud, o `docsign-<id>` |
-| `session_id` | Idempotència: si la `ContractSigningSession` ja és `signed`, la resposta és `already_processed: true` |
+| `session_id` | Obligatori. Ha de ser la sessió que el PA va crear per a aquesta referència: la `ContractSigningSession` de la sol·licitud, o el `token` del `DocumentSign`. Si ja està signada, la resposta és `already_processed: true` |
 | `documents[].id` | Cal per descarregar el PDF. Sense un document amb `signed: true` i `id`, el `DocumentSign` no es marca com a firmat |
 
 | Codi | Motiu |
 |------|-------|
-| `403` | `SIGN_CALLBACK_API_KEY` configurada i la capçalera no coincideix |
-| `400` | Esdeveniment no suportat, falta `external_reference`, o no s'ha pogut baixar el PDF d'un `DocumentSign` |
+| `403` | `SIGN_CALLBACK_API_KEY` buida, o la capçalera no coincideix |
+| `400` | Esdeveniment no suportat, falta `external_reference` o `session_id`, la sessió no correspon a la referència, o no s'ha pogut baixar el PDF d'un `DocumentSign` |
 | `404` | Ni sol·licitud ni `DocumentSign` amb aquesta referència |
 | `200` | `{"ok": true}` |
 

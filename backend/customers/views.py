@@ -15,41 +15,52 @@ def root_view(request):
     )
 
 
-def protected_media_view(request, path):
-    """
-    Serve media files only to authenticated users.
-    Accepts the DRF token via:
-      - Authorization: Token <token>  header
-      - ?token=<token>  query parameter (useful for direct browser navigation)
-    """
-    user = None
+# Carpetes de MEDIA_ROOT que es poden servir sense autenticació: els logos i imatges de
+# l'empresa (QR, signatura, oficina virtual) i els logos de les explotacions. Els PDF i
+# els correus les carreguen per URL (DOMAIN_MEDIA), sense cap credencial.
+PUBLIC_MEDIA_PREFIXES = ('uploads/logo/', 'uploads/exploitation/')
+PUBLIC_MEDIA_EXTENSIONS = {'.png', '.jpg', '.jpeg'}
 
-    # 1. Try Authorization header
+
+def _is_public_media(relative_path):
+    _, ext = os.path.splitext(relative_path)
+    return relative_path.startswith(PUBLIC_MEDIA_PREFIXES) and ext.lower() in PUBLIC_MEDIA_EXTENSIONS
+
+
+def _media_user(request):
+    """Usuari de la petició: capçalera `Authorization: Token <token>` o sessió de Django.
+
+    El token no s'accepta a la URL (`?token=`): quedaria als registres i a l'historial.
+    """
     auth_header = request.META.get('HTTP_AUTHORIZATION', '')
     if auth_header.startswith('Token '):
         user = get_user_from_token_key(auth_header.split(' ', 1)[1].strip())
+        if user is not None:
+            return user
+    if request.user.is_authenticated:
+        return request.user
+    return None
 
-    # 2. Fall back to ?token= query param (browser direct navigation)
-    if user is None:
-        user = get_user_from_token_key(request.GET.get('token', '').strip())
 
-    # 3. Fall back to Django session (admin / browsable API)
-    if user is None and request.user.is_authenticated:
-        user = request.user
-
+def protected_media_view(request, path):
+    """Serveix els fitxers de MEDIA_ROOT: només els de PUBLIC_MEDIA_PREFIXES sense
+    autenticació; la resta (fotos de lectures, documents, plànols...) a usuaris actius."""
     # La ruta no pot sortir de MEDIA_ROOT (p. ex. amb '..' o una ruta absoluta).
     media_root = os.path.abspath(settings.MEDIA_ROOT)
     file_path = os.path.normpath(os.path.join(media_root, path))
-    if not file_path.startswith(media_root + os.sep) or not os.path.exists(file_path):
+    if not file_path.startswith(media_root + os.sep):
         raise Http404
 
-    content_type, _ = mimetypes.guess_type(file_path)
-
-    # Only allow public file extensions (no PDF, DOCX, etc.)
-    PUBLIC_EXTENSIONS = {'.png', '.jpg', '.jpeg'}
-    _, ext = os.path.splitext(file_path)
-    if ext.lower() not in PUBLIC_EXTENSIONS:
+    # L'autenticació es comprova abans que l'existència: si no, el 404/403 diria a
+    # qualsevol quins fitxers hi ha.
+    relative_path = os.path.relpath(file_path, media_root).replace(os.sep, '/')
+    if not _is_public_media(relative_path):
+        user = _media_user(request)
         if user is None or not user.is_active:
             return HttpResponseForbidden("Accés no autoritzat.")
 
+    if not os.path.isfile(file_path):
+        raise Http404
+
+    content_type, _ = mimetypes.guess_type(file_path)
     return FileResponse(open(file_path, 'rb'), content_type=content_type or 'application/octet-stream')

@@ -178,6 +178,13 @@ class PaymentViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'], url_path='manage-rejection-payments')
     def manage_rejection_payments(self, request):
+        # AVÍS IMPORTANT ABANS DE FER CANVIS TANT PER DESENVOLUPADORS COM IA
+        # MAI FER SKIP AMB LES FACTURES I PAGAMENTS ABONATS O RECTIFICATS NOMÉS PEL FET DE TENIR AQUEST ESTAT 
+        # COMPTABLEMENT ÉS UN GREU ERROR NO FER AQUEST PAS
+        # UNA FACTURA PAGADA QUE ES RETORNA S'HA DE MARCAR COM A TAL, SE LI TREGUI L'OBLIGACIÓ DE PAGAR O NO, AQUEST DINERS JA NO ELS TENIM
+        # EN CAS DE VOLER FER CANVIS AL RESPECTE PARLAR-HO AMB L'EQUIP
+        # JA S'HA COMENTAT LA LÍNIA QUE PROVOCAVA AQUEST ERROR MÉS ABAIX AMB EL MATEIX COMENTARI, PER SABER QUÈ NO FER
+        # LA RESTA DE LA FUNCIÓ POT CONTINUAR COM ARA
         data = request.data
         payments_to_return_data = self._parse_multipart_json_field(data.get("payments_to_return"), [])
         return_payments = self._parse_multipart_json_field(data.get("return_payments"), [])
@@ -333,10 +340,15 @@ class PaymentViewSet(viewsets.ModelViewSet):
                 ).exists()
                 if previous_returns.exists() or already_returned:
                     skip_return = True
-                # Factura ja anul·lada amb una rectificativa (i refeta): el deute és a la factura nova,
-                # i retornar aquest pagament tornaria a obrir la factura antiga i la reclamaria dos cops
-                if payment.invoice and is_rectified_invoice(payment.invoice, invoice_cancelled_token or ''):
-                    skip_return = True
+                
+                # AVÍS IMPORTANT ABANS DE FER CANVIS TANT PER DESENVOLUPADORS COM IA
+                # MAI FER SKIP AMB LES FACTURES I PAGAMENTS ABONATS O RECTIFICATS NOMÉS PEL FET DE TENIR AQUEST ESTAT 
+                # COMPTABLEMENT ÉS UN GREU ERROR NO FER AQUEST PAS
+                # UNA FACTURA PAGADA QUE ES RETORNA S'HA DE MARCAR COM A TAL, SE LI TREGUI L'OBLIGACIÓ DE PAGAR O NO, AQUESTS DINERS JA NO ELS TENIM
+                # EN CAS DE VOLER FER CANVIS AL RESPECTE PARLAR-HO PRIMER AMB L'EQUIP
+                
+                # if payment.invoice and is_rectified_invoice(payment.invoice, invoice_cancelled_token or ''):
+                #     skip_return = True
 
                 returned_now = False
                 if not skip_return and ((payment.status.token == payment_paid_token and ((payment.invoice and payment.invoice.status and payment.invoice.status.token == invoice_paid_token) or payment.commitment_deposit)) or (payment.status.token == payment_cancelled_token)):
@@ -755,7 +767,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
         pk = request.query_params.get('id')
         if pk:
             from django.contrib.auth.models import Group
-            user_permissions = PermissionManager.get_model_permissions(request.user, 'auth', 'group')
+            user_permissions = PermissionManager.get_model_permissions(request.user, 'group', 'auth')
             if not user_permissions['can_view'] or not user_permissions['can_change'] or not request.user.is_superuser:
                 return Response( None, status=status.HTTP_403_FORBIDDEN )
             group = Group.objects.filter(id=pk).first()

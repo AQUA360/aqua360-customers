@@ -93,6 +93,7 @@ const token = ref('')
 const name = ref('')
 const exploitations = ref([])
 const exploitation = ref(null)
+const splitByCompany = ref(false)
 
 const routes = ref([]);
 const editingRoutes = ref(false);
@@ -154,6 +155,7 @@ const save = async () => {
     period_type: type.value.code,
     initial_month: month.value.code,
     exploitation: exploitation.value?.code || null,
+    split_by_company: splitByCompany.value,
     route_ids: routeIds
   }
 
@@ -198,6 +200,7 @@ const loadData = async () => {
   }
 
   is_active.value = res.is_active;
+  splitByCompany.value = !!res.split_by_company;
 
   const currentExploitation = exploitations.value.find(item => String(item.code) === String(res.exploitation));
   if (currentExploitation) {
@@ -272,6 +275,14 @@ const updateSelected = (e) => {
           <label for="exploitation" class="block text-sm font-medium text-slate-500 mb-2">{{ t('exploitation') }}</label>
           <v-select id="exploitation" class="block w-full mr-2" v-model="exploitation" :disabled="!is_active"
             :options="exploitations" :clearable="true" />
+        </div>
+        <div class="mb-2 col-span-2">
+          <label for="split_by_company" class="flex cursor-pointer select-none items-center gap-2.5">
+            <input id="split_by_company" type="checkbox" v-model="splitByCompany" :disabled="!is_active"
+              class="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500" />
+            <span class="text-sm font-medium text-slate-500">{{ t('billing_block.split_by_company') }}</span>
+          </label>
+          <p class="mt-1 text-xs text-slate-400">{{ t('billing_block.split_by_company_help') }}</p>
         </div>
         <div class="mb-2">
           <div class="flex">

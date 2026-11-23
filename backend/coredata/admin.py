@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import ConfigProject,Address, Street, StreetType, Person, City, Province, PostalCode, PersonBank, PersonAddress, PersonCNAE, Bank, PersonContact, Country, CNAE, StreetNumber, CallRegister, IdentificationType, Holiday, DeployRecord
+from .models import ConfigProject,Address, Street, StreetType, Person, City, Province, PostalCode, PersonBank, PersonAddress, PersonCNAE, Bank, PersonContact, Country, CNAE, StreetNumber, CallRegister, IdentificationType, Holiday, DeployRecord, PersonAnomalyType
         
 @admin.register(ConfigProject)
 class ConfigProjectAdmin(admin.ModelAdmin):
@@ -37,9 +37,14 @@ class StreetTypeAdmin(admin.ModelAdmin):
 class PersonAdmin(admin.ModelAdmin):
     list_display = ('id', 'name', 'surname', 'token','is_juridic')
 
+@admin.register(PersonAnomalyType)
+class PersonAnomalyTypeAdmin(admin.ModelAdmin):
+    list_display = ('id', 'token', 'name', 'opens_process', 'position', 'is_active')
+
 @admin.register(PersonBank)
 class PersonBankAdmin(admin.ModelAdmin):
-    list_display = ('id','token', 'iban', 'country', 'role')
+    list_display = ('id','token', 'iban', 'origin', 'country', 'role')
+    list_filter = ('origin',)
 
 @admin.register(PersonAddress)
 class PersonAddressAdmin(admin.ModelAdmin):

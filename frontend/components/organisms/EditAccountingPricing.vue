@@ -175,6 +175,130 @@ const returnCategoryOverrideCount = computed(() =>
     ].filter((value) => value != null).length,
 );
 
+const CONCEPT_RULE_FIELD_OPTIONS = [
+    { token: 'customer_token_final', nameKey: 'pricing_block.accounting_pricing_concept_rule_field_customer' },
+    { token: 'payer_token_final', nameKey: 'pricing_block.accounting_pricing_concept_rule_field_payer' },
+    { token: 'payment_type_token_final', nameKey: 'pricing_block.accounting_pricing_concept_rule_field_payment_type' },
+    { token: 'origin_id', nameKey: 'pricing_block.accounting_pricing_concept_rule_field_origin' },
+    { token: 'use_type_id', nameKey: 'pricing_block.accounting_pricing_concept_rule_field_use_type' },
+    { token: 'invoice_category', nameKey: 'pricing_block.accounting_pricing_concept_rule_field_invoice_category' },
+];
+const CONCEPT_RULE_OP_OPTIONS = [
+    { token: 'eq', nameKey: 'pricing_block.accounting_pricing_concept_rule_op_eq' },
+    { token: 'ne', nameKey: 'pricing_block.accounting_pricing_concept_rule_op_ne' },
+    { token: 'startswith', nameKey: 'pricing_block.accounting_pricing_concept_rule_op_startswith' },
+    { token: 'contains', nameKey: 'pricing_block.accounting_pricing_concept_rule_op_contains' },
+];
+const CONCEPT_RULE_ID_FIELDS = new Set(['origin_id', 'use_type_id', 'invoice_category']);
+
+const emptyConceptTokenRule = (position = 0) => ({
+    field: 'customer_token_final',
+    op: 'eq',
+    value: '',
+    concept_token: '',
+    apply_to_return: false,
+    position,
+});
+
+const normalizeConceptTokenRules = (raw) => {
+    if (!Array.isArray(raw)) return [];
+    return raw
+        .filter((item) => item && typeof item === 'object')
+        .map((item, index) => ({
+            field: item.field || 'customer_token_final',
+            op: item.op || 'eq',
+            value: item.value == null ? '' : String(item.value),
+            concept_token: item.concept_token || '',
+            apply_to_return: !!item.apply_to_return,
+            position: Number.isFinite(Number(item.position)) ? Number(item.position) : index,
+        }))
+        .sort((a, b) => a.position - b.position)
+        .map((item, index) => ({ ...item, position: index }));
+};
+
+const conceptTokenRules = ref([]);
+
+const conceptRuleFieldOptions = computed(() =>
+    CONCEPT_RULE_FIELD_OPTIONS.map((option) => ({
+        token: option.token,
+        name: t(option.nameKey),
+    })),
+);
+const conceptRuleOpOptionsFor = (field) => {
+    const ops = CONCEPT_RULE_ID_FIELDS.has(field)
+        ? CONCEPT_RULE_OP_OPTIONS.filter((op) => op.token === 'eq' || op.token === 'ne')
+        : CONCEPT_RULE_OP_OPTIONS;
+    return ops.map((option) => ({
+        token: option.token,
+        name: t(option.nameKey),
+    }));
+};
+const conceptRuleFieldLabel = (field) =>
+    conceptRuleFieldOptions.value.find((option) => option.token === field)?.name || field;
+const conceptRuleOpLabel = (op) => {
+    const found = CONCEPT_RULE_OP_OPTIONS.find((option) => option.token === op);
+    return found ? t(found.nameKey) : op;
+};
+
+const conceptTokenRulesSummaryChips = computed(() => {
+    const rules = conceptTokenRules.value || [];
+    if (!rules.length) return [];
+    const chips = [
+        {
+            key: 'count',
+            label: t('pricing_block.accounting_pricing_concept_token_rules_count', {
+                count: rules.length,
+            }),
+            value: '',
+        },
+    ];
+    const first = rules[0];
+    if (first?.concept_token?.trim()) {
+        chips.push({
+            key: 'first',
+            label: conceptRuleFieldLabel(first.field),
+            value: `${conceptRuleOpLabel(first.op)} → ${first.concept_token.trim()}`,
+        });
+    }
+    return chips;
+});
+
+const addConceptTokenRule = () => {
+    conceptTokenRules.value = [
+        ...conceptTokenRules.value,
+        emptyConceptTokenRule(conceptTokenRules.value.length),
+    ];
+};
+const removeConceptTokenRule = (index) => {
+    conceptTokenRules.value = conceptTokenRules.value
+        .filter((_, i) => i !== index)
+        .map((rule, i) => ({ ...rule, position: i }));
+};
+const moveConceptTokenRule = (index, delta) => {
+    const next = [...conceptTokenRules.value];
+    const target = index + delta;
+    if (target < 0 || target >= next.length) return;
+    const [row] = next.splice(index, 1);
+    next.splice(target, 0, row);
+    conceptTokenRules.value = next.map((rule, i) => ({ ...rule, position: i }));
+};
+const onConceptRuleFieldChange = (rule) => {
+    if (CONCEPT_RULE_ID_FIELDS.has(rule.field) && !['eq', 'ne'].includes(rule.op)) {
+        rule.op = 'eq';
+    }
+};
+const serializeConceptTokenRules = () =>
+    normalizeConceptTokenRules(conceptTokenRules.value)
+        .filter((rule) => (rule.concept_token || '').trim() && (rule.field || '').trim())
+        .map((rule, index) => ({
+            field: rule.field,
+            op: rule.op || 'eq',
+            value: rule.value,
+            concept_token: (rule.concept_token || '').trim(),
+            apply_to_return: !!rule.apply_to_return,
+            position: index,
+        }));
+
 const tokenReturnSummaryChips = computed(() => {
     const chips = [];
     if (tokenReturn.value?.trim()) {
@@ -211,6 +335,8 @@ const selectedPaymentOrigin = ref(null);
 /** Payment only. Grouped BANK_PAYMENT lines are summed per movement origin. */
 const separateByPaymentOrigin = ref(false);
 const is_default = ref(false);
+/** Lineitem/payment: catch amounts not claimed by a more specific pricing. */
+const coversUndeclared = ref(false);
 const is_active = ref(true);
 const selectedExploitation = ref(null);
 const selectedCompany = ref(null);
@@ -1122,13 +1248,26 @@ const movementScopeHint = computed(() => {
     return t('pricing_block.accounting_pricing_movement_outgoing_hint');
 });
 
+/** covers_undeclared lineitem/payment = REST catch-all; relations are optional. */
+const showsCoversUndeclared = computed(
+    () =>
+        selectedCategory.value === 'lineitem' || selectedCategory.value === 'payment',
+);
+
+const isRestCatchAll = computed(
+    () => coversUndeclared.value && showsCoversUndeclared.value,
+);
+
 const relationsReady = computed(() => {
     if (!selectedCategory.value || !selectedAccountingConcept.value) return false;
     if (selectedCategory.value === 'invoice') return !!selectedInvoiceCategory.value;
     if (selectedCategory.value === 'payment') {
-        return selectedPaymentTypes.value.length > 0 && !!selectedPaymentCategory.value;
+        if (!selectedPaymentCategory.value) return false;
+        return isRestCatchAll.value || selectedPaymentTypes.value.length > 0;
     }
-    if (selectedCategory.value === 'lineitem') return selectedProducts.value.length > 0;
+    if (selectedCategory.value === 'lineitem') {
+        return isRestCatchAll.value || selectedProducts.value.length > 0;
+    }
     return false;
 });
 
@@ -1451,6 +1590,7 @@ const clearCategoryRelations = () => {
     priceVariables.value = [];
     valueAssignments.value = {};
     groupValues.value = true;
+    coversUndeclared.value = false;
     resetIbanPaymentScope();
     resetInvoiceScope();
     resetPaymentScope();
@@ -1986,6 +2126,7 @@ const getAccountingPricingData = async () => {
         name.value = response.name || '';
         declaredAs.value = response.declared_as || '';
         declaredAsReturn.value = response.declared_as_return || '';
+        conceptTokenRules.value = normalizeConceptTokenRules(response.concept_token_rules);
         declareAs.value = normalizeDeclareAs(response.declare_as);
         declareSign.value = normalizeSign(response.declare_sign);
         returnDeclareAs.value = normalizeDeclareAs(response.return_declare_as);
@@ -1997,6 +2138,7 @@ const getAccountingPricingData = async () => {
         returnDeclareAsLineitem.value = optionalDeclareAs(response.return_declare_as_lineitem);
         returnSignLineitem.value = optionalSign(response.return_sign_lineitem);
         is_default.value = !!response.is_default;
+        coversUndeclared.value = !!response.covers_undeclared;
         is_active.value = response.is_active !== false;
         groupValues.value = response.grouped_lines !== false;
 
@@ -2210,6 +2352,7 @@ const buildBasePayload = () => ({
     name: (name.value || '').trim(),
     declared_as: optionalText(declaredAs.value),
     declared_as_return: optionalText(declaredAsReturn.value),
+    concept_token_rules: serializeConceptTokenRules(),
     declare_as: normalizeDeclareAs(declareAs.value),
     declare_sign: normalizeSign(declareSign.value),
     return_declare_as: normalizeDeclareAs(returnDeclareAs.value),
@@ -2221,6 +2364,7 @@ const buildBasePayload = () => ({
     return_declare_as_lineitem: returnDeclareAsLineitem.value,
     return_sign_lineitem: returnSignLineitem.value,
     is_default: is_default.value,
+    covers_undeclared: showsCoversUndeclared.value ? coversUndeclared.value : false,
     is_active: is_active.value,
     group_values: groupValues.value,
     separate_by_type: selectedCategory.value === 'payment' && groupValues.value ? !!separateByType.value : false,
@@ -2407,6 +2551,7 @@ const buildSaveEntries = () => {
                 name: name.value.trim(),
                 declared_as: optionalText(declaredAs.value),
                 is_default: is_default.value,
+                covers_undeclared: isRestCatchAll.value,
                 group_values: groupValues.value,
                 cost_center: showsCostCenter.value
                     ? costCenterIdOf(selectedCostCenter.value)
@@ -2436,6 +2581,7 @@ const buildSaveEntries = () => {
                 name: resolvedName,
                 declared_as: resolvedDeclaredAs,
                 is_default: row.useDefault ? is_default.value : false,
+                covers_undeclared: false,
                 group_values: false,
                 cost_center: resolvedCostCenterId,
                 ...scoped,
@@ -2452,6 +2598,7 @@ const buildSaveEntries = () => {
                 name: resolvedName,
                 declared_as: resolvedDeclaredAs,
                 is_default: row.useDefault ? is_default.value : false,
+                covers_undeclared: false,
                 group_values: true,
                 cost_center: resolvedCostCenterId,
                 ...emptyRelationPayload(),
@@ -2475,6 +2622,7 @@ const buildSaveEntries = () => {
                 name: name.value.trim(),
                 declared_as: optionalText(declaredAs.value),
                 is_default: is_default.value,
+                covers_undeclared: isRestCatchAll.value,
                 group_values: groupValues.value,
                 cost_center: showsCostCenter.value
                     ? costCenterIdOf(selectedCostCenter.value)
@@ -2494,12 +2642,12 @@ const isValid = () => {
     if (!selectedAccountingConcept.value) return false;
 
     if (selectedCategory.value === 'payment') {
-        if (!selectedPaymentTypes.value.length) return false;
         if (!selectedPaymentCategory.value) return false;
+        if (!isRestCatchAll.value && !selectedPaymentTypes.value.length) return false;
     }
 
     if (selectedCategory.value === 'lineitem') {
-        if (!selectedProducts.value.length) return false;
+        if (!isRestCatchAll.value && !selectedProducts.value.length) return false;
     }
 
     if (selectedCategory.value === 'invoice') {
@@ -2571,6 +2719,7 @@ const save = async () => {
                 name: entry.name || base.name,
                 declared_as: entry.declared_as ?? base.declared_as,
                 is_default: entry.is_default,
+                covers_undeclared: entry.covers_undeclared ?? false,
                 grouped_lines: entry.grouped_lines,
                 separate_by_type: selectedCategory.value === 'payment' && groupValues.value ? !!separateByType.value : false,
                 separate_by_origin: selectedCategory.value === 'invoice' && !!entry.group_values ? !!separateByOrigin.value : false,
@@ -2729,6 +2878,20 @@ onMounted(async () => {
                     :aria-pressed="is_default" @click="is_default = !is_default">
                     {{ t('default') }}
                 </button>
+                <div v-if="showsCoversUndeclared" class="flex flex-col items-end gap-1">
+                    <button type="button"
+                        class="rounded-md border px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.14em] transition-colors"
+                        :class="coversUndeclared
+                            ? 'border-[var(--accent)] bg-[var(--accent)] text-white'
+                            : 'border-[var(--accent-soft)] bg-white text-[var(--accent)] hover:bg-[var(--accent-soft)]/40'"
+                        :aria-pressed="coversUndeclared"
+                        @click="coversUndeclared = !coversUndeclared">
+                        {{ t('pricing_block.accounting_pricing_covers_undeclared') }}
+                    </button>
+                    <p v-if="coversUndeclared" class="max-w-[16rem] text-right text-[10px] leading-snug text-slate-500">
+                        {{ t('pricing_block.accounting_pricing_rest_catch_all_hint') }}
+                    </p>
+                </div>
                 <button type="button"
                     class="rounded-md border px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.14em] transition-colors"
                     :class="is_active
@@ -3005,7 +3168,11 @@ onMounted(async () => {
                                 <span class="font-mono text-[10px] font-bold tracking-[0.14em]"
                                     style="color: var(--accent-soft)">02</span>
                                 <h3 class="text-[13px] font-bold text-sky-950">
-                                    {{ t('payment_types') }} *
+                                    {{ t('payment_types') }}
+                                    <span v-if="!isRestCatchAll">*</span>
+                                    <span v-else class="font-normal normal-case tracking-normal text-slate-400">
+                                        ({{ t('common.optional') }})
+                                    </span>
                                 </h3>
                             </div>
                             <button type="button"
@@ -3014,8 +3181,12 @@ onMounted(async () => {
                                 {{ t('common.select_all') }}
                             </button>
                         </div>
+                        <p v-if="isRestCatchAll" class="mb-2 text-[11px] leading-snug text-slate-500">
+                            {{ t('pricing_block.accounting_pricing_rest_relations_optional_hint') }}
+                        </p>
                         <v-select :model-value="selectedPaymentTypes" :options="paymentTypes" multiple append-to-body
-                            class="block w-full" :class="{ invalid: attemptedSave && !selectedPaymentTypes.length }"
+                            class="block w-full"
+                            :class="{ invalid: attemptedSave && !isRestCatchAll && !selectedPaymentTypes.length }"
                             @update:model-value="onPaymentTypesChange">
                             <template #no-options>
                                 {{ t('common.no_records') }}
@@ -3133,7 +3304,10 @@ onMounted(async () => {
                             </h3>
                         </div>
 
-                        <p v-if="showLineitemCascadeHint" class="text-[11px] leading-snug text-slate-500">
+                        <p v-if="isRestCatchAll" class="text-[11px] leading-snug text-slate-500">
+                            {{ t('pricing_block.accounting_pricing_rest_relations_optional_hint') }}
+                        </p>
+                        <p v-else-if="showLineitemCascadeHint" class="text-[11px] leading-snug text-slate-500">
                             {{ t('pricing_block.accounting_pricing_lineitem_cascade_hint') }}
                             {{ t('pricing_block.accounting_pricing_unselected_keep_default_hint') }}
                         </p>
@@ -3141,7 +3315,11 @@ onMounted(async () => {
                         <div>
                             <div class="mb-1.5 flex flex-wrap items-center justify-between gap-2">
                                 <label class="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                                    {{ t('common.products') }} *
+                                    {{ t('common.products') }}
+                                    <span v-if="!isRestCatchAll">*</span>
+                                    <span v-else class="font-normal normal-case tracking-normal">
+                                        ({{ t('common.optional') }})
+                                    </span>
                                 </label>
                                 <button type="button"
                                     class="rounded-md bg-[var(--accent-soft)] px-2.5 py-1 text-[10px] font-semibold text-[var(--accent)] transition-colors hover:bg-[var(--accent)] hover:text-white disabled:opacity-50"
@@ -3150,7 +3328,8 @@ onMounted(async () => {
                                 </button>
                             </div>
                             <v-select :model-value="selectedProducts" :options="products" multiple class="block w-full"
-                                :disabled="isEditing" :class="{ invalid: attemptedSave && !selectedProducts.length }"
+                                :disabled="isEditing"
+                                :class="{ invalid: attemptedSave && !isRestCatchAll && !selectedProducts.length }"
                                 @update:model-value="onProductsChange">
                                 <template #no-options>
                                     {{ t('common.no_records') }}
@@ -3674,6 +3853,143 @@ onMounted(async () => {
                                                 :placeholder="tokenReturn || t('pricing_block.accounting_pricing_token_return_default')" />
                                         </div>
                                     </div>
+                                </div>
+                            </details>
+
+                            <details class="group/rules sm:col-span-2 overflow-hidden rounded-md border bg-white"
+                                style="border-color: var(--accent-soft)">
+                                <summary
+                                    class="flex cursor-pointer list-none items-start justify-between gap-3 px-3 py-2.5 outline-none transition-colors hover:bg-sky-50/70 [&::-webkit-details-marker]:hidden"
+                                    style="background-color: color-mix(in srgb, var(--accent-soft) 14%, white)">
+                                    <div class="min-w-0 flex-1">
+                                        <div class="flex flex-wrap items-center gap-2">
+                                            <span
+                                                class="inline-flex size-5 items-center justify-center rounded bg-[var(--accent)]/10 font-mono text-[10px] font-bold text-[var(--accent)]">
+                                                ?
+                                            </span>
+                                            <span class="text-[12px] font-bold uppercase tracking-[0.1em] text-sky-950">
+                                                {{ t('pricing_block.accounting_pricing_concept_token_rules') }}
+                                            </span>
+                                            <span
+                                                class="rounded-md bg-white/80 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-slate-500 ring-1 ring-slate-200">
+                                                {{ t('common.optional') }}
+                                            </span>
+                                        </div>
+                                        <div class="mt-2 flex flex-wrap gap-1.5">
+                                            <template v-if="conceptTokenRulesSummaryChips.length">
+                                                <span v-for="chip in conceptTokenRulesSummaryChips" :key="chip.key"
+                                                    class="inline-flex max-w-full items-center gap-1 rounded-md bg-white/90 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-sky-900 ring-1 ring-[var(--accent-soft)]">
+                                                    <span class="text-slate-400">{{ chip.label }}</span>
+                                                    <span v-if="chip.value"
+                                                        class="truncate font-mono normal-case tracking-normal text-[var(--accent)]">{{ chip.value }}</span>
+                                                </span>
+                                            </template>
+                                            <span v-else
+                                                class="rounded-md bg-white/80 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-slate-400 ring-1 ring-slate-200">
+                                                {{ t('pricing_block.accounting_pricing_concept_token_rules_empty') }}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <Icon name="fa6-solid:chevron-down"
+                                        class="mt-0.5 size-3.5 shrink-0 text-slate-400 transition-transform duration-200 group-open/rules:rotate-180" />
+                                </summary>
+
+                                <div class="space-y-3 border-t px-3 py-3"
+                                    style="border-color: color-mix(in srgb, var(--accent-soft) 55%, transparent)">
+                                    <p class="text-[11px] leading-snug text-slate-500">
+                                        {{ t('pricing_block.accounting_pricing_concept_token_rules_hint') }}
+                                    </p>
+
+                                    <div v-if="!conceptTokenRules.length"
+                                        class="rounded-md border border-dashed border-slate-200 px-3 py-4 text-center text-[11px] text-slate-400">
+                                        {{ t('pricing_block.accounting_pricing_concept_token_rules_empty') }}
+                                    </div>
+
+                                    <div v-for="(rule, index) in conceptTokenRules" :key="`concept-rule-${index}`"
+                                        class="space-y-2 rounded-md border border-slate-100 bg-slate-50/70 px-2.5 py-2">
+                                        <div class="flex items-center justify-between gap-2">
+                                            <span class="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                                {{ t('pricing_block.accounting_pricing_concept_token_rule') }}
+                                                {{ index + 1 }}
+                                            </span>
+                                            <div class="flex items-center gap-1">
+                                                <button type="button"
+                                                    class="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500 hover:bg-white disabled:opacity-40"
+                                                    :disabled="!!existingSelection || index === 0"
+                                                    @click="moveConceptTokenRule(index, -1)">
+                                                    ↑
+                                                </button>
+                                                <button type="button"
+                                                    class="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500 hover:bg-white disabled:opacity-40"
+                                                    :disabled="!!existingSelection || index === conceptTokenRules.length - 1"
+                                                    @click="moveConceptTokenRule(index, 1)">
+                                                    ↓
+                                                </button>
+                                                <button type="button"
+                                                    class="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-rose-600 hover:bg-rose-50 disabled:opacity-40"
+                                                    :disabled="!!existingSelection"
+                                                    @click="removeConceptTokenRule(index)">
+                                                    {{ t('common.delete') }}
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                                            <div>
+                                                <label
+                                                    class="mb-1 block text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                                    {{ t('pricing_block.accounting_pricing_concept_rule_field') }}
+                                                </label>
+                                                <v-select v-model="rule.field" :options="conceptRuleFieldOptions"
+                                                    :reduce="(option) => option.token" label="name"
+                                                    class="block w-full" :clearable="false" append-to-body
+                                                    :disabled="!!existingSelection"
+                                                    @update:model-value="onConceptRuleFieldChange(rule)" />
+                                            </div>
+                                            <div>
+                                                <label
+                                                    class="mb-1 block text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                                    {{ t('pricing_block.accounting_pricing_concept_rule_op') }}
+                                                </label>
+                                                <v-select v-model="rule.op"
+                                                    :options="conceptRuleOpOptionsFor(rule.field)"
+                                                    :reduce="(option) => option.token" label="name"
+                                                    class="block w-full" :clearable="false" append-to-body
+                                                    :disabled="!!existingSelection" />
+                                            </div>
+                                            <div>
+                                                <label
+                                                    class="mb-1 block text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                                    {{ t('pricing_block.accounting_pricing_concept_rule_value') }}
+                                                </label>
+                                                <input v-model="rule.value" type="text" class="input"
+                                                    :disabled="!!existingSelection"
+                                                    :placeholder="t('pricing_block.accounting_pricing_concept_rule_value')" />
+                                            </div>
+                                            <div>
+                                                <label
+                                                    class="mb-1 block text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                                    {{ t('pricing_block.accounting_pricing_concept_rule_concept_token') }}
+                                                </label>
+                                                <input v-model="rule.concept_token" type="text" class="input font-mono"
+                                                    :disabled="!!existingSelection"
+                                                    :placeholder="t('pricing_block.accounting_pricing_concept_rule_concept_token')" />
+                                            </div>
+                                        </div>
+                                        <label class="inline-flex items-center gap-2 text-[11px] text-sky-950"
+                                            :class="existingSelection ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'">
+                                            <input v-model="rule.apply_to_return" type="checkbox" class="checkbox"
+                                                :disabled="!!existingSelection" />
+                                            <span>{{ t('pricing_block.accounting_pricing_concept_rule_apply_to_return') }}</span>
+                                        </label>
+                                    </div>
+
+                                    <button type="button"
+                                        class="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-sky-950 transition-colors hover:bg-sky-50 disabled:opacity-50"
+                                        :disabled="!!existingSelection"
+                                        @click="addConceptTokenRule">
+                                        <Icon name="fa6-solid:plus" class="size-3" />
+                                        {{ t('pricing_block.accounting_pricing_concept_token_rules_add') }}
+                                    </button>
                                 </div>
                             </details>
 

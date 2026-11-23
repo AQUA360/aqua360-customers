@@ -3,6 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.filters import OrderingFilter
+from rest_framework.metadata import SimpleMetadata
 from django_filters.rest_framework import DjangoFilterBackend
 
 from django.contrib.auth.models import Group
@@ -12,15 +13,26 @@ from billing.models import Invoice
 from verifactu.models import VerifactuNotification, VerifactuNotificationLog, VerifactuBatch
 from verifactu.serializers.verifactu_serializer import VerifactuBatchSerializer, VerifactuNotificationLogSerializer, VerifactuNotificationSerializer
 from verifactu.filters.verifactu_notification_filter import VerifactuNotificationFilter
+from verifactu.permissions import VerifactuPermission
 from verifactu.utils.save_verifactu_info import create_verifactu_invoice
 import logging
 
 logger = logging.getLogger(__name__)
 
 
-class VerifactuNotificationViewSet(viewsets.ModelViewSet):
+class NotifyVerifactuMetadata(SimpleMetadata):
+    """`notify-verifactu` rep l'id de la factura, no el de la notificació: les
+    metadades (OPTIONS) no descriuen el PUT, perquè `get_object()` fallaria (500)."""
+
+    def determine_actions(self, request, view):
+        return {}
+
+
+# Els registres de Verifactu són la traça del que s'ha enviat a l'AEAT: per l'API
+# només es consulten; les altes es fan des de la factura (`notify-verifactu`).
+class VerifactuNotificationViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = VerifactuNotification.objects.all().order_by('-created_at')
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, VerifactuPermission]
     serializer_class = VerifactuNotificationSerializer
     filter_backends = [DjangoFilterBackend, OrderingFilter]
     filterset_class = VerifactuNotificationFilter
@@ -31,7 +43,8 @@ class VerifactuNotificationViewSet(viewsets.ModelViewSet):
         context['request'] = self.request
         return context
     
-    @action(detail=False, methods=['put'], url_path='(?P<invoice_id>[^/.]+)/notify-verifactu')
+    @action(detail=False, methods=['put'], url_path='(?P<invoice_id>[^/.]+)/notify-verifactu',
+            metadata_class=NotifyVerifactuMetadata)
     def notify_verifactu(self, request, invoice_id=None):
         if not invoice_id:
             return Response(
@@ -86,7 +99,7 @@ class VerifactuNotificationViewSet(viewsets.ModelViewSet):
     def permissions(self, request):
         pk = request.query_params.get('id')
         if pk:
-            user_permissions = PermissionManager.get_model_permissions(request.user, 'auth', 'group')
+            user_permissions = PermissionManager.get_model_permissions(request.user, 'group', 'auth')
             if not user_permissions['can_view'] or not user_permissions['can_change'] or not request.user.is_superuser:
                 return Response( None, status=status.HTTP_403_FORBIDDEN )
             group = Group.objects.filter(id=pk).first()
@@ -102,9 +115,9 @@ class VerifactuNotificationViewSet(viewsets.ModelViewSet):
             return [IsAuthenticated()]
         return super().get_permissions()
 
-class VerifactuBatchViewSet(viewsets.ModelViewSet):
+class VerifactuBatchViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = VerifactuBatch.objects.all().order_by('-created_at')
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, VerifactuPermission]
     serializer_class = VerifactuBatchSerializer
     
     def get_serializer_context(self):
@@ -117,7 +130,7 @@ class VerifactuBatchViewSet(viewsets.ModelViewSet):
     def permissions(self, request):
         pk = request.query_params.get('id')
         if pk:
-            user_permissions = PermissionManager.get_model_permissions(request.user, 'auth', 'group')
+            user_permissions = PermissionManager.get_model_permissions(request.user, 'group', 'auth')
             if not user_permissions['can_view'] or not user_permissions['can_change'] or not request.user.is_superuser:
                 return Response( None, status=status.HTTP_403_FORBIDDEN )
             group = Group.objects.filter(id=pk).first()

@@ -3,7 +3,7 @@ from django.utils.dateparse import parse_date
 from rest_framework.decorators import action
 
 from rest_framework import viewsets
-from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
+from rest_framework.permissions import IsAuthenticated
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 
@@ -19,6 +19,7 @@ from rest_framework.filters import OrderingFilter
 from django.db.models import Q
 
 from contract.models import (Bail, BailStatus, Contract)
+from contract.permissions import BailPermission, required_permission_class
 from contract.serializers.bail_serializer import (BailSerializer, BailListSerializer)
 
 from logger.models import LogBailStatus
@@ -30,7 +31,7 @@ logger = logging.getLogger(__name__)
 class BailViewSet(viewsets.ModelViewSet):
     queryset = Bail.objects.all().order_by('-status', 'payment_date')
     serializer_class = BailSerializer
-    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    permission_classes = [IsAuthenticated, BailPermission]
     filterset_class = BailFilter
     filter_backends = [DjangoFilterBackend, OrderingFilter]
     search_fields = ['token', 'contract__token', 'contract__holder',
@@ -115,7 +116,7 @@ class BailViewSet(viewsets.ModelViewSet):
     def permissions(self, request):
         pk = request.query_params.get('id')
         if pk:
-            user_permissions = PermissionManager.get_model_permissions(request.user, 'auth', 'group')
+            user_permissions = PermissionManager.get_model_permissions(request.user, 'group', 'auth')
             if not user_permissions['can_view'] or not user_permissions['can_change'] or not request.user.is_superuser:
                 return Response( None, status=status.HTTP_403_FORBIDDEN )
             group = Group.objects.filter(id=pk).first()
@@ -129,4 +130,7 @@ class BailViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action == 'permissions':
             return [IsAuthenticated()]
+        if self.action in ('liquidate_bail', 'return_bail_immediately', 'cancel_bail'):
+            # Són POST, però actuen sobre fiances existents: exigim `change_bail`.
+            return [IsAuthenticated(), required_permission_class('contract.change_bail')()]
         return super().get_permissions()

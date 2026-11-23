@@ -30,7 +30,9 @@ class MainPermission(models.Model):
     all_recommended = models.BooleanField(default=False)
     is_default = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
-    
+    # Si True, el change_key només el té el superusuari (no es pot donar a grups).
+    change_requires_superuser = models.BooleanField(default=False)
+
     def __str__(self):
         return self.name
 
@@ -404,6 +406,56 @@ class PersonObservation(models.Model):
             return "PersonObservation {}".format(self.id)
     
 
+class PersonAnomalyType(models.Model):
+    """Catàleg de tipus d'anomalia d'una persona (DNI/CIF incorrecte, IBAN incorrecte, difunt, insolvent...)."""
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    token = models.CharField(max_length=50, unique=True)
+    name = models.CharField(max_length=255)
+    # Marca els tipus que obren un procés de gestió (p. ex. insolvència)
+    opens_process = models.BooleanField(default=False)
+    position = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['position', 'id']
+
+    def __str__(self):
+        return self.name
+
+
+class PersonAnomaly(models.Model):
+    """Anomalia d'una persona. És vigent mentre està activa i sense data de fi (o amb data de fi futura)."""
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    person = models.ForeignKey(Person, on_delete=models.CASCADE, related_name='anomalies')
+    anomaly_type = models.ForeignKey(PersonAnomalyType, on_delete=models.PROTECT, related_name='anomalies')
+    start_date = models.DateField()
+    end_date = models.DateField(null=True, blank=True)
+    observation = models.TextField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+
+    class Meta:
+        ordering = ['-start_date', '-id']
+
+    def __str__(self):
+        return f"{self.person_id} - {self.anomaly_type}"
+
+    @property
+    def is_current(self):
+        return self.is_active and (self.end_date is None or self.end_date > timezone.now().date())
+
+    @classmethod
+    def current_q(cls, prefix=''):
+        """Condició de vigència per filtrar (prefix p. ex. 'anomalies__')."""
+        today = timezone.now().date()
+        return (
+            models.Q(**{f'{prefix}is_active': True})
+            & (models.Q(**{f'{prefix}end_date__isnull': True}) | models.Q(**{f'{prefix}end_date__gt': today}))
+        )
+
+
 class PersonAddress(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -547,6 +599,14 @@ class Holiday(models.Model):
         return f"{self.date} {self.name or ''}".strip()
 
 class PersonBank(models.Model):
+    ORIGIN_OV = 'OV'
+    ORIGIN_MANUAL = 'MANUAL'
+    ORIGIN_HIST = 'HIST'
+    ORIGIN_CHOICES = (
+        (ORIGIN_OV, 'Oficina Virtual'),
+        (ORIGIN_MANUAL, 'Manual'),
+        (ORIGIN_HIST, 'Històric'),
+    )
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True, null=True, blank=True)
     token = models.CharField(max_length=255, null=True, blank=True)
@@ -559,6 +619,7 @@ class PersonBank(models.Model):
     account_number = models.CharField(max_length=255, null=True, blank=True)
     swift = models.CharField(max_length=255, null=True, blank=True)
     iban = models.CharField(max_length=255, null=True, blank=True)
+    origin = models.CharField(max_length=10, choices=ORIGIN_CHOICES, default=ORIGIN_HIST)
     is_default = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     deactivated_at = models.DateTimeField(null=True, blank=True)

@@ -2,7 +2,7 @@ from datetime import timedelta
 from rest_framework.decorators import action
 from rest_framework import viewsets, status
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.pagination import PageNumberPagination
 from django.db.models import Case, When, Value, IntegerField, F, Q, CharField
 from django.db.models.functions import Coalesce
@@ -14,6 +14,7 @@ from service.services.meter_change_service import (
 )
 
 from ..models import Order
+from ..permissions import OrderViewSetPermission, related_orders_scope
 from ..serializers.order_serializer import OrderSerializer, OrderListSerializer, OrderSaveSerializer
 from ..filters.order_filter import OrderFilter
 from django_filters.rest_framework import DjangoFilterBackend
@@ -55,7 +56,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         )
     )
     serializer_class = OrderSerializer
-    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    permission_classes = [IsAuthenticated, OrderViewSetPermission]
     filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
     filterset_class = OrderFilter
     search_fields = ['token', 'operators__name', 'type__name', 'related_contract_token']
@@ -103,10 +104,18 @@ class OrderViewSet(viewsets.ModelViewSet):
             return Response(serializer.data, status=status.HTTP_200_OK)
         except Order.DoesNotExist:
             return Response(
-                {"error": "Order not found"}, 
-                status=status.HTTP_204_NO_CONTENT
+                {"error": "Order not found"},
+                status=status.HTTP_404_NOT_FOUND
             )
-        
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        # Sense `view_order`, el llistat només pot tornar les ordres de les
+        # fitxes filtrades que l'usuari pot veure (vegeu OrderViewSetPermission).
+        if self.action == 'list' and not self.request.user.has_perm('order.view_order'):
+            queryset = queryset.filter(related_orders_scope(self.request)).distinct()
+        return queryset
+
     def get_serializer_class(self):
         if self.action == 'list':  
             return OrderListSerializer

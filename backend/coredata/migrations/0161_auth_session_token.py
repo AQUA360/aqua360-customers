@@ -9,7 +9,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('coredata', '0157_deploy_record'),
+        ('coredata', '0160_person_anomaly'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 

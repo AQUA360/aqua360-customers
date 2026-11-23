@@ -5,6 +5,7 @@ import _ from 'lodash';
 import { useToast } from 'vue-toastification';
 import { usePermissions } from '~/middleware/permission';
 import AppLoading from '~/components/atoms/AppLoading.vue';
+import { CANONICAL_SUPERUSER_USERNAME, getUserRole } from '~/utils/roles';
 
 const props = defineProps({
   id: String,
@@ -25,7 +26,7 @@ const lastName = ref("");
 const email = ref(null);
 const password = ref(null);
 const repeatPassword = ref(null);
-const isSuperUser = ref(false);
+const userRole = ref('none'); // superuser | admin | none
 const groups = ref([]);
 const selectedGroupId = ref(null);
 
@@ -35,19 +36,32 @@ const isSubRegionOpen = ref(false);
 const showDetailComponent = ref(null);
 const showDetailId = ref(null);
 
-const has_permission = computed(() => {
-  if (permissions?.value?.permissions) {
-    const allPermissions = Object.values(permissions.value.permissions);
-    const allTrue = allPermissions.every(permission => permission === true);
-
-    const groupEmpty = Object.values(permissions.value.groups).every(group => group.length == 0);
-
-    if (allTrue && groupEmpty) {
-      return true;
-    }
-  }
-  return false;
+const canManageUsers = computed(() => Boolean(permissions?.value?.permissions?.change_user));
+const isCustomersAccount = computed(() => username.value === CANONICAL_SUPERUSER_USERNAME);
+const canSelectSuperuser = computed(() => isCustomersAccount.value);
+const groupSelectDisabled = computed(() => {
+  return !canManageUsers.value || userRole.value === 'superuser' || userRole.value === 'admin';
 });
+
+// Requisits de la contrasenya (el backend també els valida): mínim 8 caràcters i un número
+// per a tothom i, per als superusuaris, també una lletra i un caràcter especial
+const passwordRules = computed(() => {
+  const pwd = password.value || '';
+  const rules = [
+    { key: 'min_length', ok: pwd.length >= 8 },
+    { key: 'number', ok: /\p{N}/u.test(pwd) },
+  ];
+  if (userRole.value === 'superuser') {
+    rules.push(
+      { key: 'letter', ok: /\p{L}/u.test(pwd) },
+      { key: 'special', ok: /[^\p{L}\p{N}\s]/u.test(pwd) },
+    );
+  }
+  return rules;
+});
+
+// En crear sempre s'ha de posar contrasenya; en editar, només si es canvia
+const showPasswordRules = computed(() => !props.id || !!password.value);
 
 const getGroups = async () => {
   try {
@@ -69,7 +83,7 @@ const getData = async () => {
       firstName.value = response.first_name;
       lastName.value = response.last_name;
       email.value = response.email;
-      isSuperUser.value = response.is_superuser;
+      userRole.value = getUserRole(response);
       selectedGroupId.value = response.group_id || null;
     }
     else {
@@ -77,7 +91,7 @@ const getData = async () => {
       firstName.value = null;
       lastName.value = null;
       email.value = null;
-      isSuperUser.value = false;
+      userRole.value = 'none';
       selectedGroupId.value = null;
     }
   } catch (error) {
@@ -91,8 +105,13 @@ const save = async () => {
   attemptedSave.value = true;
   if (!isValid()) return;
 
-  if (!has_permission.value && isSuperUser.value) {
-    toast.error(t('user_group.warning_block'));
+  if (!canManageUsers.value) {
+    toast.error(t('common.no_permissions'));
+    return;
+  }
+
+  if (userRole.value === 'superuser' && !isCustomersAccount.value) {
+    toast.error(t('user_group.only_customers_superuser'));
     return;
   }
 
@@ -101,11 +120,11 @@ const save = async () => {
       if(!confirm(t('confirmation_text_block.confirm_change_password'))) return;
     }
   } else {
-    if (isSuperUser.value) {
-      if(!confirm(t('confirmation_text_block.confirm_create_superuser'))) return;
-    }
     if (password.value == null || password.value == '') {
       if(!confirm(t('confirmation_text_block.confirm_create_user_no_password'))) return;
+    }
+    if (userRole.value === 'superuser') {
+      if(!confirm(t('confirmation_text_block.confirm_create_superuser'))) return;
     }
   }
 
@@ -117,8 +136,8 @@ const save = async () => {
       first_name: firstName.value || '',
       last_name: lastName.value || '',
       email: email.value,
-      is_superuser: isSuperUser.value,
-      group_id: selectedGroupId.value
+      role: userRole.value,
+      group_id: userRole.value === 'none' ? selectedGroupId.value : null,
     }
 
     if (password.value != null && password.value != '') {
@@ -156,6 +175,10 @@ const deleteItem = async () => {
 }
 
 const isValid = () => {
+  if (showPasswordRules.value && passwordRules.value.some(rule => !rule.ok)) {
+    toast.warning(t('user_group.password_rules_not_met'));
+    return false;
+  }
   if (password.value != null && password.value != ''){
     if (password.value != repeatPassword.value){
       toast.warning(t('user_group.password_not_match'));
@@ -165,9 +188,15 @@ const isValid = () => {
   return username.value != null && username.value != '' && email.value != null && email.value != '';
 }
 
-watch(isSuperUser, (newValue) => {
-  if (newValue) {
+watch(userRole, (newValue) => {
+  if (newValue === 'superuser' || newValue === 'admin') {
     selectedGroupId.value = null;
+  }
+});
+
+watch(username, (newValue) => {
+  if (newValue !== CANONICAL_SUPERUSER_USERNAME && userRole.value === 'superuser') {
+    userRole.value = 'admin';
   }
 });
 
@@ -207,35 +236,56 @@ const handleSubRegionEvent = (value) => {
       <div class="row grid grid-cols-2 gap-3 my-3 items-center">
         <div>
           <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('common.username') }}</label>
-          <input type="text" v-model="username" class="input" :placeholder="'customers'"
-            :class="{ 'invalid': attemptedSave && (username == null || username == '') }" />
+          <input type="text" v-model="username" class="input" :placeholder="CANONICAL_SUPERUSER_USERNAME"
+            :disabled="!canManageUsers"
+            :class="{ 'invalid': attemptedSave && (username == null || username == ''), 'opacity-50 cursor-not-allowed': !canManageUsers }" />
         </div>
-        <div :class="{ 'opacity-50 cursor-not-allowed': !has_permission }">
-          <label class="flex items-center mt-2 ml-2 text-slate-700 gap-x-2" :class="{ 'cursor-not-allowed': !has_permission }">
-            <input v-model="isSuperUser" :disabled="!has_permission" type="checkbox" id="isSuperUser" name="isSuperUser" />&nbsp;
-            {{ t("common.admin") }}
-            <abbr :title="t('user_group.admin_permissions')"
-             class="flex items-center">
-              <Icon name="fa6-solid:circle-info" class="text-slate-500" />
-            </abbr>
-          </label>
+        <div>
+          <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('user_group.role') }}</label>
+          <div class="flex flex-col gap-2 ml-1" :class="{ 'opacity-50': !canManageUsers }">
+            <label class="flex items-center gap-x-2 text-slate-700"
+              :class="(canManageUsers && canSelectSuperuser) ? 'cursor-pointer' : 'cursor-not-allowed'">
+              <input v-model="userRole" value="superuser"
+                :disabled="!canManageUsers || !canSelectSuperuser" type="radio" name="userRole" />
+              {{ t('common.superuser') }}
+              <abbr :title="t('user_group.superuser_permissions')" class="flex items-center">
+                <Icon name="fa6-solid:circle-info" class="text-slate-500" />
+              </abbr>
+            </label>
+            <label class="flex items-center gap-x-2 text-slate-700" :class="canManageUsers ? 'cursor-pointer' : 'cursor-not-allowed'">
+              <input v-model="userRole" value="admin" :disabled="!canManageUsers || isCustomersAccount" type="radio" name="userRole" />
+              {{ t('common.admin') }}
+              <abbr :title="t('user_group.admin_permissions')" class="flex items-center">
+                <Icon name="fa6-solid:circle-info" class="text-slate-500" />
+              </abbr>
+            </label>
+            <label class="flex items-center gap-x-2 text-slate-700" :class="canManageUsers ? 'cursor-pointer' : 'cursor-not-allowed'">
+              <input v-model="userRole" value="none" :disabled="!canManageUsers || isCustomersAccount" type="radio" name="userRole" />
+              {{ t('user_group.role_none') }}
+              <abbr :title="t('user_group.role_none_permissions')" class="flex items-center">
+                <Icon name="fa6-solid:circle-info" class="text-slate-500" />
+              </abbr>
+            </label>
+          </div>
         </div>
         <div>
           <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('common.name') }}</label>
-          <input type="text" v-model="firstName" class="input" />
+          <input type="text" v-model="firstName" class="input" :disabled="!canManageUsers" :class="{ 'opacity-50 cursor-not-allowed': !canManageUsers }" />
         </div>
         <div>
           <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('common.surname') }}</label>
-          <input type="text" v-model="lastName" class="input" />
+          <input type="text" v-model="lastName" class="input" :disabled="!canManageUsers" :class="{ 'opacity-50 cursor-not-allowed': !canManageUsers }" />
         </div>
         <div>
           <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('common.email_long') }}</label>
           <input type="text" v-model="email" class="input" :placeholder="'customers@customers.com'"
-            :class="{ 'invalid': attemptedSave && (email == null || email == '') }" />
+            :disabled="!canManageUsers"
+            :class="{ 'invalid': attemptedSave && (email == null || email == ''), 'opacity-50 cursor-not-allowed': !canManageUsers }" />
         </div>
         <div>
           <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('group') }}</label>
-          <select v-model="selectedGroupId" :disabled="isSuperUser" class="input" :class="{ 'opacity-50 cursor-not-allowed': isSuperUser }">
+          <select v-model="selectedGroupId" :disabled="groupSelectDisabled" class="input"
+            :class="{ 'opacity-50 cursor-not-allowed': groupSelectDisabled }">
             <option :value="null">{{ t('None') }}</option>
             <option v-for="g in groups" :key="g.id" :value="g.id">{{ g.name }}</option>
           </select>
@@ -243,17 +293,28 @@ const handleSubRegionEvent = (value) => {
         <div>
           <label class="block text-sm font-medium text-slate-500 mb-2">{{ props.id? 
           `${t('common.change')} ${t('common.password')}` : t('common.password') }}</label>
-          <input type="password" v-model="password" class="input"/>
+          <input type="password" v-model="password" class="input" :disabled="!canManageUsers"
+            :class="{
+              'invalid': attemptedSave && showPasswordRules && passwordRules.some(rule => !rule.ok),
+              'opacity-50 cursor-not-allowed': !canManageUsers,
+            }" />
+          <ul v-if="showPasswordRules" class="mt-2 text-sm flex flex-wrap gap-x-4 gap-y-1">
+            <li v-for="rule in passwordRules" :key="rule.key" class="flex items-center gap-x-2"
+              :class="rule.ok ? 'text-green-600' : 'text-red-600'">
+              <Icon :name="rule.ok ? 'fa6-solid:circle-check' : 'fa6-solid:circle-xmark'" />
+              {{ t(`user_group.password_rule.${rule.key}`) }}
+            </li>
+          </ul>
         </div>
         <div>
           <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('user_group.repeat_password') }}</label>
-          <input type="password" v-model="repeatPassword" class="input"/>
+          <input type="password" v-model="repeatPassword" class="input" :disabled="!canManageUsers" :class="{ 'opacity-50 cursor-not-allowed': !canManageUsers }"/>
         </div>
       </div>
 
 
       <hr class="mb-2 col-span-2" />
-      <div class="col-span-2 flex flex-row-reverse gap-3 mt-4">
+      <div v-if="canManageUsers" class="col-span-2 flex flex-row-reverse gap-3 mt-4">
         <button v-if="id != null" @click="deleteItem" :disabled="saving" class="button-default">
           <Icon name="fa6-solid:trash" />&nbsp;{{ $t('common.delete') }}
         </button>

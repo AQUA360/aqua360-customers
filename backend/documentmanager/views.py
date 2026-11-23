@@ -27,7 +27,7 @@ from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
 import threading
 
-from PyPDF2 import PdfMerger
+from pypdf import PdfWriter
 import logging
 
 logger = logging.getLogger(__name__)
@@ -186,8 +186,16 @@ class DocumentViewSet(viewsets.ModelViewSet):
                     {"error": "No documents found with the provided IDs"},
                     status=status.HTTP_404_NOT_FOUND,
                 )
+            # Els XML de factura electrònica no es poden ajuntar al PDF: es descarreguen a part
+            documents = [document for document in documents if not document.is_einvoice_xml]
+            if not documents:
+                return Response(
+                    {"error": "Les factures electròniques no es poden descarregar en PDF."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            doc_ids = [document.id for document in documents]
             
-            merger = PdfMerger()
+            merger = PdfWriter()
             
             all_cloud = all(document.service in ['aws', 'azure'] for document in documents)
             if all_cloud:

@@ -8,6 +8,7 @@ from django.db.models import Q
 from billing.models import Billing, ReadingBatch, Reading
 from django.shortcuts import get_object_or_404
 from billing.utils.reading_filters import PENDING_READING_FILTER
+from billing.utils.reading_batch_billing_service import assign_company_readings
 from service.models import SupplyPoint
 from service.utils.route_scope import routes_supply_points_q
 import logging
@@ -60,6 +61,12 @@ class BillingPreInvoicesAssignReadingsViewSet(views.APIView):
             ).filter(
                 PENDING_READING_FILTER
             )
+
+            if billing.company_id:
+                return Response(
+                    {"num_assigned_readings": assign_company_readings(billing, readings_by_sp, readings_general_canonical)},
+                    status=status.HTTP_200_OK,
+                )
 
             readings_to_update = (readings_by_sp | readings_general_canonical).distinct()
             

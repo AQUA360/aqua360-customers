@@ -16,17 +16,26 @@ cd /path/al/projecte/aqua360-customers
 
 ### 2. Variables de entorno (`.env`)
 
-El `docker-compose.yml` carga el archivo `.env` (`env_file`) en los servicios `backend`, `celery-worker`, `celery-beat`, `gmao-consumer` y `frontend`, así que **debe existir** en la raíz del proyecto:
+El `docker-compose.yml` carga el archivo `.env` (`env_file`) en los servicios `backend`, `celery-worker`, `celery-beat` y `gmao-consumer`, así que **debe existir** en la raíz del proyecto:
 
 ```bash
 cp env.docker.example .env
 ```
 
+Cambia `SECRET_KEY` por una clave larga y aleatoria (se puede generar con `python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"`): es obligatoria y `docker compose` no arranca sin ella; con `DEBUG=False` el backend tampoco arranca con la clave del ejemplo. `DEBUG` es `False` por defecto; pon `DEBUG=True` solo para desarrollar.
+
 Edita `.env` si es necesario. Por ejemplo, si el puerto **5432** ya lo utiliza un PostgreSQL del sistema, define `POSTGRES_PORT=5433` (solo el puerto en la máquina host).
 
-Cualquier variable del `.env` (p. ej. `EMAIL_*`, `MSGRAPH_*`, `DOMAIN_MEDIA`, `CSRF_TRUSTED_ORIGINS`) llega a los contenedores. Las variables de conexión a la BD y a Redis (`DATABASE_*`, `CELERY_BROKER_URL`) las fija el propio compose, y el resto tienen valor por defecto en `docker-compose.yml`. `ENV` y `LANGUAGE` se aplican al build y a la ejecución del frontend.
+Cualquier variable del `.env` (p. ej. `EMAIL_*`, `MSGRAPH_*`, `DOMAIN_MEDIA`, `CSRF_TRUSTED_ORIGINS`) llega a los contenedores. Las variables de conexión a la BD y a Redis (`DATABASE_*`, `CELERY_BROKER_URL`) las fija el propio compose, y el resto tienen valor por defecto en `docker-compose.yml`. `ENV` y `LANGUAGE` se aplican al build y a la ejecución del frontend. El `frontend` no carga el `.env` entero (no debe recibir los secretos del backend): solo recibe las variables que lista su bloque `environment` del `docker-compose.yml`, y una variable nueva que lea al arrancar se debe añadir allí.
 
 ### 3. Construir y arrancar todos los servicios
+
+Antes de arrancar Compose, tanto en un servidor nuevo como en una instalación existente, prepara los volúmenes desde el directorio del proyecto. Ejecuta estas órdenes como root (o con `sudo`); el backend se ejecuta con UID/GID `1001:1001`. El cambio recursivo de propietario también cubre archivos y subdirectorios creados por los contenedores antiguos que se ejecutaban como root.
+
+```bash
+sudo mkdir -p docker-data/media docker-data/static docker-data/sync-control
+sudo chown -R 1001 docker-data/media docker-data/static docker-data/sync-control
+```
 
 Primera vez o después de cambios en los Dockerfiles o dependencias:
 
@@ -124,6 +133,8 @@ docker compose down -v
 
 ```bash
 git pull
+sudo mkdir -p docker-data/media docker-data/static docker-data/sync-control
+sudo chown -R 1001 docker-data/media docker-data/static docker-data/sync-control
 docker compose build frontend backend celery-worker celery-beat gmao-consumer
 docker compose up -d backend
 docker compose exec backend python manage.py migrate --noinput
@@ -140,6 +151,8 @@ Para usar una versión sin construir nada en el servidor, ponerla en el `.env` y
 ```bash
 # .env: CUSTOMERS_VERSION=v1.135.00
 docker compose pull
+sudo mkdir -p docker-data/media docker-data/static docker-data/sync-control
+sudo chown -R 1001 docker-data/media docker-data/static docker-data/sync-control
 docker compose up -d
 ```
 
@@ -157,7 +170,7 @@ Los servidores se despliegan con el playbook `playbooks/AquaCustomersDocker` del
 | `03-nginx-docker-cloudflare` | Certificados Cloudflare Origin y sitios Nginx hacia los puertos Docker |
 | `04-backup-db` | `backup_db.sh` (`pg_dump` dentro del contenedor `db`) y cron de backups |
 | `05-copy-backup-to-test` | Copia diaria del último backup al servidor de test |
-| `06-restore` | `restore.sh` y limpieza de BD antiguas (retención de 3 días) |
+| `06-restore` | `restore.sh` y limpieza de BD antiguas (retención de 3 días). En el servidor de test también crea `docker-data/sync-control/`: los administradores pueden desactivar la sincronización nocturna desde la etiqueta TEST/STAGING y entonces `restore.sh` no restaura |
 | `07-readonly-db-user` | Usuario PostgreSQL de solo lectura |
 
 En los servidores, los puertos del host no son los por defecto (`POSTGRES_PORT=5433`, `REDIS_PORT=6380`, `BACKEND_PORT=8001`, `FRONTEND_PORT=3001`) y se pueden cambiar por cliente en el inventario (`docker_*_port`) para que varias explotaciones compartan servidor. El `docker-compose.yml` de este repositorio es el mismo que despliega el playbook.

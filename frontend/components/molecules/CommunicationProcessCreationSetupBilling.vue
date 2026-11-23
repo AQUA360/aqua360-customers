@@ -34,16 +34,6 @@ const group_by_customer = ref(false)
 const consumptionSelect = ref([])
 const modificationSelect = ref([])
 
-const attachInvoices = ref(true)
-const attachReadings = ref(true)
-// Com van les factures per correu en aquest procés; buit = el que tingui configurat l'empresa.
-const invoiceEmailDelivery = ref('')
-const invoiceEmailDeliveryOptions = [
-  { value: '', label: 'service_block.invoice_email_delivery_company' },
-  { value: 'attachment', label: 'service_block.invoice_email_delivery_attachment' },
-  { value: 'ov_link', label: 'service_block.invoice_email_delivery_ov_link' },
-  { value: 'both', label: 'service_block.invoice_email_delivery_both' },
-]
 
 const consumptionOptions = [
   { value: 'responsible_consumption', name: 'responsible_consumption' },
@@ -144,9 +134,6 @@ const loadData = async (billingData) => {
   if (billingData?.series) selectedSeries.value = series.value.filter(c => billingData?.series.includes(c.code))
   if (billingData?.companies) selectedCompanies.value = companies.value.filter(c => billingData?.companies.includes(c.code))
   if (billingData?.rejection_types) selectedRejectionTypes.value = rejectionTypes.value.filter(c => billingData?.rejection_types.includes(c.code))
-  if (billingData?.attach_invoices) attachInvoices.value = billingData?.attach_invoices
-  if (billingData?.attach_readings) attachReadings.value = billingData?.attach_readings
-  if (billingData?.invoice_email_delivery) invoiceEmailDelivery.value = billingData?.invoice_email_delivery
 }
 
 const onInvoiceSelected = async (invoice) => {
@@ -190,8 +177,6 @@ const onBillingSelected = async (billing) => {
   returnStartDate.value = null
   returnEndDate.value = null
   selectedCompanies.value = []
-  attachInvoices.value = false
-  attachReadings.value = false
   if (!selectedAddedBilling.value.includes(billing)) {
     selectedAddedBilling.value.push(billing);
   }
@@ -224,17 +209,6 @@ const removeSelectedBilling = async (item) => {
   await emitChange()
 }
 
-const toggleAttachInvoices = async () => {
-  attachInvoices.value = !attachInvoices.value
-  if (!attachInvoices.value) attachReadings.value = false
-  await emitChange()
-}
-
-const toggleAttachReadings = async () => {
-  attachReadings.value = !attachReadings.value && attachInvoices.value
-  await emitChange()
-}
-
 const emitChange = () => {
   invoice_filter_data.value = {
     invoice_statuses: selectedInvoiceStatuses.value.map(c => c.code),
@@ -255,9 +229,6 @@ const emitChange = () => {
     modification: modificationSelect.value,
     series: selectedSeries.value.map(c => c.token),
     companies: selectedCompanies.value.map(c => c.token),
-    attach_invoices: attachInvoices.value,
-    attach_readings: attachReadings.value,
-    invoice_email_delivery: invoiceEmailDelivery.value || null,
   }
   emit('change', invoice_filter_data.value)
 }
@@ -271,7 +242,6 @@ onMounted(async () => {
   modificationSelect.value = modificationOptions.map(c => c.value)
 })
 
-watch(invoiceEmailDelivery, () => emitChange())
 
 watch([
   selectedPaymentTypes,
@@ -351,49 +321,6 @@ watch(props.billing_data, async (newVal) => {
         </div>
         <OptionSelectorGroup :options="modificationOptions" :selected-values="modificationSelect"
           selection-mode="multiple" indicator-type="checkbox" @select="changeModification" />
-      </div>
-      <div class="h-fit items-center my-auto">
-        <div class="text-sm font-medium text-gray-500 mb-2">
-          {{ t('customer_service_block.select_attach_invoices') }}:
-        </div>
-        <div class="flex gap-x-2 items-center">
-          <div class="flex gap-3 h-fit items-center my-auto">
-            <div @click="toggleAttachInvoices"
-              class="cursor-pointer flex items-center gap-2 px-3 py-1.5 rounded-md transition-all duration-200"
-              :class="[attachInvoices ? 'bg-sky-50 ring-1 ring-sky-500' : 'hover:bg-gray-50']">
-              <div class="w-3.5 h-3.5 rounded-sm border-2 flex items-center justify-center shrink-0"
-                :class="[attachInvoices ? 'border-sky-500 bg-sky-500' : 'border-gray-300']">
-                <Icon v-if="attachInvoices" name="fa6-solid:check" class="text-white" />
-              </div>
-              <span class="text-xs font-medium" :class="[attachInvoices ? 'text-sky-700' : 'text-gray-600']">
-                {{ t('customer_service_block.attach_invoices') }}
-              </span>
-            </div>
-          </div>
-          <div class="flex gap-3 h-fit items-center my-auto">
-            <div @click="toggleAttachReadings" :disabled="!attachInvoices"
-              class="flex items-center gap-2 px-3 py-1.5 rounded-md transition-all duration-200"
-              :class="[
-                attachReadings ? 'bg-sky-50 ring-1 ring-sky-500 cursor-pointer' : !attachInvoices ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50 cursor-pointer'
-                ]">
-              <div class="w-3.5 h-3.5 rounded-sm border-2 flex items-center justify-center shrink-0"
-                :class="[attachReadings ? 'border-sky-500 bg-sky-500' : 'border-gray-300']">
-                <Icon v-if="attachReadings" name="fa6-solid:check" class="text-white" />
-              </div>
-              <span class="text-xs font-medium" :class="[attachReadings ? 'text-sky-700' : 'text-gray-600']">
-                {{ t('customer_service_block.attach_readings') }}
-              </span>
-            </div>
-          </div>
-        </div>
-        <div v-if="attachInvoices" class="mt-3">
-          <label class="block text-sm font-medium text-gray-500 mb-2">{{ t('service_block.invoice_email_delivery') }}:</label>
-          <select v-model="invoiceEmailDelivery" class="input w-full">
-            <option v-for="option in invoiceEmailDeliveryOptions" :key="option.value" :value="option.value">
-              {{ t(option.label) }}
-            </option>
-          </select>
-        </div>
       </div>
     </div>
 

@@ -1,4 +1,5 @@
 <script setup>
+import AppLoading from '~/components/atoms/AppLoading.vue';
 // components/molecules/ContractRequestContract.vue
 import { ref, onMounted, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
@@ -214,9 +215,13 @@ const removeRepresentative = (index) => {
 };
 
 // onMounted
-onMounted(() => {
-  loadData();
-  fetchRepresentativeType();
+const initialLoading = ref(true);
+onMounted(async () => {
+  try {
+    await Promise.all([loadData(), fetchRepresentativeType()]);
+  } finally {
+    initialLoading.value = false;
+  }
 });
 
 // Observa canvis en la sol·licitud per recarregar les dades si cal
@@ -237,7 +242,11 @@ watch(selectedRepresentatives, () => {
 </script>
 
 <template>
-  <div id="wrapper" class="text-base">
+  <div id="wrapper" class="text-base relative" :class="{ 'min-h-[260px]': initialLoading }">
+    <!-- Animació de càrrega fins que s'han carregat totes les dades del pas -->
+    <div v-if="initialLoading" class="absolute inset-0 z-20 bg-white flex justify-center items-start pt-10">
+      <AppLoading :text="$t('common.loading')" />
+    </div>
     <!-- Títol -->
     <h2 class="text-xl font-semibold mb-4">
       {{ $t('contract_block.request_persons_title') }}

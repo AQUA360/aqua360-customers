@@ -135,6 +135,10 @@ const editStepInRegion = (stepIndex, stepTitle) => {
 };
 
 const saveEditStep = async () => {
+  if (isFinalized.value) {
+    toast.warning(t('contract_block.request_already_finalized'));
+    return;
+  }
   if (editingStepIndex.value !== null) {
     try {
       await saveStep(editingStepIndex.value);
@@ -183,6 +187,13 @@ const usedPayment = ref(null);
 
 const contractRequestStatuses = ref([]);
 const contractRequestStatus = ref(null);
+const finalizeStatusToken = ref(null);
+const finalizing = ref(false);
+// Una sol·licitud ja finalitzada no es pot tornar a finalitzar (evita contractes duplicats)
+const isFinalized = computed(() => {
+  const token = contractRequestStatus.value?.token ?? request.value?.status?.token ?? request.value?.status_token;
+  return !!finalizeStatusToken.value && token != null && String(token) === String(finalizeStatusToken.value);
+});
 const showInfo = ref(true);
 
 // "Canvi de nom": la sol·licitud reutilitza el wizard normal, però en finalitzar-la
@@ -248,7 +259,7 @@ const terminateToKeepSameCode = async () => {
 };
 
 watch(keepSameCode, async (newVal) => {
-  if (!request.value?.id || !isChangeOfNameRequest.value) return;
+  if (!request.value?.id || !isChangeOfNameRequest.value || isFinalized.value) return;
   try {
     const item_saved = await $ContractRequestApiService.save({ id: request.value.id, keep_same_code: newVal });
     request.value = item_saved;
@@ -264,7 +275,7 @@ watch(keepSameCode, async (newVal) => {
 const billFullPeriod = ref(false);
 
 watch(billFullPeriod, async (newVal) => {
-  if (!request.value?.id) return;
+  if (!request.value?.id || isFinalized.value) return;
   try {
     const item_saved = await $ContractRequestApiService.save({ id: request.value.id, bill_full_period: newVal });
     request.value = item_saved;
@@ -332,6 +343,7 @@ watch(() => props.request, (newVal) => {
 }, { immediate: true, deep: true });
 
 const clickFinalDraft = async () => {
+  if (isFinalized.value) return;
   try {
     save();
     await navigateTo('/contract/contract-requests/');
@@ -459,6 +471,7 @@ watch(currentStep, (newStep) => {
 });
 
 const clickFinalize = async () => {
+  if (isFinalized.value || finalizing.value) return;
   try {
     const confirmText = isChangeOfNameRequest.value
       ? (canKeepSameCode.value && keepSameCode.value
@@ -466,6 +479,7 @@ const clickFinalize = async () => {
         : t('confirmation_text_block.confirm_change_of_name_finalize_new_code'))
       : t("confirmation_text_block.confirm_request_finalize");
     if (confirm(confirmText)) {
+      finalizing.value = true;
       let response = isChangeOfNameRequest.value
         ? await $ContractRequestApiService.finalizeInPlace(request.value)
         : await $ContractRequestApiService.finalize(request.value);
@@ -483,6 +497,9 @@ const clickFinalize = async () => {
     } else {
       toast.error(t('contract_block.unexpected_error') || 'S\'ha produït un error inesperat');
     }
+  }
+  finally {
+    finalizing.value = false;
   }
 }
 
@@ -533,7 +550,7 @@ const onAddressPaymentChanged = async (data) => {
   var payment_type = addressPaymentData.value?.payment?.type || null;
 
   addressPaymentData.value['mandate_id'] = data.mandate_id || null;
-  if (payment_type != null) {
+  if (payment_type != null && !isFinalized.value) {
     let payment_saved = await $GeneralPaymentApiService.save(payment);
     addressPaymentData.value.payment = payment_saved;
     usedPayment.value = payment_saved;
@@ -716,6 +733,11 @@ onMounted(async () => {
     return navigateTo('/');
   }
   try {
+    finalizeStatusToken.value = (await $ConfigProjectApiService.get('contract_request_finalize_token')) || '3';
+  } catch {
+    finalizeStatusToken.value = '3';
+  }
+  try {
     const multi = await $ConfigProjectApiService.get('use_multiple_companies');
     console.log('useMultipleCompanies', multi);
     useMultipleCompanies.value = multi === true || multi === 'True' || multi === 'true';
@@ -738,6 +760,8 @@ onMounted(async () => {
 });
 
 const saveStep = async (stepIndex) => {
+  // Una sol·licitud finalitzada és de només lectura: no es desa cap canvi
+  if (isFinalized.value) return;
   saving.value = true;
   try {
     if (stepIndex == 0) {
@@ -1015,6 +1039,11 @@ const save = async () => {
         <StatusesNav v-if="contractRequestStatus" :active="contractRequestStatus" :statuses="contractRequestStatuses">
         </StatusesNav>
       </div>
+    </div>
+
+    <div v-if="isFinalized" class="mb-4 px-4 py-2 rounded border border-amber-300 bg-amber-50 text-amber-800 text-sm flex items-center gap-2">
+      <Icon name="fa6-solid:lock" class="w-4 h-4" />
+      <span>{{ t('contract_block.request_finalized_read_only') }}</span>
     </div>
 
     <WizardStatusNav
@@ -1312,11 +1341,13 @@ const save = async () => {
           {{ $t('common.next') }} &nbsp;<span v-if="!saving && !stepLoading">&rarr;</span>
         </button>
         <div v-else class="flex gap-3">
-          <button @click="clickFinalDraft" :disabled="saving"
+          <button @click="clickFinalDraft" :disabled="saving || isFinalized"
+            :title="isFinalized ? t('contract_block.request_already_finalized') : ''"
             class="px-4 py-2 bg-gray-500 text-white rounded disabled:opacity-50 enabled:hover:bg-gray-600 font-bold flex items-center">
             <Icon name="fa6-solid:floppy-disk" />&nbsp; {{ $t('common.save_draft') }}
           </button>
-          <button @click="clickFinalize" :disabled="saving || isValidating || validationResult.valid === false"
+          <button @click="clickFinalize" :disabled="saving || finalizing || isFinalized || isValidating || validationResult.valid === false"
+            :title="isFinalized ? t('contract_block.request_already_finalized') : ''"
             class="px-4 py-2 bg-green-500 text-white rounded disabled:opacity-50 enabled:hover:bg-green-600 font-bold flex items-center">
             <Icon name="fa6-solid:circle-check" />&nbsp; {{ isChangeOfNameRequest ? t('contract_block.apply_change_of_name') : $t('common.finish') }}
           </button>
@@ -1491,7 +1522,7 @@ const save = async () => {
             <button @click="closeEditStep" class="px-4 py-2 border border-slate-300 text-slate-700 bg-white rounded hover:bg-slate-50 transition-all duration-150 font-semibold text-sm">
               {{ t('common.close') || 'Tancar' }}
             </button>
-            <button @click="saveEditStep" :disabled="saving" class="px-4 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700 transition-all duration-150 flex items-center gap-2 font-bold text-sm shadow-sm disabled:opacity-50">
+            <button @click="saveEditStep" :disabled="saving || isFinalized" class="px-4 py-2 bg-emerald-600 text-white rounded hover:bg-emerald-700 transition-all duration-150 flex items-center gap-2 font-bold text-sm shadow-sm disabled:opacity-50">
               <Icon v-if="saving" name="fa6-solid:spinner" class="animate-spin" />
               <Icon v-else name="fa6-solid:floppy-disk" />
               {{ t('common.save') || 'Guardar' }}

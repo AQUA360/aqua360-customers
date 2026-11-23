@@ -3,9 +3,10 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.db.models import Q
-from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
+from rest_framework.permissions import IsAuthenticated
 
 from contract.models import Bonification, Contract, ContractClientType, ContractDebtManagement, ContractPriceRate, Variable, VariableType
+from contract.permissions import required_permission_class
 from coredata.models import ConfigProject
 from coredata.utils.name_utils import generate_token
 from pricing.models import PriceRate, Product, ProductOrigin
@@ -14,7 +15,8 @@ from contract.serializers.contract_serializer import ContractSerializer
 
 class ContractManageMassivelyViewSet(APIView):
     serializer_class = ContractSerializer
-    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    # Només POST, però modifica contractes existents: exigim `change_contract`.
+    permission_classes = [IsAuthenticated, required_permission_class('contract.change_contract')]
   
     def get_queryset(self):
         return Contract.objects.all()

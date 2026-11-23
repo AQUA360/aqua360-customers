@@ -30,7 +30,7 @@ class BillingPreInvoicesSummaryViewSet(views.APIView):
                 return Response({"error": "billing id is required."}, status=status.HTTP_400_BAD_REQUEST)
             billing = get_object_or_404(Billing, id=id)
 
-            invoices = Invoice.objects.filter(billing = billing)
+            invoices = Invoice.objects.filter(billing=billing, is_excluded=False)
             
             OTHERS_LABEL = _("Altres")
 

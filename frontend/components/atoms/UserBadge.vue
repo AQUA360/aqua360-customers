@@ -1,4 +1,6 @@
 <script setup>
+import { getUserRole } from '~/utils/roles';
+
 const { t } = useI18n();
 const props = defineProps({
     user: Object,
@@ -13,7 +15,9 @@ const getUserInitials = (firstName, lastName) => {
 
 // Helper function to get group display text
 const getGroupDisplay = (user) => {
-    if (user.is_superuser) return t('common.admin');
+    const role = getUserRole(user);
+    if (role === 'superuser') return t('common.superuser');
+    if (role === 'admin') return t('common.admin');
     if (!user.group_name) return t('user_group.no_group');
     return user.group_name;
 };

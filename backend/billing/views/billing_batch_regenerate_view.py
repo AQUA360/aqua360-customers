@@ -19,6 +19,9 @@ from coredata.models import ConfigProject
 from ..tasks import process_billing_batch, process_invoice_documents
 from django.db.models.functions import Abs
 from billing.permissions import BillingPermission
+from billing.utils.terminated_contract_billing import (
+    TERMINATED_CONTRACT_IDS_KEY, TerminatedContractSelectionError, resolve_terminated_contract_selection,
+)
 import logging
 
 logger = logging.getLogger(__name__)
@@ -33,6 +36,18 @@ class BillingBatchRegenerateView(views.APIView):
             # el lot, ja que suposaria perdre la confirmació/pagament ja fet i tornar a
             # generar-ne una nova per a les mateixes lectures.
             prefactura_token = ConfigProject.objects.get(token='invoice_status_pending_token').value
+
+            # Contractes de baixa triats per facturar: es valida abans d'esborrar res
+            # i va a l'element de la cua.
+            try:
+                terminated_contract_ids = resolve_terminated_contract_selection(
+                    Billing.objects.get(id=id), request.data.get('terminated_contract_ids'), recalculation=True,
+                )
+            except TerminatedContractSelectionError:
+                return Response(
+                    {"error": "Invalid terminated contracts selection."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
             # Re-include excluded invoices by moving readings back from excluded billings
             excluded_billings = Billing.objects.filter(excluded_from_id=id)
@@ -66,7 +81,8 @@ class BillingBatchRegenerateView(views.APIView):
                 billing=billing,
                 created_by=request.user,
                 task_type='PRE_INVOICE',
-                status='pending'
+                status='pending',
+                payload={TERMINATED_CONTRACT_IDS_KEY: terminated_contract_ids},
             )
             process_next_queue_item()
             queue_item.refresh_from_db()

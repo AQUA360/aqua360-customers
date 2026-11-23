@@ -9,6 +9,7 @@ import UserRegion from '~/components/organisms/UserRegion.vue';
 import Pagination from '~/components/molecules/Pagination.vue';
 import DataTable from '~/components/organisms/DataTable.vue';
 import { usePermissions } from '~/middleware/permission';
+import { getUserRole } from '~/utils/roles';
 
 const toast = useToast();
 const { permissions, loading } = usePermissions();
@@ -72,12 +73,19 @@ const getData = async (searchQuery = '', page = 1) => {
   }
 }
 
+const roleLabel = (row) => {
+  const role = getUserRole(row);
+  if (role === 'superuser') return t('common.superuser');
+  if (role === 'admin') return t('common.admin');
+  return row.group_name || '-';
+};
+
 // XLSX export — columns mirror the visible table columns (in display order).
 const exportColumns = computed(() => [
   { header: t('user'), value: (row) => row.username },
   { header: t('common.name'), value: (row) => [row.first_name, row.last_name].filter(Boolean).join(' ') },
   { header: t('common.email_long'), value: (row) => row.email || '' },
-  { header: t('group'), value: (row) => row.group_name || (row.is_superuser ? t('common.admin') : '') },
+  { header: t('group'), value: (row) => { const label = roleLabel(row); return label === '-' ? '' : label; } },
 ]);
 
 // Hybrid export: single page → client-side; multiple pages → server (all-pages, filter-aware).
@@ -193,8 +201,7 @@ watch(searchInput, () => {
       </template>
       <template #cell-email="{ item }">{{ item.email? item.email : '-' }}</template>
       <template #cell-group="{ item }">
-        <span v-if="item.group_name">{{ item.group_name }}</span>
-        <span v-else>{{ item.is_superuser ? t('common.admin') : '-' }}</span>
+        <span>{{ roleLabel(item) }}</span>
       </template>
     </DataTable>
 

@@ -179,6 +179,18 @@ class CommunicationProcess(models.Model):
     run_token = models.CharField(max_length=64, null=True, blank=True)
     
     separate_communications = models.BooleanField(default=False)
+
+    # Documents que s'adjunten a cada comunicació, triats a l'assistent. Buit (`None`) als
+    # processos creats abans de desar-ho: no se sap què es va triar.
+    attach_letter = models.BooleanField(null=True, blank=True)  # carta també al correu
+    attach_invoices = models.BooleanField(null=True, blank=True)
+    attach_readings = models.BooleanField(null=True, blank=True)  # lectures de les factures
+    attach_reading_invoices = models.BooleanField(null=True, blank=True)
+    attach_claim_documents = models.BooleanField(null=True, blank=True)  # document del pas d'impagats
+    invoice_email_delivery = models.CharField(
+        max_length=20, choices=Company.INVOICE_EMAIL_DELIVERY_CHOICES, null=True, blank=True
+    )
+
     task_id = models.CharField(max_length=255, null=True, blank=True)
     updating_messages_task_id = models.CharField(max_length=255, null=True, blank=True)
     

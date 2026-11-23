@@ -711,8 +711,14 @@ def resolve_reading_document_target_contract(supply_point, reading_date, active_
     .distinct()
   )
 
+  # Contractes amb la baixa iniciada que ja tenen l'alta nova en vigor al punt: la
+  # lectura és del titular nou, encara que el de sortida continuï actiu.
+  from billing.utils.pending_termination_service import outgoing_contract_ids_for_supply_point
+  outgoing_ids = outgoing_contract_ids_for_supply_point(supply_point, reading_date)
+
   def _candidate_rank(contract):
     return (
+      contract.id in outgoing_ids,
       contract.supply_point_default_id != supply_point.id,
       contract.status is None or contract.status.token != active_contract_status_token,
       contract.registration_date is None,
@@ -896,12 +902,16 @@ def fanout_general_meter_readings(billing, readings=None):
     if not meter or meter.sub_meters.exists():
       continue
 
-    # Ensure canonical is attached to this billing
-    if canonical.billing_id != billing.id:
+    # Ensure canonical is attached to this billing. A company billing (biller split by
+    # company) shares it with the other companies' billings: it never takes it from them.
+    if canonical.billing_id != billing.id and (not billing.company_id or canonical.billing_id is None):
       canonical.billing = billing
       canonical.save(update_fields=['billing'])
 
-    targets = _get_general_meter_fanout_targets(meter, active_sp_status, contract_active_token)
+    all_targets = _get_general_meter_fanout_targets(meter, active_sp_status, contract_active_token)
+    targets = all_targets
+    if billing.company_id:
+      targets = [(sp, contract) for sp, contract in all_targets if contract.company_id == billing.company_id]
     if not targets:
       continue
 
@@ -944,7 +954,7 @@ def fanout_general_meter_readings(billing, readings=None):
           canonical.save(update_fields=updates)
         continue
 
-      if canonical.contract_id is None and len(targets) == 1:
+      if canonical.contract_id is None and len(all_targets) == 1 and canonical.billing_id == billing.id:
         # Single target: attach contract/SP to the canonical reading instead of copying
         canonical.contract = contract
         canonical.supply_point = supply_point
@@ -1843,7 +1853,13 @@ def copy_new_reading_to_all(new_reading, has_future_reading):
   contracts = Contract.objects.filter(supply_points__in=[new_reading.supply_point], status=active_contract)
   if reading_contract:
     contracts = contracts.exclude(id=reading_contract.id)
-  
+  # No es copia al contracte de sortida d'un canvi de titular (baixa iniciada amb l'alta
+  # nova ja en vigor al punt): la lectura és del titular nou i es facturaria dues vegades.
+  from billing.utils.pending_termination_service import outgoing_contract_ids_for_supply_point
+  outgoing_ids = outgoing_contract_ids_for_supply_point(new_reading.supply_point, new_reading.reading_date)
+  if outgoing_ids:
+    contracts = contracts.exclude(id__in=outgoing_ids)
+
   for contract in contracts:
     try:
       if not new_reading.is_control:
