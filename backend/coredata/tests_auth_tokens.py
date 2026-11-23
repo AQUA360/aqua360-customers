@@ -13,7 +13,6 @@ from rest_framework.authtoken.models import Token
 
 from auth.serializers import UserSerializer
 from customers.views import protected_media_view
-from customers.views import protected_media_view
 from coredata.authentication import get_user_from_token_key
 from coredata.models import AuthSessionToken
 
@@ -161,18 +160,7 @@ class ProtectedMediaTokenTests(TestCase):
     def get_media(self, key):
         # Es crida la vista directament: el FileResponse del client de proves
         # tanca la connexió a la BD en acabar.
-        request = RequestFactory().get("/media/doc.pdf", {"token": key})
-        request.user = AnonymousUser()
-        with override_settings(MEDIA_ROOT=self.media_root):
-            response = protected_media_view(request, "doc.pdf")
-        if hasattr(response, "file_to_stream"):
-            response.file_to_stream.close()
-        return response.status_code
-
-    def get_media(self, key):
-        # Es crida la vista directament: el FileResponse del client de proves
-        # tanca la connexió a la BD en acabar.
-        request = RequestFactory().get("/media/doc.pdf", {"token": key})
+        request = RequestFactory().get("/media/doc.pdf", HTTP_AUTHORIZATION=f"Token {key}")
         request.user = AnonymousUser()
         with override_settings(MEDIA_ROOT=self.media_root):
             response = protected_media_view(request, "doc.pdf")
