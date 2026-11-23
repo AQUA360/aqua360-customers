@@ -157,17 +157,45 @@ const handleMessageChange = async (newMessage) => {
   }
 }
 
-const generateLetter = async () => {
+// Regenera la carta i les factures de la comunicació; els antics queden a l'històric
+const regeneratingDocuments = ref(false);
+const regenerateDocuments = async () => {
+  if (!confirm(t('customer_service_block.confirm_regenerate_documents'))) return;
+  regeneratingDocuments.value = true;
   try {
-    const response = await $CommunicationApiService.generateFiles({
-      communication_ids: [props.id]
-    });
-    if (response) {
-      await getData(false)
-      emit('changed')
-    }
+    const response = await $CommunicationApiService.regenerateDocuments({ communication_ids: [props.id] });
+    const checkProgress = async () => {
+      try {
+        const progress = await $CommunicationApiService.checkGenerateFilesProgress(response.task_id);
+        if (progress.status === 'SUCCESS') {
+          regeneratingDocuments.value = false;
+          const result = progress.result || {};
+          if (result.errors?.length) {
+            toast.error(result.errors[0].error || t('common.error'));
+          } else {
+            toast.success(t('customer_service_block.regenerate_documents_done', {
+              letters: result.letters || 0, invoices: result.invoices || 0,
+            }));
+          }
+          await getData(false);
+          emit('changed');
+        } else if (progress.status === 'FAILURE') {
+          regeneratingDocuments.value = false;
+          toast.error(t('common.error'));
+        } else {
+          setTimeout(checkProgress, 2000);
+        }
+      } catch (error) {
+        console.error('Error checking progress:', error);
+        regeneratingDocuments.value = false;
+        toast.error(t('common.error'));
+      }
+    };
+    checkProgress();
   } catch (error) {
-    console.error('Error generating letter:', error);
+    console.error('Error regenerating documents:', error);
+    regeneratingDocuments.value = false;
+    toast.error(t('common.error'));
   }
 }
 
@@ -297,10 +325,11 @@ onMounted(async () => {
       <div class="flex justify-between relative mb-3">
         <H1Region class="">{{ $t('communication') }}</H1Region>
         <OptionsDropdown v-if="objectPermissions?.can_change" id="CommunicationRegionOptions">
-          <DropdownOption :name="`${t('common.generate')} ${t('customer_service_block.letter')}`"
-            @click="generateLetter()">
-            <Icon name="fa6-solid:envelope" class="display-inline mr-2" /> {{ t('common.generate') }} {{
-              t('customer_service_block.letter') }}
+          <DropdownOption :name="t('customer_service_block.regenerate_documents')" :disabled="regeneratingDocuments"
+            @click="regenerateDocuments()">
+            <Icon :name="regeneratingDocuments ? 'fa6-solid:spinner' : 'fa6-solid:rotate'" class="display-inline mr-2"
+              :class="{ 'animate-spin': regeneratingDocuments }" />
+            {{ t('customer_service_block.regenerate_documents') }}
           </DropdownOption>
           <DropdownOption :name="`${t('common.send')} ${t('communication')}`" @click="sendComm()">
             <Icon name="fa6-solid:paper-plane" class="display-inline mr-2" /> {{ t('common.send') }} {{
@@ -328,7 +357,7 @@ onMounted(async () => {
       </div>
 
       <div v-if="data" id="item_data" :data-rel=id>
-        <CommunicationDetail :id="props.id" :data="data" @show-detail="showDetail" />
+        <CommunicationDetail :id="props.id" :data="data" :isSubRegion="isSubRegion" @show-detail="showDetail" />
       </div>
 
       <AtomsTabs>
@@ -434,6 +463,12 @@ onMounted(async () => {
               {{ $t('common.no_records') }}
             </span>
           </div>
+          <details v-if="data?.historic_files?.length" class="my-3">
+            <summary class="cursor-pointer text-sm text-slate-500">
+              {{ t('customer_service_block.historic_documents') }} ({{ data.historic_files.length }})
+            </summary>
+            <DocumentList :documents="data.historic_files" :readonly="true" />
+          </details>
           <div v-if="objectPermissions?.can_change" class="w-[50%] my-3">
             <span class="text-slate-500 text-sm flex items-center gap-1">
               {{ t('common.add') }} {{ t('customer_service_block.attached_files') }}

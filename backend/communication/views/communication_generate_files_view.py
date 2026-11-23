@@ -94,8 +94,12 @@ class CommunicationGenerateFilesViewSet(APIView):
             else:
                 # For in-progress tasks
                 result = None
+                info = task_result.info if isinstance(task_result.info, dict) else {}
+                if info.get('total'):
+                    # Tasques que informen del progrés amb update_state (p. ex. regenerar documents)
+                    progress = int((info.get('current', 0) / info['total']) * 100)
                 # Calculate progress based on number of completed subtasks
-                if task_result.children:
+                elif task_result.children:
                     completed = sum(1 for child in task_result.children if child.ready())
                     total = len(task_result.children)
                     total = total if total else 0
@@ -113,3 +117,37 @@ class CommunicationGenerateFilesViewSet(APIView):
         except Exception as e:
             logger.exception("Error inesperat")
             return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_400_BAD_REQUEST)
+
+class CommunicationRegenerateDocumentsView(APIView):
+    """Regenera la carta i les factures d'unes comunicacions.
+
+    Body: `process` + `only_pending` (totes les del procés o només les pendents), o
+    `communication_ids`. El progrés es consulta a communication-generate-files/status/.
+    """
+    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    queryset = Communication.objects.all()
+
+    def post(self, request, *args, **kwargs):
+        from communication.models import CommunicationProcess
+        from communication.tasks import regenerate_communication_documents_task
+        from communication.utils.regenerate_documents_service import communications_to_regenerate
+
+        process_id = request.data.get('process')
+        if process_id:
+            process = CommunicationProcess.objects.filter(id=process_id, is_active=True).first()
+            if not process:
+                return Response({"error": "El procés de comunicació no existeix"}, status=status.HTTP_404_NOT_FOUND)
+            communication_ids = communications_to_regenerate(process, bool(request.data.get('only_pending')))
+        else:
+            communication_ids = request.data.get('communication_ids') or []
+            if not isinstance(communication_ids, list) or not all(isinstance(i, int) for i in communication_ids):
+                return Response({"error": "'communication_ids' ha de ser una llista d'enters"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not communication_ids:
+            return Response({"error": "No hi ha cap comunicació per regenerar"}, status=status.HTTP_400_BAD_REQUEST)
+
+        task = regenerate_communication_documents_task.delay(communication_ids)
+        return Response({
+            "task_id": task.id,
+            "total_communications": len(communication_ids),
+        }, status=status.HTTP_202_ACCEPTED)

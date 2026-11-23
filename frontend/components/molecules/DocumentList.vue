@@ -7,6 +7,8 @@ const props = defineProps({
     isSubRegion: Boolean,
     documents: Array,
     loading: Boolean,
+    // Sense l'opció d'esborrar (p. ex. l'històric de documents d'una comunicació)
+    readonly: Boolean,
 });
 
 const emit = defineEmits(['change']);
@@ -188,7 +190,7 @@ watch(() => props.loading, (newVal) => {
                     </abbr>
                 </div>
                 <div class="footering text-slate-500 p-2 w-full text-center items-center">
-                    <abbr :title="`${t('common.delete')} ${t('common.doc')}`"
+                    <abbr v-if="!readonly" :title="`${t('common.delete')} ${t('common.doc')}`"
                         class="text-slate-500 rounded-full border border-slate-500 cursor-pointer p-1 hover:bg-red-50 hover:text-red-700 hover:border-red-700">
                         <button type="button" @click="deleteDocument(item)" class="w-4 h-4">
                             <Icon name="fa6-solid:trash-can" />

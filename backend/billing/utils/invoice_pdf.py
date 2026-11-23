@@ -43,14 +43,17 @@ fake = Faker()
 
 
 def invoice_current_file_used_in_communication(invoice):
-    """True if the CURRENT invoice PDF Document is attached to an active communication."""
+    """True if the CURRENT invoice PDF Document is attached to a communication.
+
+    Inactive links count too: they are the communication's document history
+    (e.g. after regenerating its documents) and must keep their file.
+    """
     from communication.models import CommunicationFile
 
     if not invoice.invoice_file_id:
         return False
     return CommunicationFile.objects.filter(
         file_id=invoice.invoice_file_id,
-        is_active=True,
     ).exists()
 
 
@@ -60,7 +63,6 @@ def invoice_has_communication_retained_pdfs(invoice):
     from documentmanager.models import Document
 
     return CommunicationFile.objects.filter(
-        is_active=True,
         file_id__in=Document.objects.filter(
             entity='FACTURES',
             field='FACTURA',
@@ -72,15 +74,15 @@ def invoice_has_communication_retained_pdfs(invoice):
 def discard_unused_invoice_pdf_document(old_document):
     """
     Remove a previous invoice Document (and its storage file) when it is not
-    linked to any active communication. Call only after the invoice points to
-    the new Document, because Invoice.invoice_file uses on_delete=CASCADE.
+    linked to any communication (active or historic). Call only after the invoice
+    points to the new Document, because Invoice.invoice_file uses on_delete=CASCADE.
     """
     from communication.models import CommunicationFile
     from documentmanager.utils.main_utils import delete_document
 
     if not old_document:
         return
-    if CommunicationFile.objects.filter(file_id=old_document.id, is_active=True).exists():
+    if CommunicationFile.objects.filter(file_id=old_document.id).exists():
         return
 
     delete_document(old_document)

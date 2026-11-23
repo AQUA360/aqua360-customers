@@ -9,6 +9,7 @@ import { openAuthenticatedFileUrl } from '~/utils/open-authenticated-file';
 import PaymentRegion from './PaymentRegion.vue';
 import CommunicationProcessDetail from '../molecules/CommunicationProcessDetail.vue';
 import CommunicationProcessDownloadModal from '../molecules/CommunicationProcessDownloadModal.vue';
+import CommunicationRegenerateDocumentsModal from '../molecules/CommunicationRegenerateDocumentsModal.vue';
 import CommunicationMiniDetail from '../molecules/CommunicationMiniDetail.vue';
 import CommunicationRegion from './CommunicationRegion.vue';
 import CommunicationMessageEdit from '../molecules/CommunicationMessageEdit.vue';
@@ -35,6 +36,7 @@ const { $apiManager, $CommunicationProcessApiService, $CommunicationApiService, 
 const pending = ref(true);
 const downloading = ref(false)
 const showDownloadModal = ref(false)
+const showRegenerateModal = ref(false)
 const error = ref(null);
 const data = ref(null);
 const activeTab = ref('communications');
@@ -125,48 +127,54 @@ const showDetail = function (component, id) {
   showSubRegion();
 }
 
-const generateLetters = async () => {
-  if (!confirm(t("confirmation_text_block.confirm_generate_letters"))) return;
+// Regenera la carta i les factures de les comunicacions del procés (totes o només
+// les pendents). Els documents antics queden a l'històric de cada comunicació.
+const regenerateDocuments = async ({ onlyPending }) => {
   try {
     generatingFiles.value = true;
     generationProgress.value = 0;
-    let save_data = {
-      communication_ids: data.value.communications
+    const response = await $CommunicationApiService.regenerateDocuments({
+      process: props.id,
+      only_pending: onlyPending,
+    });
+    showRegenerateModal.value = false;
+    if (!response?.task_id) {
+      generatingFiles.value = false;
+      return;
     }
-    const response = await $CommunicationApiService.generateFiles(save_data);
-    if (response && response.task_id) {
-      // Start polling for task progress
-      const checkProgress = async () => {
-        try {
-          const progressResponse = await $CommunicationApiService.checkGenerateFilesProgress(response.task_id);
-          if (progressResponse.status === 'SUCCESS') {
-            generatingFiles.value = false;
-            generationProgress.value = 100;
-            toast.success(t('common.correct_download'));
-            getData(false);
-          } else if (progressResponse.status === 'FAILURE') {
-            generatingFiles.value = false;
-            generationProgress.value = 0;
-            toast.error(t('common.error_download'));
-          } else {
-            if (progressResponse.progress) {
-              generationProgress.value = progressResponse.progress;
-            }
-            setTimeout(checkProgress, 2000);
-          }
-        } catch (error) {
-          console.error('Error checking progress:', error);
+    const checkProgress = async () => {
+      try {
+        const progressResponse = await $CommunicationApiService.checkGenerateFilesProgress(response.task_id);
+        if (progressResponse.status === 'SUCCESS') {
           generatingFiles.value = false;
+          generationProgress.value = 100;
+          const result = progressResponse.result || {};
+          toast.success(t('customer_service_block.regenerate_documents_done', {
+            letters: result.letters || 0, invoices: result.invoices || 0,
+          }));
+          if (result.errors?.length) {
+            toast.error(t('customer_service_block.regenerate_documents_errors', { count: result.errors.length }));
+          }
+          getData(false);
+        } else if (progressResponse.status === 'FAILURE') {
+          generatingFiles.value = false;
+          generationProgress.value = 0;
           toast.error(t('common.error'));
+        } else {
+          generationProgress.value = progressResponse.progress || 0;
+          setTimeout(checkProgress, 2000);
         }
-      };
-
-      checkProgress();
-    }
+      } catch (error) {
+        console.error('Error checking progress:', error);
+        generatingFiles.value = false;
+        toast.error(t('common.error'));
+      }
+    };
+    checkProgress();
   } catch (error) {
     console.error(error);
     generatingFiles.value = false;
-    toast.error(t('common.error_download'));
+    toast.error(t('common.error'));
   }
 }
 
@@ -407,7 +415,7 @@ onMounted(async () => {
 
           <div v-if="generatingFiles || downloading" class="flex items-center ml-5">
             <Icon name="fa6-solid:spinner" class="animate-spin text-sm text-slate-500" />
-            <span class="ml-2 text-sm">{{ $t('common.generating') }} {{ t('customer_service_block.letters') }}
+            <span class="ml-2 text-sm">{{ generatingFiles ? t('customer_service_block.regenerating_documents') : `${$t('common.generating')} ${t('customer_service_block.letters')}` }}
 
               <span v-if="generatingFiles">
                 ({{ generationProgress }}%)
@@ -432,10 +440,10 @@ onMounted(async () => {
             <Icon name="fa6-solid:paper-plane" class="display-inline mr-2" />
             {{ t('customer_service_block.resend_digital_comms') }}
           </DropdownOption>
-          <!-- <DropdownOption @click="generateLetters()">
-            <Icon name="fa6-solid:envelope" class="display-inline mr-2" /> 
-            {{ t('common.generate') }} {{ t('customer_service_block.letters') }}
-          </DropdownOption> -->
+          <DropdownOption :disabled="generatingFiles" @click="showRegenerateModal = true">
+            <Icon name="fa6-solid:rotate" class="display-inline mr-2" />
+            {{ t('customer_service_block.regenerate_documents') }}
+          </DropdownOption>
           <hr class="my-2" />
           <DropdownOption :disabled="downloading" @click="showDownloadModal = true">
             <Icon name="fa6-solid:download" class="display-inline mr-2" />
@@ -451,6 +459,9 @@ onMounted(async () => {
           </DropdownOption>
         </OptionsDropdown>
       </div>
+
+      <CommunicationRegenerateDocumentsModal :show="showRegenerateModal" :running="generatingFiles"
+        @close="showRegenerateModal = false" @confirm="regenerateDocuments" />
 
       <CommunicationProcessDownloadModal :show="showDownloadModal" :data="data" :downloading="downloading"
         :einvoices-running="!!downloadEinvoicesTaskId" @close="showDownloadModal = false"
