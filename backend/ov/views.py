@@ -47,6 +47,7 @@ from contract.utils.contract_pdf_service import (
     generate_contract_pdf_bytes,
     get_contract_pdf_filename,
 )
+from integrations.outbound.signing.services import save_signed_contract_file
 from logger.models import LogIncidentStatusChange, LogContractRequestStatus
 from notification.models import Incident, IncidentStatus, IncidentType
 from rest_framework.parsers import MultiPartParser, FormParser
@@ -105,6 +106,7 @@ from ov.serializers import (
     ConsumptionDownloadRequestSerializer,
     BillingPeriodItemSerializer,
     SepaDocumentUploadSerializer,
+    SignedContractUploadSerializer,
     CancelDirectDebitSerializer,
     ContactDataOVSerializer,
     BatchInvoiceDownloadSerializer,
@@ -3157,6 +3159,82 @@ def _stored_contract_request_pdf(contract_request):
             contract_request.id,
         )
         return None
+
+
+class ContractRequestSignedUploadOVView(APIView):
+    """POST /ov/procedures/contract/<contract_request_token>/signed/
+
+    Puja el contracte d'una sol·licitud d'alta un cop signat fora d'Aqua360
+    (multipart, camp `file`). Es desa igual que el que torna Aqua360 Sign: al
+    gestor documental i com a contracte de la sol·licitud i, si ja s'ha creat,
+    del contracte; si n'hi havia un, el substitueix. No canvia l'estat de la
+    sol·licitud. Respon 404 si la sol·licitud no existeix o no està activa i
+    400 si el fitxer no és un PDF o passa de la mida màxima.
+    """
+
+    permission_classes = [IsAuthenticated, IsOVUser]
+    throttle_classes = [ContractProcedureThrottle]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request, contract_request_token):
+        contract_request = ContractRequest.objects.filter(
+            token=contract_request_token, is_active=True
+        ).first()
+        if contract_request is None:
+            raise NotFound({"error": "Contract request not found"})
+
+        # Es mira la mida declarada abans de tocar `request.data`: el parser
+        # multipart desaria sencer a un fitxer temporal un PDF massa gran
+        # abans que el serializer el pogués rebutjar.
+        if _signed_contract_body_too_large(request):
+            return Response(
+                {"error": "Request body too large"},
+                status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            )
+
+        serializer = SignedContractUploadSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        uploaded_file = serializer.validated_data["file"]
+        with transaction.atomic():
+            document = save_signed_contract_file(contract_request, uploaded_file.read())
+
+        logger.info(
+            "Signed contract uploaded to contract request (id=%s, document=%s)",
+            contract_request.id,
+            document.id,
+        )
+        return Response(
+            {
+                "contract_request_token": contract_request.token,
+                "document_id": document.id,
+                "success": True,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+# Marge per a la resta del cos multipart (límits, capçaleres de la part) a
+# sobre del límit del fitxer: el serializer ja comprova la mida exacta.
+SIGNED_CONTRACT_MULTIPART_OVERHEAD_BYTES = 64 * 1024
+
+
+def _signed_contract_body_too_large(request):
+    """`True` si la capçalera Content-Length passa del límit del contracte
+    signat (més el marge del multipart) o no és un número. Sense capçalera
+    Django no llegeix cos i el serializer respon que falta el fitxer."""
+    content_length = request.META.get("CONTENT_LENGTH")
+    if not content_length:
+        return False
+    try:
+        length = int(content_length)
+    except (TypeError, ValueError):
+        return True
+    return length > (
+        settings.OV_SIGNED_CONTRACT_MAX_BYTES
+        + SIGNED_CONTRACT_MULTIPART_OVERHEAD_BYTES
+    )
 
 
 # Fallbacks dels tokens d'estat de baixa tancada (finalitzada / cancel·lada)

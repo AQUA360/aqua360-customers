@@ -5445,6 +5445,191 @@ class ContractRequestPdfOVTests(TestCase):
         self.client.force_authenticate(None)
         self.assertEqual(self._get().status_code, 401)
 
+class ContractRequestSignedUploadOVTests(TestCase):
+    """`POST /ov/procedures/contract/<contract_request_token>/signed/` —
+    contracte d'una sol·licitud d'alta signat fora d'Aqua360: es desa com el
+    que torna Aqua360 Sign (sol·licitud i, si n'hi ha, contracte) i no canvia
+    l'estat de la sol·licitud."""
+
+    PDF_BYTES = b"%PDF-1.4 contracte signat"
+
+    @classmethod
+    def setUpClass(cls):
+        cls._storage_dir = tempfile.mkdtemp()
+        cls._storage_override = override_settings(
+            DOCUMENT_STORAGE_PATH=cls._storage_dir,
+            DOCUMENT_MANAGER_SERVICES={
+                **settings.DOCUMENT_MANAGER_SERVICES,
+                "contract": "hdd",
+            },
+        )
+        cls._storage_override.enable()
+        super().setUpClass()
+
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+        cls._storage_override.disable()
+        shutil.rmtree(cls._storage_dir, ignore_errors=True)
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(
+            username="ov-contract-request-signed-test", password="not-used"
+        )
+        cls.user.groups.add(Group.objects.get_or_create(name="ov")[0])
+        cls.other_user = User.objects.create_user(
+            username="ov-contract-request-signed-other", password="not-used"
+        )
+        cls.status, _ = ContractRequestStatus.objects.update_or_create(
+            token="1", defaults={"name": "Esborrany", "is_default": True}
+        )
+        cls.contract_request = ContractRequest.objects.create(
+            token="CR-SIGNED", status=cls.status
+        )
+        cls.inactive_request = ContractRequest.objects.create(
+            token="CR-SIGNED-OFF", status=cls.status, is_active=False
+        )
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def _post(self, token="CR-SIGNED", content=None, name="signat.pdf", **data):
+        if content is not None or name is not None:
+            data.setdefault(
+                "file",
+                SimpleUploadedFile(
+                    name,
+                    self.PDF_BYTES if content is None else content,
+                    content_type="application/pdf",
+                ),
+            )
+        return self.client.post(
+            reverse("contract-request-signed-ov", args=[token]),
+            data,
+            format="multipart",
+        )
+
+    @staticmethod
+    def _stored_bytes(document):
+        with open(document.location, "rb") as stored:
+            return stored.read()
+
+    def test_saves_signed_pdf_on_request(self):
+        response = self._post()
+
+        self.assertEqual(response.status_code, 201)
+        self.contract_request.refresh_from_db()
+        document = self.contract_request.contract_file
+        self.assertIsNotNone(document)
+        self.assertEqual(
+            response.data,
+            {
+                "contract_request_token": "CR-SIGNED",
+                "document_id": document.id,
+                "success": True,
+            },
+        )
+        self.assertEqual(self._stored_bytes(document), self.PDF_BYTES)
+        # Només s'afegeix el document: l'estat no canvia ni es registra.
+        self.assertEqual(self.contract_request.status, self.status)
+        self.assertFalse(
+            LogContractRequestStatus.objects.filter(
+                object=self.contract_request
+            ).exists()
+        )
+
+    def test_also_saves_on_contract_if_created(self):
+        # El signal `terminate_contract_update_bail` el llegeix en desar el
+        # contracte.
+        ConfigProject.objects.get_or_create(
+            token="contract_terminated_status", defaults={"value": "-1"}
+        )
+        contract = Contract.objects.create(
+            token="C-SIGNED",
+            status=ContractStatus.objects.get_or_create(
+                token="1", defaults={"name": "Active"}
+            )[0],
+            contract_request=self.contract_request,
+        )
+
+        response = self._post()
+
+        self.assertEqual(response.status_code, 201)
+        contract.refresh_from_db()
+        self.assertEqual(contract.contract_file_id, response.data["document_id"])
+
+    def test_new_upload_replaces_previous(self):
+        first = self._post(content=b"%PDF-1.4 primer").data["document_id"]
+
+        response = self._post(content=b"%PDF-1.4 segon")
+
+        self.assertEqual(response.status_code, 201)
+        self.assertNotEqual(response.data["document_id"], first)
+        self.contract_request.refresh_from_db()
+        self.assertEqual(
+            self.contract_request.contract_file_id, response.data["document_id"]
+        )
+        self.assertEqual(
+            self._stored_bytes(self.contract_request.contract_file),
+            b"%PDF-1.4 segon",
+        )
+
+    def test_missing_file_returns_400(self):
+        response = self._post(name=None)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("file", response.data)
+
+    def test_non_pdf_extension_returns_400(self):
+        response = self._post(name="signat.png")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("file", response.data)
+
+    def test_non_pdf_content_returns_400(self):
+        response = self._post(content=b"no soc un pdf")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("file", response.data)
+
+    @override_settings(OV_SIGNED_CONTRACT_MAX_BYTES=10)
+    def test_too_large_file_returns_400(self):
+        response = self._post()
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("file", response.data)
+        self.contract_request.refresh_from_db()
+        self.assertIsNone(self.contract_request.contract_file)
+
+    @override_settings(OV_SIGNED_CONTRACT_MAX_BYTES=10)
+    @patch("ov.views.SignedContractUploadSerializer")
+    def test_body_larger_than_limit_returns_413_without_parsing(self, serializer):
+        # Més gran que el límit + el marge del multipart: es rebutja per la
+        # capçalera, abans de llegir el cos.
+        response = self._post(content=b"%PDF-" + b"0" * (70 * 1024))
+
+        self.assertEqual(response.status_code, 413)
+        serializer.assert_not_called()
+        self.contract_request.refresh_from_db()
+        self.assertIsNone(self.contract_request.contract_file)
+
+    def test_unknown_request_returns_404(self):
+        self.assertEqual(self._post("CR-NOPE").status_code, 404)
+
+    def test_inactive_request_returns_404(self):
+        self.assertEqual(self._post("CR-SIGNED-OFF").status_code, 404)
+
+    def test_user_outside_ov_group_gets_403(self):
+        self.client.force_authenticate(self.other_user)
+        self.assertEqual(self._post().status_code, 403)
+
+    def test_anonymous_gets_401(self):
+        self.client.force_authenticate(None)
+        self.assertEqual(self._post().status_code, 401)
+
+
 class BillingPeriodsViewTests(TestCase):
     """`GET /ov/billing-periods/`: cicles en curs i següent derivats del
     facturador del contracte, no d'un calendari fix."""
