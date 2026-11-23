@@ -36,16 +36,15 @@ from coredata.models import (
     StreetNumberType,
 )
 from coredata.utils.iban_validator_utils import validate_iban as is_valid_iban
+from coredata.utils.person_dni_utils import normalize_person_dni, normalized_dni_expression
 from django.utils import timezone
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import validate_email
 from django.db import transaction
-from django.db.models import Count, Value
-from django.db.models.functions import Replace, Upper
+from django.db.models import Count
 from django.utils.dateparse import parse_date
 import copy
 import logging
-import re
 from decimal import Decimal
 
 logger = logging.getLogger(__name__)
@@ -2278,26 +2277,8 @@ class ReturnRequestResponseSerializer(serializers.Serializer):
     created_at = serializers.DateTimeField()
 
 
-_PERSON_DNI_SEPARATORS = re.compile(r"[\s.\-]+")
-
-
-def _normalize_person_dni(value):
-    """Normalitza un DNI/NIF per comparar-lo amb les dades heretades de la BD:
-    ignora espais, guions i punts i el passa a majúscules."""
-    return _PERSON_DNI_SEPARATORS.sub("", value or "").upper()
-
-
-_PERSON_DNI_SQL_SEPARATORS = ("-", ".", " ", "\t", "\n", "\r", "\xa0")
-
-
-def _normalized_dni_expression(field):
-    """Expressió SQL equivalent a `_normalize_person_dni` per al camp indicat:
-    elimina guions, punts i espais (inclosos tabuladors, salts de línia i
-    espais no separables) i passa el resultat a majúscules."""
-    expression = field
-    for separator in _PERSON_DNI_SQL_SEPARATORS:
-        expression = Replace(expression, Value(separator), Value(""))
-    return Upper(expression)
+_normalize_person_dni = normalize_person_dni
+_normalized_dni_expression = normalized_dni_expression
 
 
 def _resolve_contract_procedure_person(dni):
