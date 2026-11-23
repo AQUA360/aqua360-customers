@@ -3183,6 +3183,15 @@ class ContractRequestSignedUploadOVView(APIView):
         if contract_request is None:
             raise NotFound({"error": "Contract request not found"})
 
+        # Es mira la mida declarada abans de tocar `request.data`: el parser
+        # multipart desaria sencer a un fitxer temporal un PDF massa gran
+        # abans que el serializer el pogués rebutjar.
+        if _signed_contract_body_too_large(request):
+            return Response(
+                {"error": "Request body too large"},
+                status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            )
+
         serializer = SignedContractUploadSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -3204,6 +3213,28 @@ class ContractRequestSignedUploadOVView(APIView):
             },
             status=status.HTTP_201_CREATED,
         )
+
+
+# Marge per a la resta del cos multipart (límits, capçaleres de la part) a
+# sobre del límit del fitxer: el serializer ja comprova la mida exacta.
+SIGNED_CONTRACT_MULTIPART_OVERHEAD_BYTES = 64 * 1024
+
+
+def _signed_contract_body_too_large(request):
+    """`True` si la capçalera Content-Length passa del límit del contracte
+    signat (més el marge del multipart) o no és un número. Sense capçalera
+    Django no llegeix cos i el serializer respon que falta el fitxer."""
+    content_length = request.META.get("CONTENT_LENGTH")
+    if not content_length:
+        return False
+    try:
+        length = int(content_length)
+    except (TypeError, ValueError):
+        return True
+    return length > (
+        settings.OV_SIGNED_CONTRACT_MAX_BYTES
+        + SIGNED_CONTRACT_MULTIPART_OVERHEAD_BYTES
+    )
 
 
 # Fallbacks dels tokens d'estat de baixa tancada (finalitzada / cancel·lada)

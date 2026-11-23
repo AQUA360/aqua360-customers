@@ -5603,6 +5603,18 @@ class ContractRequestSignedUploadOVTests(TestCase):
         self.contract_request.refresh_from_db()
         self.assertIsNone(self.contract_request.contract_file)
 
+    @override_settings(OV_SIGNED_CONTRACT_MAX_BYTES=10)
+    @patch("ov.views.SignedContractUploadSerializer")
+    def test_body_larger_than_limit_returns_413_without_parsing(self, serializer):
+        # Més gran que el límit + el marge del multipart: es rebutja per la
+        # capçalera, abans de llegir el cos.
+        response = self._post(content=b"%PDF-" + b"0" * (70 * 1024))
+
+        self.assertEqual(response.status_code, 413)
+        serializer.assert_not_called()
+        self.contract_request.refresh_from_db()
+        self.assertIsNone(self.contract_request.contract_file)
+
     def test_unknown_request_returns_404(self):
         self.assertEqual(self._post("CR-NOPE").status_code, 404)
 

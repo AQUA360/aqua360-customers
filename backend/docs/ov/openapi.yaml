@@ -2363,7 +2363,9 @@ paths:
           `%PDF-`) de 10 MB como máximo.
         - Solo la cuenta de servicio de la OV (grupo `ov`) o un superusuario.
         - Devuelve `404` si la solicitud no existe o está inactiva y `400`
-          si falta el archivo, no es un PDF o supera el tamaño máximo.
+          si falta el archivo, no es un PDF o supera el tamaño máximo. Si la
+          petición entera (`Content-Length`) ya supera el máximo más un margen
+          de 64 KB para el multipart, se rechaza con `413` sin leerla.
       operationId: uploadSignedContractRequest
       security:
         - tokenAuth: []
@@ -2422,6 +2424,14 @@ paths:
           description: El usuario autenticado no es la cuenta de servicio de la OV (grupo `ov`) ni superusuario
         "404":
           $ref: "#/components/responses/NotFound"
+        "413":
+          description: La petición supera el tamaño máximo (se rechaza sin leer el cuerpo)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+              example:
+                error: Request body too large
         "429":
           $ref: "#/components/responses/TooManyRequests"
 
