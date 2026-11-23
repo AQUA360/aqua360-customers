@@ -38,6 +38,7 @@ info:
     | `/ov/meter/{contract_token}/` | GET | Detalle del contador del contrato por token |
     | `/ov/procedures/contract/` | POST | Solicitar el alta de un contrato (crea una solicitud; no crea contrato) |
     | `/ov/procedures/contract/{contract_request_token}/` | GET | Consultar el estado de una solicitud de alta de contrato |
+    | `/ov/procedures/contract/{contract_request_token}/pdf/` | GET | Descargar el PDF del contrato de una solicitud de alta para firmarlo fuera de Aqua360 |
     | `/ov/procedures/contract-termination/` | POST | Solicitar la baja de un contrato (crea una solicitud de baja; no da de baja el contrato) |
     | `/ov/procedures/contract-change/` | POST | Solicitar un cambio de nombre (crea la baja del contrato actual y la solicitud de alta del nuevo titular, enlazadas) |
     | `/ov/procedures/{contract_token}/upload-sepa-signed/` | POST | Subir y archivar el mandato SEPA firmado del contrato |
@@ -2283,6 +2284,63 @@ paths:
           $ref: "#/components/responses/NotFound"
         "429":
           $ref: "#/components/responses/TooManyRequests"
+
+  /ov/procedures/contract/{contract_request_token}/pdf/:
+    get:
+      tags:
+        - Trámites
+      summary: Descargar el PDF del contrato de una solicitud de alta
+      description: |
+        Devuelve el PDF del contrato de una solicitud de alta para que un
+        sistema externo lo haga firmar fuera de Aqua360 (el contrato firmado
+        se sube después a la solicitud).
+
+        - Se genera con la misma plantilla que se usa para enviarlo a firmar
+          desde Aqua360 (incluye la firma digital de la empresa).
+        - Si la solicitud ya tiene el PDF generado, se reutiliza; si no, se
+          genera, se guarda en la solicitud y se devuelve.
+        - Solo la cuenta de servicio de la OV (grupo `ov`) o un superusuario.
+        - Devuelve `404` si la solicitud no existe o está inactiva y `500` si
+          el PDF no se puede generar.
+      operationId: downloadContractRequestPdf
+      security:
+        - tokenAuth: []
+      parameters:
+        - name: contract_request_token
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Token de la solicitud de contrato (el que devuelve `POST /ov/procedures/contract/`)
+      responses:
+        "200":
+          description: PDF del contrato de la solicitud
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+              description: Nombre del fichero (`<contract_request_token>.pdf`, disposición `attachment`)
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: El usuario autenticado no es la cuenta de servicio de la OV (grupo `ov`) ni superusuario
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          description: No se ha podido generar el PDF del contrato
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+              example:
+                error: Contract PDF could not be generated
 
   /ov/procedures/contract-termination/:
     post:

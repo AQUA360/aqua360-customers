@@ -11,9 +11,11 @@ from unittest.mock import patch
 
 from django.conf import settings
 from django.contrib.auth.models import Group, Permission, User
+from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.cache import cache
 from django.db import connection
+from django.template import TemplateDoesNotExist
 from django.test import TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
 from django.urls import resolve, reverse
@@ -64,6 +66,7 @@ from contract.models import (
     PaymentType,
     Variable,
 )
+from contract.utils.contract_pdf_service import ContractPdfGenerationError
 from documentmanager.models import Document
 from logger.models import LogContractRequestStatus, LogIncidentStatusChange
 from notification.models import Incident, IncidentStatus, IncidentType
@@ -5305,6 +5308,142 @@ class ContractRequestStatusOVTests(TestCase):
     def test_inactive_request_returns_404(self):
         self.assertEqual(self._get("CR-OFF").status_code, 404)
 
+
+
+class ContractRequestPdfOVTests(TestCase):
+    """`GET /ov/procedures/contract/<contract_request_token>/pdf/` — PDF del
+    contracte d'una sol·licitud d'alta per signar-lo fora d'Aqua360: es
+    reutilitza el ja generat o es genera (i es desa) amb la plantilla de
+    l'enviament a signar."""
+
+    PDF_BYTES = b"%PDF-1.4 contracte generat"
+
+    @classmethod
+    def setUpClass(cls):
+        cls._media_dir = tempfile.mkdtemp()
+        cls._media_override = override_settings(MEDIA_ROOT=cls._media_dir)
+        cls._media_override.enable()
+        super().setUpClass()
+
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+        cls._media_override.disable()
+        shutil.rmtree(cls._media_dir, ignore_errors=True)
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(
+            username="ov-contract-request-pdf-test", password="not-used"
+        )
+        cls.user.groups.add(Group.objects.get_or_create(name="ov")[0])
+        cls.other_user = User.objects.create_user(
+            username="ov-contract-request-pdf-other", password="not-used"
+        )
+        cls.status, _ = ContractRequestStatus.objects.update_or_create(
+            token="1", defaults={"name": "Esborrany", "is_default": True}
+        )
+        cls.contract_request = ContractRequest.objects.create(
+            token="CR-PDF", status=cls.status
+        )
+        cls.inactive_request = ContractRequest.objects.create(
+            token="CR-PDF-OFF", status=cls.status, is_active=False
+        )
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def _get(self, token="CR-PDF"):
+        return self.client.get(reverse("contract-request-pdf-ov", args=[token]))
+
+    @staticmethod
+    def _content(response):
+        return b"".join(response.streaming_content)
+
+    @patch("ov.views.generate_contract_pdf_bytes")
+    def test_generates_saves_and_returns_pdf_when_missing(self, generate):
+        generate.return_value = self.PDF_BYTES
+
+        response = self._get()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/pdf")
+        self.assertIn('filename="CR-PDF.pdf"', response["Content-Disposition"])
+        self.assertEqual(self._content(response), self.PDF_BYTES)
+        # Mateixes opcions que l'enviament a signar (Aqua360 Sign).
+        generate.assert_called_once_with(
+            self.contract_request, include_requested_at=True
+        )
+        self.contract_request.refresh_from_db()
+        self.assertTrue(self.contract_request.contract_file_template)
+        with self.contract_request.contract_file_template.open("rb") as stored:
+            self.assertEqual(stored.read(), self.PDF_BYTES)
+
+    @patch("ov.views.generate_contract_pdf_bytes")
+    def test_reuses_already_generated_pdf(self, generate):
+        self.contract_request.contract_file_template.save(
+            "CR-PDF.pdf", ContentFile(b"%PDF-1.4 ja generat")
+        )
+
+        response = self._get()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self._content(response), b"%PDF-1.4 ja generat")
+        generate.assert_not_called()
+
+    @patch("ov.views.generate_contract_pdf_bytes")
+    def test_regenerates_when_stored_file_is_missing(self, generate):
+        generate.return_value = self.PDF_BYTES
+        self.contract_request.contract_file_template.save(
+            "CR-PDF.pdf", ContentFile(b"%PDF-1.4 perdut")
+        )
+        os.remove(self.contract_request.contract_file_template.path)
+
+        response = self._get()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self._content(response), self.PDF_BYTES)
+        generate.assert_called_once()
+
+    @patch("ov.views.generate_contract_pdf_bytes")
+    def test_generation_error_returns_500(self, generate):
+        generate.side_effect = ContractPdfGenerationError("plantilla")
+
+        response = self._get()
+
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(
+            response.data, {"error": "Contract PDF could not be generated"}
+        )
+        self.contract_request.refresh_from_db()
+        self.assertFalse(self.contract_request.contract_file_template)
+
+    @patch("ov.views.generate_contract_pdf_bytes")
+    def test_unexpected_generation_error_returns_same_500(self, generate):
+        # P. ex. la plantilla configurada no existeix: peta abans de pisa.
+        generate.side_effect = TemplateDoesNotExist("contract_template.html")
+
+        response = self._get()
+
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(
+            response.data, {"error": "Contract PDF could not be generated"}
+        )
+
+    def test_unknown_request_returns_404(self):
+        self.assertEqual(self._get("CR-NOPE").status_code, 404)
+
+    def test_inactive_request_returns_404(self):
+        self.assertEqual(self._get("CR-PDF-OFF").status_code, 404)
+
+    def test_user_outside_ov_group_gets_403(self):
+        self.client.force_authenticate(self.other_user)
+        self.assertEqual(self._get().status_code, 403)
+
+    def test_anonymous_gets_401(self):
+        self.client.force_authenticate(None)
+        self.assertEqual(self._get().status_code, 401)
 
 class BillingPeriodsViewTests(TestCase):
     """`GET /ov/billing-periods/`: cicles en curs i següent derivats del

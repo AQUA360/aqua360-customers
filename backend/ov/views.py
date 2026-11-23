@@ -1,3 +1,4 @@
+from django.core.files.base import ContentFile
 from django.http import FileResponse
 from django.conf import settings
 from django.db import connection, transaction
@@ -42,6 +43,10 @@ from coredata.models import (
 from coredata.utils.name_utils import generate_token, check_token_exists
 from coredata.utils import name_utils as name_utils_module
 from contract.utils.contract_token_service import generate_contract_request_token
+from contract.utils.contract_pdf_service import (
+    generate_contract_pdf_bytes,
+    get_contract_pdf_filename,
+)
 from logger.models import LogIncidentStatusChange, LogContractRequestStatus
 from notification.models import Incident, IncidentStatus, IncidentType
 from rest_framework.parsers import MultiPartParser, FormParser
@@ -3087,6 +3092,71 @@ class ContractRequestStatusOVView(APIView):
             ),
         }
         return Response(ContractRequestStatusSerializer(payload).data)
+
+
+class ContractRequestPdfOVView(APIView):
+    """GET /ov/procedures/contract/<contract_request_token>/pdf/
+
+    PDF del contracte d'una sol·licitud d'alta, perquè un sistema extern el
+    pugui fer signar fora d'Aqua360. Es genera amb la mateixa plantilla i
+    opcions que l'enviament a signar (Aqua360 Sign). Si la sol·licitud ja té
+    el PDF generat (`contract_file_template`, el que desa el backoffice en
+    descarregar-lo) es reutilitza; si no, es genera i s'hi desa. Respon 404
+    si la sol·licitud no existeix o no està activa i 500 si el PDF no es pot
+    generar.
+    """
+
+    permission_classes = [IsAuthenticated, IsOVUser]
+    throttle_classes = [ContractProcedureThrottle]
+
+    def get(self, request, contract_request_token):
+        contract_request = ContractRequest.objects.filter(
+            token=contract_request_token, is_active=True
+        ).first()
+        if contract_request is None:
+            raise NotFound({"error": "Contract request not found"})
+
+        filename = get_contract_pdf_filename(contract_request)
+        pdf_bytes = _stored_contract_request_pdf(contract_request)
+        if pdf_bytes is None:
+            try:
+                pdf_bytes = generate_contract_pdf_bytes(
+                    contract_request, include_requested_at=True
+                )
+            except Exception:
+                # No només ContractPdfGenerationError (falla de pisa): una
+                # plantilla inexistent o dades incompletes també peten abans i
+                # l'API ha de respondre sempre amb el mateix error JSON.
+                logger.exception(
+                    "Contract request PDF could not be generated (id=%s)",
+                    contract_request.id,
+                )
+                return Response(
+                    {"error": "Contract PDF could not be generated"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+            contract_request.contract_file_template.save(
+                filename, ContentFile(pdf_bytes)
+            )
+
+        return _download_response(pdf_bytes, "application/pdf", filename)
+
+
+def _stored_contract_request_pdf(contract_request):
+    """Bytes del PDF ja generat de la sol·licitud, o `None` si no en té o el
+    fitxer ja no és al disc (llavors es torna a generar)."""
+    stored = contract_request.contract_file_template
+    if not stored:
+        return None
+    try:
+        with stored.open("rb") as stored_file:
+            return stored_file.read()
+    except (FileNotFoundError, OSError):
+        logger.warning(
+            "Stored contract request PDF missing, regenerating (id=%s)",
+            contract_request.id,
+        )
+        return None
 
 
 # Fallbacks dels tokens d'estat de baixa tancada (finalitzada / cancel·lada)
