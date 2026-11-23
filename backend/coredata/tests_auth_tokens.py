@@ -90,13 +90,13 @@ class AuthTokenTests(TestCase):
         self.assertEqual(self.get(key).status_code, 200)
 
     def test_canvi_de_contrasenya_des_del_serializer_d_usuaris(self):
-        admin = User.objects.create_superuser("admin", "admin@example.com", "pwd-admin")
-        admin_key = self.login("admin", "pwd-admin")
+        admin = User.objects.create_superuser("customers", "customers@example.com", "pwd-admin")
+        admin_key = self.login("customers", "pwd-admin")
         key = self.login()
         request = RequestFactory().patch("/")
         request.user = admin
         serializer = UserSerializer(
-            self.user, data={"new_pwd": "pwd-nova"}, partial=True, context={"request": request}
+            self.user, data={"new_pwd": "Pwd-nova-1234"}, partial=True, context={"request": request}
         )
         self.assertTrue(serializer.is_valid(), serializer.errors)
         serializer.save()
