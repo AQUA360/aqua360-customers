@@ -650,6 +650,10 @@ class AccountingConfig(models.Model):
         ('positive', _('Positive')),
         ('negative', _('Negative')),
     ]
+    DOCUMENT_FORMAT_CHOICES = [
+        ('xml', _('XML')),
+        ('csv', _('CSV')),
+    ]
 
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True, null=True, blank=True)
@@ -660,6 +664,14 @@ class AccountingConfig(models.Model):
     # Movements whose current_status matches payment_status_piggy_token are
     # always treated as piggy-bank and declared (even with invoice/commitment/BALANCE).
     include_piggy_status_payments = models.BooleanField(default=False)
+    # Export document type: fixed-width XML/SGT (default) or CSV with variable columns.
+    document_format = models.CharField(
+        max_length=10, choices=DOCUMENT_FORMAT_CHOICES, default='xml',
+    )
+    # HAS_IVA export block (only written on invoice lines with IVA). Fixed widths.
+    iva_document_code = models.CharField(max_length=2, default='IR', blank=True)
+    iva_series_code = models.CharField(max_length=2, default='02', blank=True)
+    iva_operation_code = models.CharField(max_length=15, default='SENSE', blank=True)
 
     # Incoming piggy-bank deposit (movement.is_positive=False)
     incoming_declare_as = models.CharField(max_length=10, choices=DECLARE_CHOICES, default='debt')

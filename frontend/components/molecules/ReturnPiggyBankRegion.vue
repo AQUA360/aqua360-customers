@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue';
+import { ref, computed, watch, onMounted, nextTick } from 'vue';
 import { useI18n } from 'vue-i18n';
 import BankDetail from '~/components/molecules/BankDetail.vue';
 import { useToast } from 'vue-toastification';
@@ -48,8 +48,19 @@ const showRegionComponent = ref(null);
 const regionDetailId = ref(null);
 const personBanks = ref([])
 const markAsPaid = ref(false);
+const markAsPaidPinging = ref(false);
 
 const isBankTransfer = computed(() => paymentTypeOptionsById.value[selectedPaymentType.value]?.token === 'BANK_TRANSFER');
+
+const triggerMarkAsPaidPing = () => {
+  markAsPaidPinging.value = false;
+  nextTick(() => {
+    markAsPaidPinging.value = true;
+    setTimeout(() => {
+      markAsPaidPinging.value = false;
+    }, 1200);
+  });
+};
 
 const loadData = async () => {
   try {
@@ -145,6 +156,12 @@ watch(returnAmount, () => {
   }
 })
 
+watch(isBankTransfer, (isTransfer) => {
+  if (isTransfer) {
+    triggerMarkAsPaidPing();
+  }
+})
+
 </script>
 
 <template>
@@ -189,8 +206,9 @@ watch(returnAmount, () => {
         </div>
 
         <div class="max-w-xl">
-          <SelectPaymentType v-model="selectedPaymentType" :model-as-number="true" :exclude-tokens="JOINED_PAYMENT_EXCLUDED_TYPE_TOKENS"
-            select-class="input w-full text-sm" @loaded="onPaymentTypesLoaded" />
+          <SelectPaymentType v-model="selectedPaymentType" :model-as-number="true"
+            :exclude-tokens="JOINED_PAYMENT_EXCLUDED_TYPE_TOKENS" select-class="input w-full text-sm"
+            @loaded="onPaymentTypesLoaded" />
         </div>
 
         <div
@@ -218,7 +236,14 @@ watch(returnAmount, () => {
           </ButtonSeleccio>
         </div>
 
-        <label v-if="isBankTransfer" class="mt-4 flex items-start gap-2 text-sm text-slate-600">
+        <label v-if="isBankTransfer"
+          class="mt-4 flex items-start border-l-4 border-amber-500 max-w-xl gap-2 p-2 text-sm text-slate-600 transition-colors duration-300"
+          :class="markAsPaidPinging ? 'bg-amber-200' : 'bg-amber-50'">
+          <span class="relative mt-0.5 flex size-5 shrink-0 items-center justify-center" aria-hidden="true">
+            <span v-if="markAsPaidPinging"
+              class="absolute inline-flex size-full animate-ping rounded-full bg-amber-400 opacity-75" />
+            <Icon name="fa6-solid:circle-exclamation" class="relative text-base text-amber-600" />
+          </span>
           <input type="checkbox" v-model="markAsPaid" class="mt-0.5" />
           <span>
             {{ $t('billing_block.mark_return_as_paid') }}
