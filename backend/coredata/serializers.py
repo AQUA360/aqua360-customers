@@ -13,6 +13,7 @@ from .models import CallRegister, ConfigProject, Address, Person, PersonAddress,
 from django.apps import apps
 from .street_types import resolve_street_type
 from .utils.person_bank_utils import fill_holder_dni, resolve_holder_dni
+from .utils.person_dni_utils import GENERIC_PERSON_TOKENS, normalize_person_dni, person_dni_exists
 from .utils.phone_utils import is_mobile_phone
 from coredata.utils.person_list_queryset import person_debt_amounts_by_person_id
 
@@ -1234,8 +1235,11 @@ class PersonSerializer(serializers.ModelSerializer):
         
         
         token = validated_data.get('token')
-        
-        if Person.objects.filter(token=token).exists() and token != '' and token != '99999999R':
+        if token is not None:
+            token = normalize_person_dni(token)
+            validated_data['token'] = token
+
+        if token not in GENERIC_PERSON_TOKENS and token is not None and person_dni_exists(Person.objects.all(), token):
             raise serializers.ValidationError({"token": "TOKEN_ALREADY_EXISTS"})
         
         person = Person.objects.create(**validated_data)
