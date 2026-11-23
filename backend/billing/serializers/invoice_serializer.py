@@ -493,7 +493,11 @@ class InvoiceFullSerializer(PdfPageCountMixin, serializers.ModelSerializer):
         representation['taxes'] = taxes
         representation['taxes_base'] = taxes_base
         representation['total'] = total
-        
+
+        # Per previsualitzar l'adreça de subministrament del PDF sense generar-lo
+        from billing.utils.invoice_pdf import get_invoice_supply_address
+        representation['supply_address'] = get_invoice_supply_address(instance)
+
         from billing.serializers.invoice_serializer import InvoiceMinimalSerializer
         invoice_type_token = ConfigProject.objects.get(token='invoice_type_invoice_token').value
         budget_type_token = ConfigProject.objects.get(token='invoice_type_budget_token').value
