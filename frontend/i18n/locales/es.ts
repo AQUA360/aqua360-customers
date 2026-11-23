@@ -1,4 +1,28 @@
 export default {
+  person_anomaly: {
+    title: 'Anomalías',
+    anomaly_type: 'Tipo de anomalía',
+    start_date: 'Fecha inicio',
+    end_date: 'Fecha fin',
+    observation: 'Observaciones',
+    user: 'Usuario',
+    status: 'Estado',
+    current: 'Vigente',
+    resolved: 'Resuelta',
+    add: 'Añadir anomalía',
+    resolve: 'Resolver',
+    delete: 'Borrar',
+    no_records: 'No hay anomalías',
+    confirm_delete: '¿Seguro que quieres borrar esta anomalía?',
+    confirm_resolve: '¿Quieres dar esta anomalía por resuelta con fecha de hoy?',
+    current_anomalies: 'Anomalías vigentes',
+    types: {
+      wrong_identification: 'DNI/CIF incorrecto',
+      wrong_iban: 'IBAN incorrecto',
+      deceased: 'Difunto',
+      insolvent: 'Insolvente',
+    },
+  },
   export_jobs: {
     title: 'Descargas',
     empty: 'No tienes ninguna descarga reciente',

@@ -15,7 +15,6 @@ import OrderMiniDetail from '~/components/molecules/OrderMiniDetail.vue';
 import CalendarTaskList from '~/components/molecules/CalendarTaskList.vue';
 import VariablesBonificationsChange from '~/components/atoms/VariablesBonificationsChange.vue';
 import InvoiceMiniDetail from '~/components/molecules/InvoiceMiniDetail.vue';
-import SelectorType from '~/components/atoms/SelectorType.vue';
 import { formatDate } from '~/utils/date';
 import { formatMoneyWithCurrency } from '~/utils/money';
 import HolderChange from '~/components/atoms/HolderChange.vue';
@@ -25,7 +24,10 @@ import TimeRelative from '~/components/atoms/TimeRelative.vue';
 import FieldDetail from '~/components/atoms/FieldDetail.vue';
 import { useTabsLayout } from '~/composables/useTabsLayout';
 import Pagination from '~/components/molecules/Pagination.vue';
+import OptionsDropdown from '~/components/molecules/OptionsDropdown.vue';
+import DropdownOption from '~/components/atoms/DropdownOption.vue';
 import { NO_PERIOD_YEAR, VIEW_LIST, VIEW_PERIODS } from '~/composables/useContractInvoicesByPeriod';
+import { buildInvoiceExportColumns, hasPaymentSummary } from '~/utils/invoice-export-columns';
 
 const props = defineProps({
   contract: Object,
@@ -302,6 +304,22 @@ const invoiceListExportPrefix = computed(() =>
 const onInvoiceListModeSelect = (mode) => {
   props.invoicesByPeriod?.setListMode(mode);
 };
+
+// XLSX de la barra de botons: les factures que es veuen (pàgina del llistat o any seleccionat)
+const invoiceExportRows = computed(() => {
+  if (!props.invoicesByPeriod) return [];
+  return (isPeriodView.value ? props.invoicesByPeriod.invoices : props.invoicesByPeriod.listInvoices) || [];
+});
+
+const invoiceExportColumns = computed(() =>
+  buildInvoiceExportColumns(t, { showPaymentSummary: hasPaymentSummary(invoiceExportRows.value) })
+);
+
+const invoiceExportFileName = computed(() => {
+  const parts = [invoiceListExportPrefix.value, props.contract?.token || props.contract?.id || ''];
+  if (isPeriodView.value && props.invoicesByPeriod?.activeYear) parts.push(props.invoicesByPeriod.activeYear);
+  return parts.join('_');
+});
 
 watch(invoiceListMode, () => {
   extraYearTabs.value = [];
@@ -852,44 +870,61 @@ const groupedPriceRates = computed(() => {
 
     <section v-if="activeTab === 'invoices'" role="tabpanel" id="tab_invoices" class="bg-white antialiased">
       <div v-if="canChange || showInvoiceViewToggle" class="flex flex-wrap items-center mt-2 mb-4 gap-2">
-        <!-- Each user chooses: by billed periods (years and cycles) or the classic full list -->
-        <div v-if="showInvoiceViewToggle" role="group" :aria-label="t('contract_block.invoices_view')"
-          class="inline-flex rounded border border-slate-300 overflow-hidden text-xs">
-          <button v-for="option in invoiceViewOptions" :key="option.value" type="button"
-            @click="invoicesByPeriod.setViewMode(option.value)"
-            :aria-pressed="invoicesByPeriod.viewMode === option.value"
-            class="flex items-center gap-1 px-2.5 py-1"
-            :class="invoicesByPeriod.viewMode === option.value ? 'bg-sky-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'">
-            <Icon :name="option.icon" />
-            <span>{{ option.label }}</span>
-          </button>
-        </div>
+        <!-- Desplegables compactes: factures o pressupostos, i per períodes o totes (es recorden per navegador) -->
+        <template v-if="showInvoiceViewToggle">
+          <select :value="invoiceListMode" @change="onInvoiceListModeSelect($event.target.value)"
+            :aria-label="t('invoices') + ' / ' + t('common.budgets')" :disabled="invoicesByPeriod.loading"
+            class="text-xs border border-slate-300 rounded py-1 pl-2 pr-7 text-slate-600 disabled:opacity-60">
+            <option v-for="option in invoiceListTypeOptions" :key="option.value" :value="option.value">
+              {{ option.label }}
+            </option>
+          </select>
+          <select :value="invoicesByPeriod.viewMode" @change="invoicesByPeriod.setViewMode($event.target.value)"
+            :aria-label="t('contract_block.invoices_view')" :disabled="invoicesByPeriod.loading"
+            class="text-xs border border-slate-300 rounded py-1 pl-2 pr-7 text-slate-600 disabled:opacity-60">
+            <option v-for="option in invoiceViewOptions" :key="option.value" :value="option.value">
+              {{ option.label }}
+            </option>
+          </select>
+        </template>
 
         <div class="flex-1"></div>
 
+        <AtomsDownloadXlsxButton v-if="showInvoiceViewToggle && invoiceExportRows.length"
+          :rows="invoiceExportRows" :columns="invoiceExportColumns" :file-name="invoiceExportFileName"
+          :sheet-name="invoiceListLabel" class="!px-2.5 !py-1 text-xs"
+          :class="{ 'pointer-events-none opacity-60': invoicesByPeriod.loading }" />
+
         <template v-if="canChange">
-        <button type="button" @click="toggleGroupedInvoiceMode"
+        <!-- Amb l'enviament agrupat actiu, el botó per cancel·lar-lo queda a la vista -->
+        <button v-if="groupedInvoiceMode" type="button" @click="toggleGroupedInvoiceMode"
           class="button-primary !px-2.5 !py-1 text-xs flex items-center justify-center">
-          <Icon :name="groupedInvoiceMode ? 'fa6-solid:xmark' : 'reicon:envelopes-filled'" class="text-white" />
-          <span class="ml-1">
-            {{ groupedInvoiceMode ? t('contract_block.cancel_grouped_sends') : t('contract_block.grouped_sends') }}
-          </span>
-        </button>
-
-        <button @click="manageGeneralInvoices" class="button-primary !px-2.5 !py-1 text-xs">
-          <Icon name="fa6-solid:layer-group" />
-          <span class="ml-1">{{ t('contract_block.general_invoices') }}</span>
-        </button>
-
-        <button @click="showDetail('MassiveInvoiceDownload', null)" class="button-primary !px-2.5 !py-1 text-xs">
-          <Icon name="fa6-solid:download" />
-          <span class="ml-1">{{ t('common.massive_invoice_download') }}</span>
+          <Icon name="fa6-solid:xmark" class="text-white" />
+          <span class="ml-1">{{ t('contract_block.cancel_grouped_sends') }}</span>
         </button>
 
         <button @click="showDetail('AddInvoiceBudget', null)" class="button-primary !px-2.5 !py-1 text-xs">
           <Icon name="fa6-solid:coins" />
           <span class="ml-1">{{ t('common.add') }} {{ t('billing_block.custom_invoice') }}</span>
         </button>
+
+        <!-- La resta d'accions, al menú dels tres punts (com a la capçalera de la regió) -->
+        <div class="relative w-8 h-7 shrink-0">
+          <OptionsDropdown id="ContractInvoiceTabOptions">
+            <DropdownOption v-if="!groupedInvoiceMode" @click="toggleGroupedInvoiceMode">
+              <Icon name="reicon:envelopes-filled" class="display-inline mr-2" />
+              {{ t('contract_block.grouped_sends') }}
+            </DropdownOption>
+            <DropdownOption @click="manageGeneralInvoices">
+              <Icon name="fa6-solid:layer-group" class="display-inline mr-2" />
+              {{ t('contract_block.general_invoices') }}
+            </DropdownOption>
+            <DropdownOption @click="showDetail('MassiveInvoiceDownload', null)">
+              <Icon name="fa6-solid:download" class="display-inline mr-2" />
+              {{ t('common.massive_invoice_download') }}
+            </DropdownOption>
+          </OptionsDropdown>
+        </div>
         </template>
       </div>
 
@@ -910,15 +945,6 @@ const groupedPriceRates = computed(() => {
       </AtomsTabs>
 
         <section v-if="invoiceActiveTab === 'invoice_invoices' && invoicesByPeriod" class="mb-10 mt-2">
-          <div class="flex justify-end items-center gap-2 mb-2">
-            <SelectorType
-              :model-value="invoiceListMode"
-              :options="invoiceListTypeOptions"
-              :class="{ 'pointer-events-none opacity-60': invoicesByPeriod.loading }"
-              @select="onInvoiceListModeSelect"
-            />
-          </div>
-
           <div v-if="isPeriodView && periodYears.length" class="flex flex-wrap items-end gap-2 border-b border-gray-200">
             <AtomsTabs class="flex-1 min-w-0 !mb-0">
               <li v-for="row in visibleYearTabs" :key="row.year" class="me-2">
@@ -956,8 +982,7 @@ const groupedPriceRates = computed(() => {
             </div>
             <template v-else>
               <InvoiceMiniDetail :item="invoicesByPeriod.listInvoices" :contract="contract" @show-detail="showDetail"
-                :isSubRegion="isSubRegion" :autoCols="true" :exportable="true"
-                :export-file-name="`${invoiceListExportPrefix}_${contract?.token || contract?.id || ''}`"
+                :isSubRegion="isSubRegion" :autoCols="true"
                 :grouped-invoice-mode="groupedInvoiceMode" :list-type="invoiceListMode" />
               <div class="border-t border-gray-100 p-2" v-if="invoicesByPeriod.listPagination.totalPages > 1">
                 <Pagination :pagination="invoicesByPeriod.listPagination"
@@ -994,8 +1019,7 @@ const groupedPriceRates = computed(() => {
 
               <div v-if="isCycleExpanded(group, index)" class="px-2 pb-2">
                 <InvoiceMiniDetail :item="group.invoices" :contract="contract" @show-detail="showDetail"
-                  :isSubRegion="isSubRegion" :autoCols="true" :exportable="true" :list-type="invoiceListMode"
-                  :export-file-name="`${invoiceListExportPrefix}_${contract?.token || contract?.id || ''}_${invoicesByPeriod.activeYear}_${group.key}`" />
+                  :isSubRegion="isSubRegion" :autoCols="true" :list-type="invoiceListMode" />
               </div>
             </div>
           </template>

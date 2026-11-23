@@ -1,4 +1,28 @@
 export default {
+  person_anomaly: {
+    title: 'Anomalies',
+    anomaly_type: 'Tipus d\'anomalia',
+    start_date: 'Data inici',
+    end_date: 'Data fi',
+    observation: 'Observacions',
+    user: 'Usuari',
+    status: 'Estat',
+    current: 'Vigent',
+    resolved: 'Resolta',
+    add: 'Afegir anomalia',
+    resolve: 'Resoldre',
+    delete: 'Esborrar',
+    no_records: 'No hi ha anomalies',
+    confirm_delete: 'Segur que vols esborrar aquesta anomalia?',
+    confirm_resolve: 'Vols donar aquesta anomalia per resolta amb data d\'avui?',
+    current_anomalies: 'Anomalies vigents',
+    types: {
+      wrong_identification: 'DNI/CIF incorrecte',
+      wrong_iban: 'IBAN incorrecte',
+      deceased: 'Difunt',
+      insolvent: 'Insolvent',
+    },
+  },
   export_jobs: {
     title: 'Descàrregues',
     empty: 'No tens cap descàrrega recent',

@@ -258,6 +258,8 @@ watch(() => props.data, (newVal) => {
                     :isSubRegion="true" />
                 <ContractRegion v-if="showRegionDetailComponent === 'ContractRegion'" :id="parseInt(regionDetailId)"
                     :isSubRegion="true" />
+                <OrganismsPersonRegion v-if="showRegionDetailComponent === 'PersonRegion'"
+                    :id="parseInt(regionDetailId)" :isSubRegion="true" @close-subregion="closeAllRegions" />
                 <ContractRequestRegion v-if="showRegionDetailComponent === 'ContractRequestRegion'"
                     :id="parseInt(regionDetailId)" :isSubRegion="true" />
             </div>
