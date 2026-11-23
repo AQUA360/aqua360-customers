@@ -1621,6 +1621,30 @@ class BillingPeriodItemSerializer(serializers.Serializer):
     is_current = serializers.BooleanField()
 
 
+class SignedContractUploadSerializer(serializers.Serializer):
+    """Valida la pujada del contracte signat d'una sol·licitud d'alta
+    (multipart/form-data, camp `file`): només PDF (extensió i capçalera
+    `%PDF-`) i fins a `OV_SIGNED_CONTRACT_MAX_BYTES`."""
+
+    file = serializers.FileField(required=True, allow_empty_file=False)
+
+    def validate_file(self, value):
+        max_bytes = settings.OV_SIGNED_CONTRACT_MAX_BYTES
+        if value.size > max_bytes:
+            raise serializers.ValidationError(
+                f"File too large. Maximum size is {max_bytes // (1024 * 1024)} MB."
+            )
+        name = str(value.name or "").lower()
+        value.seek(0)
+        header = value.read(5)
+        value.seek(0)
+        if not name.endswith(".pdf") or header != b"%PDF-":
+            raise serializers.ValidationError(
+                "Invalid file type. Only PDF files are allowed."
+            )
+        return value
+
+
 class SepaDocumentUploadSerializer(serializers.Serializer):
     """Valida el upload del mandato SEPA firmado (multipart/form-data):
     el documento (`sepa`) y el IBAN de la cuenta de domiciliación (`iban`)."""

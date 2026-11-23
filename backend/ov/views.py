@@ -47,6 +47,7 @@ from contract.utils.contract_pdf_service import (
     generate_contract_pdf_bytes,
     get_contract_pdf_filename,
 )
+from integrations.outbound.signing.services import save_signed_contract_file
 from logger.models import LogIncidentStatusChange, LogContractRequestStatus
 from notification.models import Incident, IncidentStatus, IncidentType
 from rest_framework.parsers import MultiPartParser, FormParser
@@ -105,6 +106,7 @@ from ov.serializers import (
     ConsumptionDownloadRequestSerializer,
     BillingPeriodItemSerializer,
     SepaDocumentUploadSerializer,
+    SignedContractUploadSerializer,
     CancelDirectDebitSerializer,
     ContactDataOVSerializer,
     BatchInvoiceDownloadSerializer,
@@ -3157,6 +3159,51 @@ def _stored_contract_request_pdf(contract_request):
             contract_request.id,
         )
         return None
+
+
+class ContractRequestSignedUploadOVView(APIView):
+    """POST /ov/procedures/contract/<contract_request_token>/signed/
+
+    Puja el contracte d'una sol·licitud d'alta un cop signat fora d'Aqua360
+    (multipart, camp `file`). Es desa igual que el que torna Aqua360 Sign: al
+    gestor documental i com a contracte de la sol·licitud i, si ja s'ha creat,
+    del contracte; si n'hi havia un, el substitueix. No canvia l'estat de la
+    sol·licitud. Respon 404 si la sol·licitud no existeix o no està activa i
+    400 si el fitxer no és un PDF o passa de la mida màxima.
+    """
+
+    permission_classes = [IsAuthenticated, IsOVUser]
+    throttle_classes = [ContractProcedureThrottle]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request, contract_request_token):
+        contract_request = ContractRequest.objects.filter(
+            token=contract_request_token, is_active=True
+        ).first()
+        if contract_request is None:
+            raise NotFound({"error": "Contract request not found"})
+
+        serializer = SignedContractUploadSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        uploaded_file = serializer.validated_data["file"]
+        with transaction.atomic():
+            document = save_signed_contract_file(contract_request, uploaded_file.read())
+
+        logger.info(
+            "Signed contract uploaded to contract request (id=%s, document=%s)",
+            contract_request.id,
+            document.id,
+        )
+        return Response(
+            {
+                "contract_request_token": contract_request.token,
+                "document_id": document.id,
+                "success": True,
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
 # Fallbacks dels tokens d'estat de baixa tancada (finalitzada / cancel·lada)
