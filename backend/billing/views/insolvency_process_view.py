@@ -25,6 +25,7 @@ from billing.utils.insolvency_service import (
     create_insolvency_process,
     eligible_invoices,
     holder_contracts,
+    insolvency_error_message,
     is_person_insolvent,
 )
 from coredata.models import Person
@@ -55,13 +56,13 @@ def _get_person(raw_id):
     try:
         return Person.objects.get(pk=int(raw_id))
     except (TypeError, ValueError, Person.DoesNotExist):
-        raise InsolvencyProcessError('Persona no vàlida.')
+        raise InsolvencyProcessError('invalid_person')
 
 
-def _get_date(raw, field):
+def _get_date(raw):
     value = parse_date(str(raw)) if raw else None
     if not value:
-        raise InsolvencyProcessError(f'{field}: data no vàlida.')
+        raise InsolvencyProcessError('invalid_date')
     return value
 
 
@@ -96,9 +97,9 @@ class InsolvencyProcessViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
         """Factures emeses des de la data i contractes on la persona és titular."""
         try:
             person = _get_person(request.data.get('person_id'))
-            start_date = _get_date(request.data.get('start_date'), 'start_date')
+            start_date = _get_date(request.data.get('start_date'))
         except InsolvencyProcessError as error:
-            return Response({'error': str(error)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': insolvency_error_message(error.code)}, status=status.HTTP_400_BAD_REQUEST)
         open_process = InsolvencyProcess.objects.filter(person=person, status=InsolvencyProcess.STATUS_OPEN).first()
         invoices = eligible_invoices(person, start_date).select_related('contract')
         return Response({
@@ -116,7 +117,7 @@ class InsolvencyProcessViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
             process = create_insolvency_process(
                 person=_get_person(data.get('person_id')),
                 kind=data.get('kind'),
-                start_date=_get_date(data.get('start_date'), 'start_date'),
+                start_date=_get_date(data.get('start_date')),
                 case_number=data.get('case_number'),
                 observation=data.get('observation'),
                 invoice_ids=data.get('invoice_ids'),
@@ -124,11 +125,10 @@ class InsolvencyProcessViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
                 user=request.user,
             )
         except InsolvencyProcessError as error:
-            return Response({'error': str(error)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': insolvency_error_message(error.code)}, status=status.HTTP_400_BAD_REQUEST)
         except IntegrityError:
             # Dues altes alhora per a la mateixa persona: la restricció de BD n'atura una
-            return Response({'error': 'La persona ja té un procés d\'insolvència obert.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': insolvency_error_message('already_open')}, status=status.HTTP_400_BAD_REQUEST)
         return Response(InsolvencyProcessSerializer(self.get_queryset().get(pk=process.pk)).data,
                         status=status.HTTP_201_CREATED)
 
@@ -136,10 +136,10 @@ class InsolvencyProcessViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
     def close(self, request, pk=None):
         process = self.get_object()
         try:
-            end_date = _get_date(request.data.get('end_date'), 'end_date') if request.data.get('end_date') else None
+            end_date = _get_date(request.data.get('end_date')) if request.data.get('end_date') else None
             close_insolvency_process(process, request.user, end_date)
         except InsolvencyProcessError as error:
-            return Response({'error': str(error)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': insolvency_error_message(error.code)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(InsolvencyProcessSerializer(self.get_queryset().get(pk=process.pk)).data)
 
     @action(detail=True, methods=['post'], url_path='upload-document')

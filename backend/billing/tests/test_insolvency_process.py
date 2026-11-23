@@ -205,3 +205,16 @@ class InsolvencyAnomalyManagedByProcessTestCase(TestCase):
             response = PersonAnomalyViewSet.as_view(actions)(request, pk=process.anomaly_id)
             self.assertEqual(response.status_code, 400)
         self.assertTrue(is_person_insolvent(person))
+
+
+class InsolvencyErrorMessagesTestCase(TestCase):
+    def test_every_raised_code_has_a_message(self):
+        import re
+        from pathlib import Path
+        from billing.utils import insolvency_service
+        from billing.views import insolvency_process_view
+        codes = set()
+        for module in (insolvency_service, insolvency_process_view):
+            codes |= set(re.findall(r"InsolvencyProcessError\('([a-z_]+)'\)", Path(module.__file__).read_text()))
+        self.assertTrue(codes)
+        self.assertEqual(sorted(codes - set(insolvency_service.ERROR_MESSAGES)), [])

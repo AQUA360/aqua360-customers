@@ -18,8 +18,35 @@ from coredata.models import ConfigProject, PersonAnomaly, PersonAnomalyType
 INSOLVENT_ANOMALY_TOKEN = 'insolvent'
 
 
+# Missatges per a l'usuari, per codi: la resposta de l'API mai no porta el text de l'excepció
+ERROR_MESSAGES = {
+    'invalid_person': 'Persona no vàlida.',
+    'invalid_date': 'Data no vàlida.',
+    'invalid_kind': 'invalid_kind',
+    'already_open': "La persona ja té un procés d'insolvència obert.",
+    'missing_anomaly_type': "No hi ha el tipus d'anomalia «Insolvent».",
+    'invalid_ids': 'Identificadors no vàlids.',
+    'invalid_invoices': "Alguna factura no és de la persona o és anterior a la data d'insolvència.",
+    'invalid_payment_changes': 'Canvis de forma de pagament no vàlids.',
+    'invalid_contract': 'invalid_contract',
+    'invalid_payment_type': 'invalid_payment_type',
+    'no_iban': 'Algun contracte no té compte bancari per domiciliar-lo.',
+    'already_closed': 'already_closed',
+    'close_before_start': "La data de tancament no pot ser anterior a l'inici de l'anomalia.",
+}
+GENERIC_ERROR_MESSAGE = "No s'ha pogut desar el procés d'insolvència."
+
+
 class InsolvencyProcessError(ValueError):
-    """Dades del procés no vàlides (es retorna un 400 amb aquest missatge)."""
+    """Dades del procés no vàlides: `code` és una clau d'ERROR_MESSAGES (es retorna un 400)."""
+
+    def __init__(self, code):
+        super().__init__(code)
+        self.code = code
+
+
+def insolvency_error_message(code):
+    return ERROR_MESSAGES.get(code, GENERIC_ERROR_MESSAGE)
 
 
 def _config_value(token, default=None):
@@ -88,7 +115,7 @@ def change_contract_payment_type(contract, new_type, user, process):
     direct_debit_token = _config_value('direct_debit_token', 'DIRECT_DEBIT')
     if new_type.token == direct_debit_token and not (old_payment and old_payment.IBAN_id):
         raise InsolvencyProcessError(
-            f"El contracte {contract.token} no té compte bancari per domiciliar-lo."
+            'no_iban'
         )
 
     new_payment = GeneralPayment.objects.create(
@@ -145,11 +172,11 @@ def _parse_ids(raw, field):
     if raw in (None, ''):
         return []
     if not isinstance(raw, list):
-        raise InsolvencyProcessError(f'{field} ha de ser una llista.')
+        raise InsolvencyProcessError('invalid_ids')
     ids = []
     for value in raw:
         if isinstance(value, bool) or not (isinstance(value, int) or (isinstance(value, str) and value.isdigit())):
-            raise InsolvencyProcessError(f'{field}: identificador no vàlid.')
+            raise InsolvencyProcessError('invalid_ids')
         ids.append(int(value))
     return ids
 
@@ -165,39 +192,39 @@ def create_insolvency_process(*, person, kind, start_date, user, case_number=Non
     from contract.models import PaymentType
 
     if kind not in dict(InsolvencyProcess.KIND_CHOICES):
-        raise InsolvencyProcessError('Tipus de procés no vàlid.')
+        raise InsolvencyProcessError('invalid_kind')
     if InsolvencyProcess.objects.filter(person=person, status=InsolvencyProcess.STATUS_OPEN).exists():
-        raise InsolvencyProcessError('La persona ja té un procés d\'insolvència obert.')
+        raise InsolvencyProcessError('already_open')
     anomaly_type = PersonAnomalyType.objects.filter(token=INSOLVENT_ANOMALY_TOKEN).first()
     if not anomaly_type:
-        raise InsolvencyProcessError('No hi ha el tipus d\'anomalia «Insolvent».')
+        raise InsolvencyProcessError('missing_anomaly_type')
 
     # Factures: només les emeses de la persona des de la data
     invoice_ids = _parse_ids(invoice_ids, 'invoice_ids')
     invoices = list(eligible_invoices(person, start_date).filter(id__in=invoice_ids))
     if len(invoices) != len(set(invoice_ids)):
-        raise InsolvencyProcessError('Alguna factura no és de la persona o és anterior a la data d\'insolvència.')
+        raise InsolvencyProcessError('invalid_invoices')
 
     # Canvis de forma de pagament: només contractes on és titular i tipus que existeixen
     changes = []
     if payment_changes not in (None, ''):
         if not isinstance(payment_changes, list):
-            raise InsolvencyProcessError('payment_changes ha de ser una llista.')
+            raise InsolvencyProcessError('invalid_payment_changes')
         contracts = {contract.id: contract for contract in holder_contracts(person)}
         seen = set()
         for change in payment_changes:
             if not isinstance(change, dict):
-                raise InsolvencyProcessError('payment_changes: format no vàlid.')
+                raise InsolvencyProcessError('invalid_payment_changes')
             contract_id, type_id = _parse_ids([change.get('contract_id'), change.get('payment_type_id')], 'payment_changes')
             if contract_id in seen:
-                raise InsolvencyProcessError('payment_changes: contracte repetit.')
+                raise InsolvencyProcessError('invalid_payment_changes')
             seen.add(contract_id)
             contract = contracts.get(contract_id)
             if not contract:
-                raise InsolvencyProcessError('Algun contracte no és de la persona.')
+                raise InsolvencyProcessError('invalid_contract')
             payment_type = PaymentType.objects.filter(id=type_id).first()
             if not payment_type:
-                raise InsolvencyProcessError('Alguna forma de pagament no existeix.')
+                raise InsolvencyProcessError('invalid_payment_type')
             changes.append((contract, payment_type))
 
     from coredata.utils.person_anomaly_log import describe_anomaly, log_anomaly_change
@@ -234,7 +261,7 @@ def close_insolvency_process(process, user, end_date=None):
     from coredata.utils.person_anomaly_log import describe_anomaly, log_anomaly_change
 
     if process.status != InsolvencyProcess.STATUS_OPEN:
-        raise InsolvencyProcessError('El procés ja està tancat.')
+        raise InsolvencyProcessError('already_closed')
     end_date = end_date or timezone.now().date()
     with transaction.atomic():
         process.status = InsolvencyProcess.STATUS_CLOSED
@@ -244,7 +271,7 @@ def close_insolvency_process(process, user, end_date=None):
         anomaly = process.anomaly
         if anomaly and anomaly.is_current:
             if end_date < anomaly.start_date:
-                raise InsolvencyProcessError('La data de tancament no pot ser anterior a l\'inici de l\'anomalia.')
+                raise InsolvencyProcessError('close_before_start')
             old_value = describe_anomaly(anomaly)
             anomaly.end_date = end_date
             anomaly.save(update_fields=['end_date', 'updated_at'])
