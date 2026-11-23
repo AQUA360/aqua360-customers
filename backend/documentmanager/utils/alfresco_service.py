@@ -10,6 +10,31 @@ import locale
 
 from documentmanager.models import Document
 
+# (connect, read) — avoids hanging gunicorn workers when Alfresco is unresponsive
+ALFRESCO_REQUEST_TIMEOUT = (5, 30)
+
+
+class AlfrescoSession(requests.Session):
+    """HTTP session that applies a connect/read timeout by default."""
+
+    def request(self, method, url, **kwargs):
+        kwargs.setdefault("timeout", ALFRESCO_REQUEST_TIMEOUT)
+        return super().request(method, url, **kwargs)
+
+
+_alfresco_session = AlfrescoSession()
+
+
+def _alfresco_request(method, url, **kwargs):
+    """Call Alfresco with a default timeout; raise a controlled error on failure."""
+    try:
+        return _alfresco_session.request(method, url, **kwargs)
+    except requests.Timeout as exc:
+        raise Exception("Alfresco request timed out") from exc
+    except requests.RequestException as exc:
+        raise Exception("Alfresco request failed") from exc
+
+
 def download_document_from_alfresco(document):
     """Downloads a document's content from Alfresco using its stored location."""
     token = get_alfresco_token()
@@ -155,7 +180,7 @@ def check_folder_exists(ticket, folder, parent_folder=None, description=''):
         }
     }
 
-    response = requests.post(url, headers=headers, json=data)
+    response = _alfresco_request("POST", url, headers=headers, json=data)
 
     if response.status_code == 200:
         results = response.json()['list']['entries']
@@ -186,7 +211,7 @@ def check_folder_exists_by_id(ticket, folder_id):
         "Accept": "application/json"
     }
 
-    response = requests.get(url, headers=headers)
+    response = _alfresco_request("GET", url, headers=headers)
 
     if response.status_code == 200:
         print("json results check folder exists")
@@ -229,7 +254,7 @@ def create_folder(ticket, folder, parent_folder='-my-', description=''):
     }
    
     
-    response = requests.post(url, headers=headers, json=data)
+    response = _alfresco_request("POST", url, headers=headers, json=data)
     if response.status_code == 201:
         #return response.json()
         #return folder name and id
@@ -289,7 +314,7 @@ def upload_document(ticket, file, name, document, parent_folder='-my-', descript
     }
     
     #response = requests.post(url, headers=headers, json=data)
-    response = requests.post(url, headers=headers, data=data, files=files)
+    response = _alfresco_request("POST", url, headers=headers, data=data, files=files)
     if response.status_code == 201:
         print("response upload document results")
         return parent_folder
@@ -335,7 +360,7 @@ def upload_versioned_document(
         "properties": str(metadata), 
     }
 
-    response = requests.put(url, headers=headers, data=file_content)
+    response = _alfresco_request("PUT", url, headers=headers, data=file_content)
 
     if response.status_code == 200: 
         print("Versioned document uploaded successfully!")
@@ -357,7 +382,7 @@ def get_document(ticket, folder_id, document_name):
     }
     
     
-    response = requests.get(url, headers=headers, stream=True)
+    response = _alfresco_request("GET", url, headers=headers, stream=True)
     print("response get document")
     if response.status_code == 200:
         #return file in reponse as HttpResponse()
@@ -438,7 +463,7 @@ def get_alfresco_token():
     }
     print("Getting Alfresco token...")
 
-    response = requests.post(url, json=payload)
+    response = _alfresco_request("POST", url, json=payload)
     print("response getting token")
     if response.status_code == 201:
         return response.json()["entry"]["id"]
@@ -469,7 +494,7 @@ def check_alfresco_connection(ticket):
         "Authorization": f"Basic {ticket}",
         "Accept": "application/json"
     }
-    response = requests.get(url, headers=headers)
+    response = _alfresco_request("GET", url, headers=headers)
     if response.status_code == 200:
         return True
     else:
@@ -483,7 +508,7 @@ def get_alfresco_items(ticket, folder_id):
         "Authorization": f"Basic {ticket}",
         "Accept": "application/json"
     }
-    response = requests.get(url, headers=headers)
+    response = _alfresco_request("GET", url, headers=headers)
     if response.status_code == 200:
         return response.json()
     else:
