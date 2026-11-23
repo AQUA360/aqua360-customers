@@ -1,5 +1,5 @@
 import datetime
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from datetime import date
 import logging
 import math
@@ -280,6 +280,54 @@ def get_totals(invoice, include_zero_percent=False, line_items=None):
         total_taxes += round_ceil(tax)
     total = round_ceil(subtotal) + round_ceil(total_taxes)
     return subtotal, taxes, taxes_base, round_ceil(total)
+
+
+def balance_line_taxes(invoice):
+    """Ajusta l'IVA de les línies perquè la suma de cada tipus coincideixi amb
+    l'IVA calculat sobre la base total d'aquell tipus, arrodonit una sola vegada.
+
+    L'IVA de cada línia s'arrodoneix per separat i la suma pot diferir en algun
+    cèntim de l'IVA de la base. Els cèntims de diferència es reparteixen, d'un
+    en un, entre les línies on l'arrodoniment s'ha allunyat més de l'import
+    exacte. Així el total de la factura és el de la base i la suma de les línies
+    continua quadrant (desglossaments, Verifactu, comptabilitat i informes).
+    """
+    cent = Decimal('0.01')
+    groups = {}
+    for line_item in invoice.line_items.filter(is_active=True):
+        if line_item.tax_percent is None or Decimal(line_item.tax_percent) == 0:
+            continue
+        if line_item.price is None or line_item.tax_price is None:
+            continue
+        groups.setdefault(Decimal(line_item.tax_percent), []).append(line_item)
+
+    changed = []
+    for percent, line_items in groups.items():
+        rate = percent / Decimal('100')
+        bases = {li.pk: Decimal(str(round_ceil(li.price))) for li in line_items}
+        taxes = {li.pk: Decimal(str(round_ceil(li.tax_price))) for li in line_items}
+        target = (sum(bases.values()) * rate).quantize(cent, rounding=ROUND_HALF_UP)
+        diff_cents = int((target - sum(taxes.values())) / cent)
+        # Una diferència més gran que un cèntim per línia no ve de l'arrodoniment
+        # (p. ex. un IVA posat a mà): no es toca.
+        if diff_cents == 0 or abs(diff_cents) > len(line_items):
+            continue
+        step = cent if diff_cents > 0 else -cent
+        # Primer les línies on l'IVA arrodonit s'allunya més de l'exacte en el
+        # sentit que cal corregir.
+        ordered = sorted(
+            line_items,
+            key=lambda li: (bases[li.pk] * rate - taxes[li.pk]) * (1 if diff_cents > 0 else -1),
+            reverse=True,
+        )
+        for line_item in ordered[:abs(diff_cents)]:
+            new_tax = taxes[line_item.pk] + step
+            line_item.tax_price = float(new_tax)
+            line_item.total = bases[line_item.pk] + new_tax
+            changed.append(line_item)
+
+    if changed:
+        InvoiceLineItem.objects.bulk_update(changed, ['tax_price', 'total'])
 
 
 
@@ -1128,6 +1176,8 @@ def generate_consumption_invoice_multiple(
                     line_item.adjustments.add(new_adjustment)
             # print(f"line item created: {line_item.id}")
 
+        balance_line_taxes(invoice)
+
         subtotal, taxes, taxes_base, total = get_totals(invoice)
         total_paid = check_piggy_bank(invoice, total)
         if is_budget and generate_budget_serie_final:
@@ -1353,6 +1403,8 @@ def invoice_contract_generate(user, contract_request_id, title, payment_type, pa
         if reading:
             invoice.readings.set([reading])
 
+        balance_line_taxes(invoice)
+
         subtotal, taxes, taxes_base, total = get_totals(invoice)
         
         if is_budget and generate_budget_serie_final:
@@ -1557,6 +1609,8 @@ def invoice_generate_return_bail(user, contract_request_id, title, payment_type,
             line_item = InvoiceLineItem.objects.create(**line_item_data)
             pass  # log removed
 
+        balance_line_taxes(invoice)
+
         subtotal, taxes, taxes_base, total = get_totals(invoice)
 
         if is_budget and generate_budget_serie_final:
@@ -1723,6 +1777,8 @@ def invoice_return_charge(invoice, title, return_reason=None, fee_price_rates=No
             line_item = InvoiceLineItem.objects.create(**line_item_data)
             # print(f"line item created: {line_item.id}")
             
+
+        balance_line_taxes(surcharge)
 
         subtotal, taxes, taxes_base, total = get_totals(surcharge)
         serie_final = f"{serie.token}/{surcharge.id}" if serie else f"{surcharge.id}"
@@ -1894,6 +1950,8 @@ def invoice_connection_generate(user, connection_request_id, title, payment_type
             line_item = InvoiceLineItem.objects.create(**line_item_data)
             # print(f"line item created: {line_item.id}")
             
+
+        balance_line_taxes(invoice)
 
         subtotal, taxes, taxes_base, total = get_totals(invoice)
 
@@ -2368,6 +2426,8 @@ def invoice_claim_paid_generate(invoice_id, title):
             line_item = InvoiceLineItem.objects.create(**line_item_data)
             pass  # log removed
 
+        balance_line_taxes(invoice)
+
         subtotal, taxes, taxes_base, total = get_totals(invoice)
         serie_final = f"{serie.token}/{invoice.id}" if serie else f"{invoice.id}"
         invoice.serie_final = serie_final
@@ -2797,6 +2857,8 @@ def invoice_contract_termination_generate(
                     line_item.adjustments.add(new_adjustment)
             # print(f"line item created: {line_item.id}")
             
+
+        balance_line_taxes(invoice)
 
         subtotal, taxes, taxes_base, total = get_totals(invoice)
         total_paid = check_piggy_bank(invoice, total)
@@ -3444,6 +3506,8 @@ def generate_empty_invoice(contract, connection_request, person, title, payment_
                     new_adjustment = AppliedAdjustment.objects.create(**adjustment)
                     line_item.adjustments.add(new_adjustment)
 
+        balance_line_taxes(invoice)
+
         subtotal, taxes, taxes_base, total = get_totals(invoice)
         total_paid = check_piggy_bank(invoice, total)
 
@@ -3495,6 +3559,8 @@ def update_invoice_totals(invoice):
                 price_changed = True
             if price_changed:
                 line_item.save()
+
+    balance_line_taxes(invoice)
 
     subtotal, taxes, taxes_base, total = get_totals(invoice)
     total_paid = check_piggy_bank(invoice, total)

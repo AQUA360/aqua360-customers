@@ -106,7 +106,7 @@
             "token": "terminated_contract",
             "name": "Contrato de baja",
             "color": "#ef4444",
-            "description": "El contrato está de baja: la factura se ha excluido de la facturación. Volved a incluirla solo si se debe facturar.",
+            "description": "El contrato está de baja y el usuario lo ha elegido para facturar al confirmar la facturación.",
             "position": 8,
             "is_default": false
         }

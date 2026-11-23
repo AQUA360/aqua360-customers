@@ -8,7 +8,7 @@ import { useToast } from 'vue-toastification';
 
 import { formatDate } from '~/utils/date';
 
-import { paymentSummaryText } from '~/utils/invoice-payment-summary';
+import { buildInvoiceExportColumns } from '~/utils/invoice-export-columns';
 
 import IBAN from '../atoms/IBAN.vue';
 
@@ -134,76 +134,9 @@ const showPaymentSummary = computed(() =>
 // XLSX EXPORT
 // ---------------------------------------------------------
 
-const exportColumns = computed(() => {
-
-  const cols = [
-    {
-      header: t('common.date'),
-      value: (row) => row.issue_date ? formatDate(row.issue_date) : '',
-      key: 'issue_date'
-    },
-
-    {
-      header: t('invoice'),
-      value: (row) => row.serie_final,
-      key: 'serie'
-    },
-
-    {
-      header: t('billing_block.payment'),
-      value: (row) => row.paid_at ? formatDate(row.paid_at) : '',
-      key: 'paid_at'
-    },
-  ];
-
-  if (!props.is_info) {
-
-    cols.push({
-      header: t('common.status'),
-      value: (row) => row.status_name,
-      key: 'status'
-    });
-
-    if (showPaymentSummary.value) {
-      cols.push({
-        header: t('billing_block.payment_status_column'),
-        value: (row) => paymentSummaryText(t, row.payment_summary),
-        key: 'payment_status'
-      });
-    }
-
-    cols.push({
-      header: t('contract_block.holder'),
-      value: (row) => [
-        row.customer_final,
-        row.customer_token_final
-      ].filter(Boolean).join(' ')
-    });
-
-  } else {
-
-    cols.push({
-      header: t('common.title'),
-      value: (row) => row.title_final,
-      key: 'number'
-    });
-
-  }
-
-  cols.push({
-    header: t('billing_block.total_to_pay'),
-    value: (row) => Number(row.left_to_pay ?? 0),
-    key: 'left_to_pay'
-  });
-
-  cols.push({
-    header: t('common.total'),
-    value: (row) => Number(row.total_final ?? 0),
-    key: 'total_final'
-  });
-
-  return cols;
-});
+const exportColumns = computed(() =>
+  buildInvoiceExportColumns(t, { isInfo: props.is_info, showPaymentSummary: showPaymentSummary.value })
+);
 
 // ---------------------------------------------------------
 // SEND / GROUPED INVOICE MODE
@@ -502,7 +435,9 @@ const selectedId = ref(null);
 const localData = ref(null);
 
 const showToolbar = computed(() =>
-  props.listTypeSelectable || Boolean(props.exportable && localData.value?.length)
+  props.listTypeSelectable
+  || Boolean(props.exportable && localData.value?.length)
+  || (props.groupedInvoiceMode && showSend.value)
 );
 
 const paymentSelected = ref(null);

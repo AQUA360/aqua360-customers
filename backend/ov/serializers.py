@@ -36,17 +36,21 @@ from coredata.models import (
     StreetNumberType,
 )
 from coredata.utils.iban_validator_utils import validate_iban as is_valid_iban
+from coredata.utils.person_dni_utils import normalize_person_dni, normalized_dni_expression
 from django.utils import timezone
+from django.core.exceptions import SuspiciousFileOperation
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import validate_email
 from django.db import transaction
-from django.db.models import Count, Value
-from django.db.models.functions import Replace, Upper
+from django.db.models import Count
 from django.utils.dateparse import parse_date
+from django.utils.text import get_valid_filename
 import copy
 import logging
-import re
 from decimal import Decimal
+import base64
+import binascii
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -1622,6 +1626,30 @@ class BillingPeriodItemSerializer(serializers.Serializer):
     is_current = serializers.BooleanField()
 
 
+class SignedContractUploadSerializer(serializers.Serializer):
+    """Valida la pujada del contracte signat d'una sol·licitud d'alta
+    (multipart/form-data, camp `file`): només PDF (extensió i capçalera
+    `%PDF-`) i fins a `OV_SIGNED_CONTRACT_MAX_BYTES`."""
+
+    file = serializers.FileField(required=True, allow_empty_file=False)
+
+    def validate_file(self, value):
+        max_bytes = settings.OV_SIGNED_CONTRACT_MAX_BYTES
+        if value.size > max_bytes:
+            raise serializers.ValidationError(
+                f"File too large. Maximum size is {max_bytes // (1024 * 1024)} MB."
+            )
+        name = str(value.name or "").lower()
+        value.seek(0)
+        header = value.read(5)
+        value.seek(0)
+        if not name.endswith(".pdf") or header != b"%PDF-":
+            raise serializers.ValidationError(
+                "Invalid file type. Only PDF files are allowed."
+            )
+        return value
+
+
 class SepaDocumentUploadSerializer(serializers.Serializer):
     """Valida el upload del mandato SEPA firmado (multipart/form-data):
     el documento (`sepa`) y el IBAN de la cuenta de domiciliación (`iban`)."""
@@ -2278,26 +2306,8 @@ class ReturnRequestResponseSerializer(serializers.Serializer):
     created_at = serializers.DateTimeField()
 
 
-_PERSON_DNI_SEPARATORS = re.compile(r"[\s.\-]+")
-
-
-def _normalize_person_dni(value):
-    """Normalitza un DNI/NIF per comparar-lo amb les dades heretades de la BD:
-    ignora espais, guions i punts i el passa a majúscules."""
-    return _PERSON_DNI_SEPARATORS.sub("", value or "").upper()
-
-
-_PERSON_DNI_SQL_SEPARATORS = ("-", ".", " ", "\t", "\n", "\r", "\xa0")
-
-
-def _normalized_dni_expression(field):
-    """Expressió SQL equivalent a `_normalize_person_dni` per al camp indicat:
-    elimina guions, punts i espais (inclosos tabuladors, salts de línia i
-    espais no separables) i passa el resultat a majúscules."""
-    expression = field
-    for separator in _PERSON_DNI_SQL_SEPARATORS:
-        expression = Replace(expression, Value(separator), Value(""))
-    return Upper(expression)
+_normalize_person_dni = normalize_person_dni
+_normalized_dni_expression = normalized_dni_expression
 
 
 def _resolve_contract_procedure_person(dni):
@@ -2442,6 +2452,61 @@ class ProcedureNewHolderSerializer(serializers.Serializer):
         return errors
 
 
+# Codi d'error dels camps en base64 que passen de la mida màxima: la vista el
+# tradueix a 413 en lloc de 400.
+BASE64_TOO_LARGE_CODE = "too_large"
+SEPA_SIGNED_DEFAULT_FILENAME = "mandat_sepa_signat.pdf"
+
+
+def base64_max_length(max_bytes):
+    """Longitud màxima del text en base64 (amb farciment) d'un fitxer de
+    `max_bytes`."""
+    return 4 * ((max_bytes + 2) // 3)
+
+
+def decode_base64_pdf(value, max_bytes):
+    """Descodifica un PDF enviat en base64 i torna'n els bytes.
+
+    Ignora els salts de línia i espais (codificadors MIME). La mida es mira
+    sobre el text abans de descodificar-lo i després sobre els bytes; si la
+    passa, l'error porta el codi `BASE64_TOO_LARGE_CODE`. Només admet PDF
+    (capçalera `%PDF-`).
+    """
+    encoded = "".join(str(value).split())
+    too_large = serializers.ValidationError(
+        f"File too large. Maximum size is {max_bytes // (1024 * 1024)} MB.",
+        code=BASE64_TOO_LARGE_CODE,
+    )
+    if len(encoded) > base64_max_length(max_bytes):
+        raise too_large
+    try:
+        content = base64.b64decode(encoded, validate=True)
+    except (binascii.Error, ValueError):
+        raise serializers.ValidationError("Invalid base64 content.")
+    if not content:
+        raise serializers.ValidationError("The file is empty.")
+    if len(content) > max_bytes:
+        raise too_large
+    if not content.startswith(b"%PDF-"):
+        raise serializers.ValidationError(
+            "Invalid file type. Only PDF files are allowed."
+        )
+    return content
+
+
+def sepa_signed_filename(value):
+    """Nom de fitxer segur per al mandat: sense camins, només caràcters
+    vàlids i acabat en `.pdf`. Si queda buit, el nom per defecte."""
+    try:
+        name = get_valid_filename(os.path.basename(str(value or "")))
+    except SuspiciousFileOperation:
+        # Buit, "." o "..": no és cap nom de fitxer.
+        return SEPA_SIGNED_DEFAULT_FILENAME
+    if not name.lower().endswith(".pdf"):
+        name = f"{name}.pdf"
+    return name
+
+
 class ContractProcedureRequestSerializer(ProcedureNewHolderSerializer):
     """Sol·licitud d'alta de contracte enviada per l'OV.
 
@@ -2478,11 +2543,30 @@ class ContractProcedureRequestSerializer(ProcedureNewHolderSerializer):
     observation = serializers.CharField(
         max_length=1000, required=False, allow_blank=True, allow_null=True
     )
+    # Mandat SEPA signat (PDF en base64), opcional. Es valida aquí, abans de
+    # crear res, perquè un document incorrecte no deixi la sol·licitud a mitges.
+    sepa_signed = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True, trim_whitespace=False
+    )
+    # Curt: el camí sencer del fitxer al gestor documental (`Document.location`)
+    # no pot passar de 255 caràcters.
+    sepa_signed_filename = serializers.CharField(
+        max_length=100, required=False, allow_blank=True, allow_null=True
+    )
 
     def validate_language(self, value):
         if value and value not in dict(settings.LANGUAGES):
             raise serializers.ValidationError("Unsupported language.")
         return value
+
+    def validate_sepa_signed(self, value):
+        """Torna el PDF descodificat (bytes) o `None` si no s'ha enviat."""
+        if not value:
+            return None
+        return decode_base64_pdf(value, settings.OV_SIGNED_CONTRACT_MAX_BYTES)
+
+    def validate_sepa_signed_filename(self, value):
+        return sepa_signed_filename(value)
 
     def validate_iban(self, value):
         return _validated_procedure_iban(value)

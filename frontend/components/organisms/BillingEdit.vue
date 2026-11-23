@@ -5,6 +5,7 @@ import BillingSetup from '~/components/molecules/BillingSetup.vue';
 import BillingSummary from '~/components/molecules/BillingSummary.vue';
 import BillingDocumentsSummary from '~/components/molecules/BillingDocumentsSummary.vue';
 import BillingInvoicesSummary from '~/components/molecules/BillingInvoicesSummary.vue';
+import BillingTerminatedContractsDialog from '~/components/molecules/BillingTerminatedContractsDialog.vue';
 import CommunicationProcessRegion from './CommunicationProcessRegion.vue';
 import AppLoading from '~/components/atoms/AppLoading.vue';
 
@@ -49,6 +50,9 @@ const loadInvoices = ref(false);
 const statuses = ref([]);
 const status = ref(null);
 const setupData = ref(null);
+// Contractes de baixa que l'usuari ha triat per facturar
+const terminatedDialog = ref(null);
+const terminatedContractIds = ref([]);
 
 const invoices = ref([]);
 const task_id = ref(null);
@@ -211,7 +215,11 @@ const onSetupChanged = (data) => {
 
 const nextStep = async () => {
   if (currentStep.value == 0) {
+    // Contractes de baixa: l'usuari tria quins es facturen (null = cancel·lat o error)
+    const ids = await terminatedDialog.value?.ask(false);
+    if (ids === null || ids === undefined) return;
     if (confirm(t('confirmation_text_block.confirm_generate_batch'))) {
+      terminatedContractIds.value = ids;
       await save();
       disableNextStep.value = true;
       setStatus(statusProcessingToken.value)
@@ -349,6 +357,7 @@ const save = async () => {
     let data = setupData.value || {};
 
     data['billing'] = props.billing.id
+    data['terminated_contract_ids'] = terminatedContractIds.value
     if (!data) return;
 
     const results = await $BillingBatchApiService.generateSummary(data);
@@ -404,6 +413,7 @@ const cancelBilling = async () => {
 
 <template>
   <div class="text-base">
+    <BillingTerminatedContractsDialog ref="terminatedDialog" :billing-id="props.billing ? props.billing.id : null" />
     <div class="mb-2 flex space-x-4 justify-between">
       <AtomsStatusesNav v-if="statuses && statuses.length > 0" :statuses="statuses" :active="activeStatus" class="pr-10" />
     </div>

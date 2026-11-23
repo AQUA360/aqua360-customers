@@ -8,6 +8,7 @@ export const NO_PERIOD_YEAR = 'none';
 export const VIEW_PERIODS = 'periods';
 export const VIEW_LIST = 'list';
 const VIEW_STORAGE_KEY = 'contract_invoices_view';
+const LIST_MODE_STORAGE_KEY = 'contract_invoices_list_mode';
 const LIST_PAGE_SIZE = 50;
 
 const readStoredView = () => {
@@ -15,6 +16,15 @@ const readStoredView = () => {
     return localStorage.getItem(VIEW_STORAGE_KEY) === VIEW_LIST ? VIEW_LIST : VIEW_PERIODS;
   } catch {
     return VIEW_PERIODS;
+  }
+};
+
+// Factures o pressupostos: també es recorda per navegador
+const readStoredListMode = () => {
+  try {
+    return localStorage.getItem(LIST_MODE_STORAGE_KEY) === 'budget' ? 'budget' : 'invoice';
+  } catch {
+    return 'invoice';
   }
 };
 
@@ -27,7 +37,7 @@ export function useContractInvoicesByPeriod(getContractId) {
   const loading = ref(false);
   const error = ref(false);
   // 'invoice' → is_invoice=true; 'budget' → is_invoice=false
-  const listMode = ref('invoice');
+  const listMode = ref(readStoredListMode());
   const viewMode = ref(readStoredView());
   const listInvoices = ref([]);
   const listPagination = ref({ page: 1, perPage: LIST_PAGE_SIZE, total: 0, totalPages: 0, isFiltered: true });
@@ -115,6 +125,11 @@ export function useContractInvoicesByPeriod(getContractId) {
   const setListMode = async (mode) => {
     if (listMode.value === mode) return;
     listMode.value = mode;
+    try {
+      localStorage.setItem(LIST_MODE_STORAGE_KEY, mode);
+    } catch {
+      // Storage unavailable: the choice lasts for this page only.
+    }
     // Budgets and invoices rarely share the same years; start from the newest.
     activeYear.value = null;
     listPagination.value = { ...listPagination.value, page: 1 };
@@ -142,7 +157,7 @@ export function useContractInvoicesByPeriod(getContractId) {
     listPagination.value = { ...listPagination.value, page: 1, total: 0, totalPages: 0 };
     loading.value = false;
     error.value = false;
-    listMode.value = 'invoice';
+    // listMode es manté: és la tria de l'usuari (desada al navegador o, si no es pot desar, en memòria)
   };
 
   // Keeps the "send" button in sync after a PDF is generated, without reloading.

@@ -10,7 +10,9 @@ logger = logging.getLogger("post_requests")
 class PostRequestLoggingMiddleware:
     def __init__(self, get_response):
         self.get_response = get_response
-        self.sensitive_fields = {'password', 'fill with your sensitive fields'}  
+        # sepa_signed: mandat SEPA en base64 de l'alta de l'OV (document
+        # personal i molt gran, no s'ha d'escriure al registre).
+        self.sensitive_fields = {'password', 'sepa_signed', 'fill with your sensitive fields'}
     
     def _mask_sensitive_data(self, data):
         if isinstance(data, dict):

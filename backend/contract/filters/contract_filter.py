@@ -155,7 +155,11 @@ class ContractFilter(filters.FilterSet):
     
     def filter_is_checked(self, queryset, name, value):
         if value:
-            return queryset.filter(user_checked__isnull=False)
+            # El seguiment és per usuari: només els contractes que segueix l'usuari connectat.
+            user = getattr(self.request, 'user', None)
+            if not user or not user.is_authenticated:
+                return queryset.none()
+            return queryset.filter(user_checked=user)
         return queryset
     
     def filter_communication_type(self, queryset, name, value):

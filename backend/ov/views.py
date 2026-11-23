@@ -1,3 +1,4 @@
+from django.core.files.base import ContentFile
 from django.http import FileResponse
 from django.conf import settings
 from django.db import connection, transaction
@@ -42,6 +43,11 @@ from coredata.models import (
 from coredata.utils.name_utils import generate_token, check_token_exists
 from coredata.utils import name_utils as name_utils_module
 from contract.utils.contract_token_service import generate_contract_request_token
+from contract.utils.contract_pdf_service import (
+    generate_contract_pdf_bytes,
+    get_contract_pdf_filename,
+)
+from integrations.outbound.signing.services import save_signed_contract_file
 from logger.models import LogIncidentStatusChange, LogContractRequestStatus
 from notification.models import Incident, IncidentStatus, IncidentType
 from rest_framework.parsers import MultiPartParser, FormParser
@@ -51,6 +57,7 @@ from rest_framework.views import APIView
 from rest_framework.generics import RetrieveAPIView
 from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
+from rest_framework.settings import api_settings
 from contract.models import (
     Contract,
     ContractLog,
@@ -81,6 +88,9 @@ from service.models import Property, SupplyPoint
 from service.utils.route_scope import effective_route
 from ov.invoice_visibility import exclude_future_invoices
 from ov.serializers import (
+    BASE64_TOO_LARGE_CODE,
+    SEPA_SIGNED_DEFAULT_FILENAME,
+    base64_max_length,
     _normalize_person_dni,
     _normalized_dni_expression,
     _resolve_contract_procedure_person,
@@ -100,6 +110,7 @@ from ov.serializers import (
     ConsumptionDownloadRequestSerializer,
     BillingPeriodItemSerializer,
     SepaDocumentUploadSerializer,
+    SignedContractUploadSerializer,
     CancelDirectDebitSerializer,
     ContactDataOVSerializer,
     BatchInvoiceDownloadSerializer,
@@ -126,6 +137,7 @@ from ov.serializers import (
     ContractTerminationProcedureResponseSerializer,
 )
 from pagination.ov_pagination import OVLimitPagination, OVConsumptionPagination
+from ov.parsers import LimitedJSONParser
 from ov.permissions import IsOVUser
 from ov.throttles import (
     ContractProcedureThrottle,
@@ -1167,6 +1179,45 @@ class BillingPeriodsOVView(APIView):
         return Response(serializer.data)
 
 
+def _archive_sepa_mandate(general_payment, file_obj, filename):
+    """Desa el mandat SEPA signat al gestor documental i el deixa com a mandat
+    de la forma de pagament (`GeneralPaymentSepaDocument`), substituint el que
+    hi hagués. S'ha de cridar dins una transacció. Torna el `Document`."""
+    person_bank = general_payment.IBAN or general_payment.company_iban
+    folder_name = "SEPA"
+    if person_bank:
+        if hasattr(person_bank, "name") and person_bank.name:
+            folder_name = person_bank.name
+        elif hasattr(person_bank, "person") and person_bank.person:
+            folder_name = (
+                f"{person_bank.person.name} {person_bank.person.surname or ''}"
+            ).strip()
+        elif hasattr(person_bank, "company") and person_bank.company:
+            folder_name = person_bank.company.name
+        elif hasattr(person_bank, "iban") and person_bank.iban:
+            folder_name = person_bank.iban
+    folder_name = folder_name.replace(" ", "_").upper()
+
+    document = upload_document(
+        file_obj,
+        "SEPA",
+        "CONTRACT",
+        general_payment.id,
+        general_payment.token or "",
+        folder_name,
+        settings.DOCUMENT_MANAGER_SERVICES.get("contract"),
+        filename,
+        hdd_subfolder=str(general_payment.id),
+    )
+    GeneralPaymentSepaDocument.objects.filter(
+        general_payment=general_payment
+    ).delete()
+    GeneralPaymentSepaDocument.objects.create(
+        general_payment=general_payment, file=document, checked=True
+    )
+    return document
+
+
 class SepaDocumentUploadView(APIView):
     """POST /ov/procedures/{contract_token}/upload-sepa-signed/
 
@@ -1200,7 +1251,6 @@ class SepaDocumentUploadView(APIView):
 
         uploaded_iban = serializer.validated_data["iban"]
         uploaded_file = serializer.validated_data["sepa"]
-        service = settings.DOCUMENT_MANAGER_SERVICES.get("contract")
 
         with transaction.atomic():
             general_payment = None
@@ -1219,37 +1269,8 @@ class SepaDocumentUploadView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            person_bank = general_payment.IBAN or general_payment.company_iban
-            folder_name = "SEPA"
-            if person_bank:
-                if hasattr(person_bank, "name") and person_bank.name:
-                    folder_name = person_bank.name
-                elif hasattr(person_bank, "person") and person_bank.person:
-                    folder_name = (
-                        f"{person_bank.person.name} {person_bank.person.surname or ''}"
-                    ).strip()
-                elif hasattr(person_bank, "company") and person_bank.company:
-                    folder_name = person_bank.company.name
-                elif hasattr(person_bank, "iban") and person_bank.iban:
-                    folder_name = person_bank.iban
-            folder_name = folder_name.replace(" ", "_").upper()
-
-            document = upload_document(
-                uploaded_file,
-                "SEPA",
-                "CONTRACT",
-                general_payment.id,
-                general_payment.token or "",
-                folder_name,
-                service,
-                uploaded_file.name,
-                hdd_subfolder=str(general_payment.id),
-            )
-            GeneralPaymentSepaDocument.objects.filter(
-                general_payment=general_payment
-            ).delete()
-            GeneralPaymentSepaDocument.objects.create(
-                general_payment=general_payment, file=document, checked=True
+            document = _archive_sepa_mandate(
+                general_payment, uploaded_file, uploaded_file.name
             )
 
         logger.info(
@@ -2801,6 +2822,51 @@ def _create_procedure_payment(holder, payment_type, bank_fields):
     return person_bank, general_payment
 
 
+# Marge sobre la longitud màxima del mandat en base64 per a la resta del JSON
+# i per als salts de línia escapats dels codificadors MIME. És només un filtre
+# previ: el serializer comprova la mida exacta del camp.
+CONTRACT_PROCEDURE_BODY_MARGIN_RATIO = 1.1
+CONTRACT_PROCEDURE_BODY_OVERHEAD_BYTES = 64 * 1024
+
+
+def _contract_procedure_max_body_bytes():
+    """Mida màxima del cos de l'alta: el JSON amb el mandat SEPA més gran."""
+    return int(
+        base64_max_length(settings.OV_SIGNED_CONTRACT_MAX_BYTES)
+        * CONTRACT_PROCEDURE_BODY_MARGIN_RATIO
+        + CONTRACT_PROCEDURE_BODY_OVERHEAD_BYTES
+    )
+
+
+def _contract_procedure_body_too_large(request):
+    """`True` si la capçalera Content-Length de l'alta passa de la mida
+    màxima del cos, o no és un número."""
+    content_length = request.META.get("CONTENT_LENGTH")
+    if not content_length:
+        return False
+    try:
+        length = int(content_length)
+    except (TypeError, ValueError):
+        return True
+    return length > _contract_procedure_max_body_bytes()
+
+
+class ContractProcedureJSONParser(LimitedJSONParser):
+    """JSON de l'alta: admet el mandat SEPA en base64 (fins a ~15 MB) tot i el
+    límit de 2,5 MiB de Django per a la resta de l'aplicació."""
+
+    def get_max_bytes(self):
+        return _contract_procedure_max_body_bytes()
+
+
+def _has_error_code(serializer, field, code):
+    """`True` si algun error del camp del serializer té aquest codi."""
+    return any(
+        getattr(error, "code", None) == code
+        for error in serializer.errors.get(field, [])
+    )
+
+
 class ContractProcedureOVView(APIView):
     """POST /ov/procedures/contract/
 
@@ -2822,6 +2888,13 @@ class ContractProcedureOVView(APIView):
 
     permission_classes = [IsAuthenticated]
     throttle_classes = [ContractProcedureThrottle]
+    # El JSON amb el mandat en base64 passa del límit de Django; la resta de
+    # formats s'accepten com fins ara.
+    parser_classes = [ContractProcedureJSONParser] + [
+        parser
+        for parser in api_settings.DEFAULT_PARSER_CLASSES
+        if parser.media_type != "application/json"
+    ]
 
     def post(self, request):
         """Create a request in the default status with payment and tariff records.
@@ -2832,13 +2905,29 @@ class ContractProcedureOVView(APIView):
         ambiguous supply point returns 400; missing properties, supply points,
         or dictionary entries return 404. An existing open request for the
         supply point returns 409; a missing default status returns 500.
+        An optional signed SEPA mandate (`sepa_signed`, PDF in base64, direct
+        debit only) is validated before anything is created (400, or 413 when
+        too large) and archived as the mandate of the request's payment.
         Exceptions during creation propagate and roll back the transaction's
         writes, including a newly created holder.
         """
+        # El mandat SEPA en base64 pot fer el cos molt gran: es mira la mida
+        # declarada abans de llegir-lo i, després, la del camp (413).
+        if _contract_procedure_body_too_large(request):
+            return Response(
+                {"error": "Request body too large"},
+                status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            )
+
         serializer = ContractProcedureRequestSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(
-                serializer.errors, status=status.HTTP_400_BAD_REQUEST
+                serializer.errors,
+                status=(
+                    status.HTTP_413_REQUEST_ENTITY_TOO_LARGE
+                    if _has_error_code(serializer, "sepa_signed", BASE64_TOO_LARGE_CODE)
+                    else status.HTTP_400_BAD_REQUEST
+                ),
             )
 
         data = serializer.validated_data
@@ -2918,6 +3007,15 @@ class ContractProcedureOVView(APIView):
                 return Response(
                     {"error": missing}, status=status.HTTP_400_BAD_REQUEST
                 )
+        elif data.get("sepa_signed"):
+            return Response(
+                {
+                    "sepa_signed": [
+                        "The SEPA mandate is only allowed for direct debit."
+                    ]
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         existing_request = (
             ContractRequest.objects.filter(
@@ -2998,6 +3096,17 @@ class ContractProcedureOVView(APIView):
                 observation=data.get("observation") or None,
                 user=request.user,
             )
+
+            # Mandat de la forma de pagament de la sol·licitud: el contracte
+            # que se'n creï la reutilitza, i amb ella el mandat.
+            sepa_signed = data.get("sepa_signed")
+            if sepa_signed:
+                _archive_sepa_mandate(
+                    general_payment,
+                    ContentFile(sepa_signed),
+                    data.get("sepa_signed_filename")
+                    or SEPA_SIGNED_DEFAULT_FILENAME,
+                )
 
         payload = {
             "contract_request_token": contract_request.token,
@@ -3087,6 +3196,147 @@ class ContractRequestStatusOVView(APIView):
             ),
         }
         return Response(ContractRequestStatusSerializer(payload).data)
+
+
+class ContractRequestPdfOVView(APIView):
+    """GET /ov/procedures/contract/<contract_request_token>/pdf/
+
+    PDF del contracte d'una sol·licitud d'alta, perquè un sistema extern el
+    pugui fer signar fora d'Aqua360. Es genera amb la mateixa plantilla i
+    opcions que l'enviament a signar (Aqua360 Sign). Si la sol·licitud ja té
+    el PDF generat (`contract_file_template`, el que desa el backoffice en
+    descarregar-lo) es reutilitza; si no, es genera i s'hi desa. Respon 404
+    si la sol·licitud no existeix o no està activa i 500 si el PDF no es pot
+    generar.
+    """
+
+    permission_classes = [IsAuthenticated, IsOVUser]
+    throttle_classes = [ContractProcedureThrottle]
+
+    def get(self, request, contract_request_token):
+        contract_request = ContractRequest.objects.filter(
+            token=contract_request_token, is_active=True
+        ).first()
+        if contract_request is None:
+            raise NotFound({"error": "Contract request not found"})
+
+        filename = get_contract_pdf_filename(contract_request)
+        pdf_bytes = _stored_contract_request_pdf(contract_request)
+        if pdf_bytes is None:
+            try:
+                pdf_bytes = generate_contract_pdf_bytes(
+                    contract_request, include_requested_at=True
+                )
+            except Exception:
+                # No només ContractPdfGenerationError (falla de pisa): una
+                # plantilla inexistent o dades incompletes també peten abans i
+                # l'API ha de respondre sempre amb el mateix error JSON.
+                logger.exception(
+                    "Contract request PDF could not be generated (id=%s)",
+                    contract_request.id,
+                )
+                return Response(
+                    {"error": "Contract PDF could not be generated"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+            contract_request.contract_file_template.save(
+                filename, ContentFile(pdf_bytes)
+            )
+
+        return _download_response(pdf_bytes, "application/pdf", filename)
+
+
+def _stored_contract_request_pdf(contract_request):
+    """Bytes del PDF ja generat de la sol·licitud, o `None` si no en té o el
+    fitxer ja no és al disc (llavors es torna a generar)."""
+    stored = contract_request.contract_file_template
+    if not stored:
+        return None
+    try:
+        with stored.open("rb") as stored_file:
+            return stored_file.read()
+    except (FileNotFoundError, OSError):
+        logger.warning(
+            "Stored contract request PDF missing, regenerating (id=%s)",
+            contract_request.id,
+        )
+        return None
+
+
+class ContractRequestSignedUploadOVView(APIView):
+    """POST /ov/procedures/contract/<contract_request_token>/signed/
+
+    Puja el contracte d'una sol·licitud d'alta un cop signat fora d'Aqua360
+    (multipart, camp `file`). Es desa igual que el que torna Aqua360 Sign: al
+    gestor documental i com a contracte de la sol·licitud i, si ja s'ha creat,
+    del contracte; si n'hi havia un, el substitueix. No canvia l'estat de la
+    sol·licitud. Respon 404 si la sol·licitud no existeix o no està activa i
+    400 si el fitxer no és un PDF o passa de la mida màxima.
+    """
+
+    permission_classes = [IsAuthenticated, IsOVUser]
+    throttle_classes = [ContractProcedureThrottle]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request, contract_request_token):
+        contract_request = ContractRequest.objects.filter(
+            token=contract_request_token, is_active=True
+        ).first()
+        if contract_request is None:
+            raise NotFound({"error": "Contract request not found"})
+
+        # Es mira la mida declarada abans de tocar `request.data`: el parser
+        # multipart desaria sencer a un fitxer temporal un PDF massa gran
+        # abans que el serializer el pogués rebutjar.
+        if _signed_contract_body_too_large(request):
+            return Response(
+                {"error": "Request body too large"},
+                status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            )
+
+        serializer = SignedContractUploadSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        uploaded_file = serializer.validated_data["file"]
+        with transaction.atomic():
+            document = save_signed_contract_file(contract_request, uploaded_file.read())
+
+        logger.info(
+            "Signed contract uploaded to contract request (id=%s, document=%s)",
+            contract_request.id,
+            document.id,
+        )
+        return Response(
+            {
+                "contract_request_token": contract_request.token,
+                "document_id": document.id,
+                "success": True,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+# Marge per a la resta del cos multipart (límits, capçaleres de la part) a
+# sobre del límit del fitxer: el serializer ja comprova la mida exacta.
+SIGNED_CONTRACT_MULTIPART_OVERHEAD_BYTES = 64 * 1024
+
+
+def _signed_contract_body_too_large(request):
+    """`True` si la capçalera Content-Length passa del límit del contracte
+    signat (més el marge del multipart) o no és un número. Sense capçalera
+    Django no llegeix cos i el serializer respon que falta el fitxer."""
+    content_length = request.META.get("CONTENT_LENGTH")
+    if not content_length:
+        return False
+    try:
+        length = int(content_length)
+    except (TypeError, ValueError):
+        return True
+    return length > (
+        settings.OV_SIGNED_CONTRACT_MAX_BYTES
+        + SIGNED_CONTRACT_MULTIPART_OVERHEAD_BYTES
+    )
 
 
 # Fallbacks dels tokens d'estat de baixa tancada (finalitzada / cancel·lada)

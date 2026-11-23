@@ -676,6 +676,9 @@ OV_ACTIVE_CONTRACTS_ENDPOINT = config("OV_ACTIVE_CONTRACTS_ENDPOINT", default="/
 OV_SYNC_ENABLED = config("OV_SYNC_ENABLED", default=False, cast=bool)
 OV_SYNC_HOUR = config("OV_SYNC_HOUR", default=4, cast=int)
 OV_SYNC_MINUTE = config("OV_SYNC_MINUTE", default=0, cast=int)
+# Mida màxima del PDF del contracte signat que un sistema extern puja a una
+# sol·licitud d'alta (POST /ov/procedures/contract/<token>/signed/).
+OV_SIGNED_CONTRACT_MAX_BYTES = 10 * 1024 * 1024
 
 # Webhooks de sortida: avisen un sistema extern (POST) quan es crea un contracte,
 # es dona de baixa, s'anul·la una baixa o s'emeten factures. Vegeu
@@ -698,6 +701,8 @@ SIGNING_BASE_URL = config("SIGNING_BASE_URL", default="")
 SIGNING_API_KEY = config("SIGNING_API_KEY", default="")
 SIGNING_CALLBACK_URL = config("SIGNING_CALLBACK_URL", default="")
 SIGNING_TIMEOUT = config("SIGNING_TIMEOUT", default=30, cast=int)
+# Clau que Aqua360 Sign envia a X-API-Key en el callback. Obligatòria: si és buida, el callback
+# ho rebutja tot (403). Ha de coincidir amb el callback_api_key del client a Sign.
 SIGN_CALLBACK_API_KEY = config("SIGN_CALLBACK_API_KEY", default="")
 
 # Sondeig de les sessions d'Aqua360 Sign: alternativa al webhook `session.signed`

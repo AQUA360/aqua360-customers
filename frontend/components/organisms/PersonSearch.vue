@@ -2,8 +2,10 @@
 import { ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import debounce from 'lodash.debounce';
+import { useToast } from 'vue-toastification';
 
 const { t } = useI18n();
+const toast = useToast();
 const { $PersonApiService } = useNuxtApp();
 const emits = defineEmits(['saved']);
 
@@ -68,8 +70,24 @@ const createPerson = async () => {
     token: token.value,
     is_juridic: isJuridic.value,
   };
-  const savedPerson = await $PersonApiService.save(newPerson);
-  selectPerson(savedPerson);
+  try {
+    const savedPerson = await $PersonApiService.save(newPerson, true);
+    selectPerson(savedPerson);
+  } catch (err) {
+    const data = err?.response?._data;
+    const tokenError = [].concat(data?.token ?? []);
+    if (tokenError.includes('TOKEN_ALREADY_EXISTS')) {
+      // La persona ja existeix: es passa a la cerca amb el DNI per poder-la seleccionar
+      toast.error(t('warning_block.TOKEN_ALREADY_EXISTS'));
+      isExistingApplicant.value = true;
+      searchQuery.value = (token.value || '').replace(/[\s.\-]+/g, '').toUpperCase();
+      searchPerson();
+      return;
+    }
+    const flatten = (e) => Array.isArray(e) ? e.map(flatten).join(', ')
+      : (e && typeof e === 'object') ? Object.values(e).map(flatten).join(' | ') : e;
+    toast.error((data && flatten(data)) || err?.message || 'Error');
+  }
 };
 
 
