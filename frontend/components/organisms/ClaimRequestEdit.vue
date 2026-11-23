@@ -22,6 +22,7 @@ import { formatMoney } from '~/utils/money';
 import SearchEntityInput from '../molecules/SearchEntityInput.vue';
 import { checkPermission } from '~/middleware/permission';
 import WizardStatusNav from '../molecules/WizardStatusNav.vue';
+import TableHeader from '~/components/atoms/TableHeader.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -149,6 +150,9 @@ const showExcluded = ref(true);
 // Contractes amb una baixa demanada i sense acabar: entren a la gestió com
 // qualsevol altre contracte d'alta, però cal poder trobar-los per excloure'ls a mà.
 const onlyOpenTermination = ref(false);
+// Ordre de la llista (i de l'Excel, que s'exporta en el mateix ordre).
+const sortBy = ref('token');
+const sortDesc = ref(false);
 
 const totalSelectedPayments = computed(() => {
   return contracts.value.reduce((count, contract) => {
@@ -178,6 +182,16 @@ watch(showExcluded, () => {
 watch(onlyOpenTermination, () => {
   currentPage.value = 1;
 });
+
+const handleSort = (key) => {
+  if (sortBy.value === key) {
+    sortDesc.value = !sortDesc.value;
+  } else {
+    sortBy.value = key;
+    sortDesc.value = false;
+  }
+  currentPage.value = 1;
+};
 
 const totalOpenTermination = computed(() => {
   return contracts.value.filter(contract => contract.has_open_termination).length;
@@ -675,6 +689,24 @@ const contractMatchesSearchQuery = (contract) => {
   return (contract.payments || []).some(payment => paymentMatchesSearch(payment, query));
 };
 
+const compareText = (a, b) => String(a ?? '').localeCompare(String(b ?? ''), undefined, { numeric: true, sensitivity: 'base' });
+const contractAmount = (contract) => Number(contract.total_amount) || 0;
+
+const contractComparators = {
+  token: (a, b) => compareText(a.token, b.token),
+  holder_token: (a, b) => compareText(a.holder_token, b.holder_token),
+  holder: (a, b) => compareText(a.holder, b.holder),
+  total_amount: (a, b) => contractAmount(a) - contractAmount(b),
+  status: (a, b) => compareText(a.status?.name, b.status?.name),
+};
+
+// Retorna una còpia ordenada: no toca la llista original. En cas d'empat, mana el contracte.
+const sortContracts = (list) => {
+  const comparator = contractComparators[sortBy.value] || contractComparators.token;
+  const direction = sortDesc.value ? -1 : 1;
+  return [...list].sort((a, b) => (direction * comparator(a, b)) || compareText(a.token, b.token));
+};
+
 const filteredContracts = computed(() => {
   let result = contracts.value || [];
 
@@ -690,7 +722,7 @@ const filteredContracts = computed(() => {
     result = result.filter(contract => contractMatchesSearchQuery(contract));
   }
 
-  return result;
+  return sortContracts(result);
 });
 
 const getContractPayments = (contract) => {
@@ -1145,6 +1177,22 @@ watch(() => selectedZones.value, () => {
             </div>
 
             <div class="divide-y divide-gray-200 h-[55vh] overflow-auto">
+              <div v-if="filteredContracts.length > 0"
+                class="sticky top-0 z-10 bg-white px-4 py-1 flex items-center space-x-3 text-sm font-medium">
+                <span class="w-4 shrink-0"></span>
+                <div class="grid grid-cols-[100px,80px,300px,80px,80px,1fr] gap-2">
+                  <TableHeader :label="$t('contract')" sortKey="token" :currentSortBy="sortBy" :sortDesc="sortDesc"
+                    @sort="handleSort" />
+                  <TableHeader :label="$t('common.identification')" sortKey="holder_token" :currentSortBy="sortBy"
+                    :sortDesc="sortDesc" @sort="handleSort" />
+                  <TableHeader :label="$t('common.holder')" sortKey="holder" :currentSortBy="sortBy"
+                    :sortDesc="sortDesc" @sort="handleSort" />
+                  <TableHeader :label="$t('common.debt')" sortKey="total_amount" :currentSortBy="sortBy"
+                    :sortDesc="sortDesc" @sort="handleSort" />
+                  <TableHeader :label="$t('common.status')" sortKey="status" :currentSortBy="sortBy"
+                    :sortDesc="sortDesc" @sort="handleSort" />
+                </div>
+              </div>
               <div v-if="filteredContracts.length === 0" class="footering text-slate-500 p-2">
                 {{ $t('common.no_data_found') }}
               </div>
