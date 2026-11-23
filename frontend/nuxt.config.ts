@@ -179,6 +179,7 @@ export default defineNuxtConfig({
     '~/plugins/api/billing/invoice-api.js',
     '~/plugins/api/billing/invoice-template-api.js',
     '~/plugins/api/billing/payment-api.js',
+    '~/plugins/api/billing/insolvency-process-api.js',
     '~/plugins/api/billing/message-api.js',
     '~/plugins/api/billing/biller-api.js',
     '~/plugins/api/billing/general-payment-api.js',

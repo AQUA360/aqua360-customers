@@ -262,6 +262,11 @@ export default defineNuxtPlugin(nuxtApp => {
     }
     throw new Error('Error no trobat');
   }
+  // Contractes de la facturació amb el titular insolvent (només per avisar)
+  const getInsolventHolders = async (id, recalculate = false) => {
+    const apiUrl = apiHost + '/billing/billing/' + id + '/insolvent-holders' + (recalculate ? '?recalculate=1' : '');
+    return await $apiManager.fetch(apiUrl, 'GET');
+  }
   const regeneratePdfs = async (id) => {
     let apiUrl = apiHost + '/billing/billing/' + id + '/regenerate-pdfs';
     try {
@@ -546,6 +551,7 @@ export default defineNuxtPlugin(nuxtApp => {
     downloadSummary,
     recalculate,
     getTerminatedContracts,
+    getInsolventHolders,
     regeneratePdfs,
     checkRegeneratePdfsTask,
     moveInvoiceToBilling,

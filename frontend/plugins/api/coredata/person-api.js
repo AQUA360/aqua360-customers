@@ -42,7 +42,8 @@ export default defineNuxtPlugin(nuxtApp => {
     }
   };
 
-  const getAll = async (searchQuery = '', filters = [], page = 1, sort = null, desc = false , juridicFilter = []) => {
+  // extraParams: filtres addicionals ({ insolvency: 'true' }, ...)
+  const getAll = async (searchQuery = '', filters = [], page = 1, sort = null, desc = false , juridicFilter = [], extraParams = {}) => {
     let apiUrl = apiHost + entity + '?search=' + encodeURIComponent(searchQuery) + `&page=${page}`;
 
     // Afegir els filtres a la URL
@@ -56,6 +57,10 @@ export default defineNuxtPlugin(nuxtApp => {
     if (juridicFilter.length > 0) {
       apiUrl += `&is_juridic=${juridicFilter[0]}`;
     }
+
+    Object.entries(extraParams || {}).forEach(([key, value]) => {
+      if (value !== null && value !== undefined && value !== '') apiUrl += `&${key}=${encodeURIComponent(value)}`;
+    });
 
     if (filtersValues.length > 0) {
       apiUrl += `&status=${filtersValues.join(',')}`;
@@ -79,11 +84,12 @@ export default defineNuxtPlugin(nuxtApp => {
     }
   };
 
-  const exportData = async (searchQuery = '', filters = [], sort = null, desc = false, juridicFilter = [], columns = []) => {
+  const exportData = async (searchQuery = '', filters = [], sort = null, desc = false, juridicFilter = [], columns = [], extraParams = {}) => {
     return $apiManager.exportTable(entity, {
       searchQuery, filters, sort, desc, columns,
       extraParams: {
         is_juridic: juridicFilter.length > 0 ? juridicFilter[0] : null,
+        ...(extraParams || {}),
       }
     });
   };

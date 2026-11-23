@@ -104,11 +104,13 @@ watch(() => [props.personId, props.reload], getData);
         </span>
       </div>
       <div class="p-1 flex items-center justify-center gap-1">
-        <button v-if="canChange && item.is_current" type="button" @click="resolve(item)"
+        <Icon v-if="item.in_open_process" name="fa6-solid:scale-balanced" class="text-red-500"
+          :title="t('person_anomaly.managed_by_process')" />
+        <button v-if="canChange && item.is_current && !item.in_open_process" type="button" @click="resolve(item)"
           :title="t('person_anomaly.resolve')" class="px-1.5 py-1 text-gray-400 hover:text-emerald-600">
           <Icon name="fa6-solid:check" />
         </button>
-        <button v-if="canChange" type="button" @click="remove(item)" :title="t('person_anomaly.delete')"
+        <button v-if="canChange && !item.in_open_process" type="button" @click="remove(item)" :title="t('person_anomaly.delete')"
           class="px-1.5 py-1 text-gray-400 hover:text-red-500">
           <Icon name="fa6-solid:trash" />
         </button>

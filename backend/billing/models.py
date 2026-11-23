@@ -1475,3 +1475,67 @@ class UnpaidFeeRun(models.Model):
 
     def __str__(self):
         return f'{self.created_at:%Y-%m-%d %H:%M} ({self.status})'
+
+
+class InsolvencyProcess(models.Model):
+    """Procés d'insolvència d'una persona (llei de segona oportunitat o concurs de creditors).
+
+    Mentre és obert, la persona té l'anomalia «Insolvent» vigent. Les factures emeses des de
+    la data d'insolvència segueixen la facturació normal; en crear el procés es poden vincular-hi.
+    """
+    KIND_SECOND_CHANCE = 'second_chance'
+    KIND_CREDITORS = 'creditors'
+    KIND_CHOICES = [
+        (KIND_SECOND_CHANCE, 'Llei de segona oportunitat'),
+        (KIND_CREDITORS, 'Concurs de creditors'),
+    ]
+    STATUS_OPEN = 'open'
+    STATUS_CLOSED = 'closed'
+    STATUS_CHOICES = [
+        (STATUS_OPEN, 'Obert'),
+        (STATUS_CLOSED, 'Tancat'),
+    ]
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    person = models.ForeignKey(Person, on_delete=models.PROTECT, related_name='insolvency_processes')
+    kind = models.CharField(max_length=20, choices=KIND_CHOICES)
+    start_date = models.DateField()
+    case_number = models.CharField(max_length=255, null=True, blank=True)
+    observation = models.TextField(null=True, blank=True)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=STATUS_OPEN)
+    anomaly = models.ForeignKey('coredata.PersonAnomaly', on_delete=models.SET_NULL, null=True, blank=True,
+                                related_name='insolvency_processes')
+    invoices = models.ManyToManyField(Invoice, blank=True, related_name='insolvency_processes')
+    documents = models.ManyToManyField(Document, blank=True, related_name='insolvency_processes')
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='insolvency_processes')
+    closed_at = models.DateTimeField(null=True, blank=True)
+    closed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
+                                  related_name='closed_insolvency_processes')
+
+    class Meta:
+        ordering = ['-start_date', '-id']
+        constraints = [
+            # Només un procés obert per persona (restricció de BD, sense curses entre peticions)
+            models.UniqueConstraint(fields=['person'], condition=models.Q(status='open'),
+                                    name='insolvency_process_single_open_per_person'),
+        ]
+
+    def __str__(self):
+        return f'InsolvencyProcess {self.id} ({self.person_id})'
+
+
+class InsolvencyProcessContract(models.Model):
+    """Canvi de forma de pagament d'un contracte fet des d'un procés d'insolvència."""
+    created_at = models.DateTimeField(auto_now_add=True)
+    process = models.ForeignKey(InsolvencyProcess, on_delete=models.CASCADE, related_name='contracts')
+    contract = models.ForeignKey(Contract, on_delete=models.CASCADE, related_name='insolvency_process_changes')
+    previous_payment_type = models.ForeignKey(PaymentType, on_delete=models.SET_NULL, null=True, blank=True,
+                                              related_name='+')
+    new_payment_type = models.ForeignKey(PaymentType, on_delete=models.SET_NULL, null=True, blank=True,
+                                         related_name='+')
+    general_payment = models.ForeignKey(GeneralPayment, on_delete=models.SET_NULL, null=True, blank=True,
+                                        related_name='+')
+
+    def __str__(self):
+        return f'InsolvencyProcessContract {self.process_id} - {self.contract_id}'
