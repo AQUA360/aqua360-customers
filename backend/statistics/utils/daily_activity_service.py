@@ -362,8 +362,8 @@ def get_activity_sources():
             token_paths=('token',), contract_paths=('contract.token',),
             detail_paths=('status.name',),
             select_related=('contract', 'status'),
-            amount_aggregator=_simple_amount_aggregator('amount'),
-            amount_resolver=_simple_amount_resolver('amount'),
+            amount_aggregator=_simple_amount_aggregator('total_final'),
+            amount_resolver=_simple_amount_resolver('total_final'),
         ),
         ActivitySource(
             key='joined_payment_status_changes', category=CATEGORY_COLLECTIONS,
