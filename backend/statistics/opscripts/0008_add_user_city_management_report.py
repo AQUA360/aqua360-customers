@@ -2,7 +2,8 @@
 
 Canvis de titular, sol·licituds d'alta, canvis de compte i de forma de pagament,
 cobraments per forma de pagament i modificacions de factures, per a cada municipi
-i usuari. No pisa cap AvailableReport existent: get_or_create per function_name.
+i usuari. Es busca per function_name: si l'informe ja existeix, se li tornen a
+aplicar els valors de REPORT_DEFAULTS (nom, descripció, actiu...) i la secció.
 """
 
 REPORT_DEFAULTS = {
@@ -26,6 +27,11 @@ def run():
     from statistics.models import AvailableReport, ReportType
 
     section = ReportType.objects.filter(token='statistics').first()
+    if section is None:
+        # No s'atura el desplegament (run_pending_scripts no captura errors), però queda
+        # constància: l'informe es registra igualment i es pot assignar la secció a l'admin.
+        print("AVÍS: no hi ha cap secció d'informes amb token 'statistics'; "
+              "l'informe es registra sense secció.")
     max_pos = (
         AvailableReport.objects.filter(section=section)
         .aggregate(max_pos=Max('position'))

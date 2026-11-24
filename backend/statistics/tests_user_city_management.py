@@ -193,6 +193,18 @@ class UserCityManagementTests(TestCase):
         self.assertEqual(counts[METRIC_INVOICE_MODIFICATION], 3)
         self.assertEqual(counts.get(METRIC_INVOICE_MASS_MODIFICATION, 0), 0)
 
+    def test_shared_operation_token_does_not_merge_different_invoices(self):
+        # Canviar el venciment fa servir el mateix token per a totes les factures.
+        first, second = Invoice.objects.bulk_create([
+            Invoice(contract=self.contract_a), Invoice(contract=self.contract_a),
+        ])
+        self._invoice_log(first, 'change_due_date', ['due_date'], at(7, 9, 0))
+        self._invoice_log(second, 'change_due_date', ['due_date'], at(7, 9, 5))
+
+        _users, metrics, _payments = self._compute()
+
+        self.assertEqual(metrics['Municipi A'][self.user.id][METRIC_INVOICE_MODIFICATION], 2)
+
     def test_mass_invoice_modifications_are_counted_apart(self):
         invoices = Invoice.objects.bulk_create([
             Invoice(contract=self.contract_a) for _ in range(MASS_MODIFICATION_THRESHOLD)
@@ -232,7 +244,7 @@ class UserCityManagementTests(TestCase):
 class DailyActivityJoinedPaymentsTests(TestCase):
     """El resum d'activitat petava en sumar `amount`, que JoinedPayment no té."""
 
-    def test_joined_payments_are_summed_with_total_final(self):
+    def test_joined_payments_are_counted_but_not_added_to_the_net(self):
         from billing.models import JoinedPayment
 
         user = User.objects.create(username='oficina')
@@ -244,7 +256,11 @@ class DailyActivityJoinedPaymentsTests(TestCase):
         collections = next(c for c in activity['categories'] if c['key'] == 'collections')
         source = next(s for s in collections['sources'] if s['key'] == 'joined_payments')
         self.assertEqual(source['count'], 1)
-        self.assertEqual(float(source['amounts']['net']), 12.5)
+        # Agrupar no és cobrar: els cobraments surten dels moviments dels rebuts.
+        self.assertEqual(source['amounts'], {})
+        self.assertEqual(activity['totals']['collections_net'], 0)
+        line = next(e for e in activity['timeline'] if e['source'] == 'joined_payments')
+        self.assertEqual(float(line['amount']), 12.5)
 
 
 class UserCityManagementDailyDocumentTests(TestCase):

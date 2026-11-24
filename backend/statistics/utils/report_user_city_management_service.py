@@ -269,7 +269,9 @@ def compute_user_city_management(date_from, date_to):
         .annotate(city=_city('invoice__contract'))
         .values_list('operation_token', 'field_name', 'invoice_id', 'user_id', 'created_at', 'city')
     ):
-        key = token or (invoice_id, user_id, created_at)
+        # Alguns camins fan servir un token fix (p. ex. "change_due_date") per a
+        # totes les factures: la factura sempre forma part de la clau.
+        key = (token, invoice_id) if token else (invoice_id, user_id, created_at)
         operation = operations.setdefault(key, {
             'fields': set(), 'invoice_id': invoice_id, 'user_id': user_id,
             'created_at': created_at, 'city': city,
