@@ -96,6 +96,22 @@ def communication_city_lookups(prefix=''):
     )
 
 
+def order_city_lookups(prefix=''):
+    """Una ordre: el contracte, el punt de subministrament, la sol·licitud o l'adreça
+    de l'ordre (moltes ordres no porten contracte)."""
+    path = f'{prefix}__' if prefix else ''
+    return (
+        contract_city_lookups(f'{path}contract')
+        + supply_point_city_lookups(f'{path}supply_point')
+        + contract_city_lookups(f'{path}contract_request')
+        + (f'{path}address__city__name', f'{path}address__street__city__name', f'{path}address__city_name')
+    )
+
+
+def invoice_city_lookups(prefix):
+    return contract_city_lookups(f'{prefix}__contract') + contract_city_lookups(f'{prefix}__contract_request')
+
+
 def incident_city_lookups(prefix):
     return (
         contract_city_lookups(f'{prefix}__contract')
@@ -468,6 +484,7 @@ def get_activity_sources():
         ActivitySource(
             key='orders_created', category=CATEGORY_ORDERS,
             label=_("Ordres de treball noves"),
+            city_paths=order_city_lookups(),
             model='order.Order', user_field='created_by', date_field='created_at',
             token_paths=('token',), contract_paths=('contract.token',),
             detail_paths=('type.name', 'reason.name', 'status.name'),
@@ -476,6 +493,7 @@ def get_activity_sources():
         ActivitySource(
             key='order_status_changes', category=CATEGORY_ORDERS,
             label=_("Canvis d'estat d'ordres"),
+            city_paths=order_city_lookups('object'),
             model='logger.LogOrderStatus', user_field='user', date_field='timestamp',
             token_paths=('object.token',), contract_paths=('object.contract.token',),
             detail_paths=('current_status.name', 'observation'),
@@ -484,6 +502,7 @@ def get_activity_sources():
         ActivitySource(
             key='order_observations', category=CATEGORY_ORDERS,
             label=_("Observacions d'ordres"),
+            city_paths=order_city_lookups('order'),
             model='order.OrderObservation', user_field='user', date_field='created_at',
             token_paths=('order.token',), contract_paths=('order.contract.token',),
             detail_paths=('observation',),
@@ -581,6 +600,7 @@ def get_activity_sources():
         ActivitySource(
             key='invoice_status_changes', category=CATEGORY_BILLING,
             label=_("Canvis d'estat de factures"),
+            city_paths=invoice_city_lookups('object'),
             model='logger.LogInvoiceChangeStatus', user_field='user', date_field='timestamp',
             token_paths=('object.serie_final', 'object.token'),
             contract_paths=('object.contract.token',),
@@ -590,6 +610,7 @@ def get_activity_sources():
         ActivitySource(
             key='invoice_data_changes', category=CATEGORY_BILLING,
             label=_("Canvis de dades de factures"),
+            city_paths=invoice_city_lookups('object'),
             model='logger.LogInvoiceDataChange', user_field='user', date_field='timestamp',
             token_paths=('object.serie_final', 'object.token'),
             contract_paths=('object.contract.token',),
@@ -599,6 +620,7 @@ def get_activity_sources():
         ActivitySource(
             key='invoice_logs', category=CATEGORY_BILLING,
             label=_("Modificacions de factures"),
+            city_paths=invoice_city_lookups('invoice'),
             model='billing.InvoiceLog', user_field='user', date_field='created_at',
             token_paths=('invoice.serie_final', 'invoice.token'),
             contract_paths=('invoice.contract.token',),
