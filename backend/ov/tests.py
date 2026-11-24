@@ -8614,6 +8614,21 @@ class DirectDebitTpvOVTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.data["already_paid"])
 
+    def test_paid_ignores_inactive_receipt_in_pending_remittance(self):
+        invoice = self._invoice(status="0", payment_status=self.paid)
+        inactive = Payment.objects.create(
+            invoice=invoice, amount=Decimal("20.00"), status=self.pending, is_active=False
+        )
+        remittance = PaymentRemittance.objects.create(token="REM-INACTIVE")
+        remittance.payments.add(inactive)
+
+        response = self._paid(invoice)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data["already_paid"])
+        inactive.refresh_from_db()
+        self.assertEqual(inactive.status, self.pending)
+
     # /ov/invoice/quick-pay/
 
     def _quick_pay(self, invoice):

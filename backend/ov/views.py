@@ -2417,7 +2417,9 @@ class QuickPayOVView(APIView):
 
         # Un rebut en una remesa pendent d'enviar el cobrarà el banc: no es pot pagar per TPV
         if in_pending_remittance(
-            invoice.payments.exclude(status__token=paid_payment_status_token)
+            invoice.payments.filter(is_active=True).exclude(
+                status__token=paid_payment_status_token
+            )
         ).exists():
             return Response(
                 {

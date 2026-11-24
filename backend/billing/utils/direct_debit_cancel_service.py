@@ -63,7 +63,19 @@ def move_direct_debit_invoices(contract, payment_type, user):
     """
     if payment_type is None or payment_type.token == DIRECT_DEBIT_TOKEN:
         return []
-    invoices = list(direct_debit_open_invoices(contract))
+    invoice_ids = list(direct_debit_open_invoices(contract).values_list('id', flat=True))
+    if not invoice_ids:
+        return []
+    # Bloqueja els rebuts i després les factures, en el mateix ordre que `/ov/invoice/paid/`
+    # (rebuts i, des dels senyals, la factura): un pagament alhora espera i no se sobreescriu.
+    # Un cop bloquejades, es tornen a llegir i a filtrar per si han canviat mentrestant.
+    list(Payment.objects.select_for_update().filter(invoice_id__in=invoice_ids).values_list('id', flat=True))
+    invoices = list(
+        Invoice.objects.select_for_update()
+        .filter(id__in=invoice_ids)
+        .filter(id__in=direct_debit_open_invoices(contract).values('id'))
+        .order_by('id')
+    )
     if not invoices:
         return []
     # Com al canvi de mètode des de la factura: només canvia el mètode, no genera moviments

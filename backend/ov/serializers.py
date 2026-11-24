@@ -844,14 +844,18 @@ class InvoicePaidSerializer(serializers.Serializer):
                     )
 
                 unpaid = [p for p in payments if p.status != paid_status]
+                # Només compten els rebuts actius: un d'inactiu no es cobra ni per remesa ni per TPV
+                active_unpaid_ids = [p.id for p in unpaid if p.is_active]
                 # Un rebut en una remesa pendent d'enviar el cobrarà el banc: no es marca pagat
-                if unpaid and in_pending_remittance(
-                    Payment.objects.filter(id__in=[p.id for p in unpaid])
+                if active_unpaid_ids and in_pending_remittance(
+                    Payment.objects.filter(id__in=active_unpaid_ids)
                 ).exists():
                     raise InvoiceInPendingRemittance()
-                self.already_paid = not unpaid
+                self.already_paid = not active_unpaid_ids
 
                 for payment in unpaid:
+                    if not payment.is_active:
+                        continue
                     payment.status = paid_status
                     payment.payment_type = "TPV ONLINE"
 
