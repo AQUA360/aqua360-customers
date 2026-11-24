@@ -12,7 +12,7 @@ validats dins del payload.
 
 from django.contrib.auth.models import User
 from rest_framework import status, views
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.response import Response
 
 from auth.permissions import PermissionManager
@@ -39,6 +39,16 @@ def _can_view_other_users(user):
 
 
 NO_PERMISSION_ERROR = "No tens permís per consultar l'activitat d'altres usuaris."
+
+
+class CanViewOtherUsersActivity(BasePermission):
+    """Només qui pot consultar l'activitat d'altres usuaris (flag `view_user`)."""
+
+    message = NO_PERMISSION_ERROR
+
+    def has_permission(self, request, view):
+        return bool(request.user and request.user.is_authenticated and _can_view_other_users(request.user))
+
 INVALID_USERS_ERROR = "Els usuaris demanats no són vàlids."
 EXCLUDED_USERS_ERROR = "L'activitat d'aquest usuari no es pot consultar."
 
@@ -192,12 +202,9 @@ class ReportUserCityManagement(views.APIView):
     l'activitat d'altres usuaris (el mateix criteri que "Tots els usuaris").
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CanViewOtherUsersActivity]
 
     def post(self, request):
-        if not _can_view_other_users(request.user):
-            return Response({'error': NO_PERMISSION_ERROR}, status=status.HTTP_403_FORBIDDEN)
-
         data = request.data or {}
         date_from, date_to = parse_activity_dates(
             data.get('date_from') or data.get('date'),
