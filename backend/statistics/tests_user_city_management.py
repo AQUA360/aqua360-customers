@@ -245,3 +245,65 @@ class DailyActivityJoinedPaymentsTests(TestCase):
         source = next(s for s in collections['sources'] if s['key'] == 'joined_payments')
         self.assertEqual(source['count'], 1)
         self.assertEqual(float(source['amounts']['net']), 12.5)
+
+
+class UserCityManagementDailyDocumentTests(TestCase):
+    """L'informe es pot programar des dels informes diaris (mateix flux que la resta)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from statistics.models import AvailableReport, DailyDocumentStatus, DailyDocumentTemplate
+
+        cls.user = User.objects.create(username='oficina')
+        cls.pending = DailyDocumentStatus.objects.create(token='pending', name='Pendent')
+        cls.cancelled = DailyDocumentStatus.objects.create(token='cancelled', name='Cancel·lat')
+        report = AvailableReport.objects.create(
+            name='Gestions per usuari i municipi', function_name='user_city_management_report',
+        )
+        cls.template = DailyDocumentTemplate.objects.create(
+            token='GESTIONS', name='Gestions', available_report=report, create_without_data=False,
+        )
+
+    def _fake_save_report(self, **kwargs):
+        from documentmanager.models import Document
+        return Document.objects.bulk_create([
+            Document(entity_id=0, service=Document._meta.get_field('service').choices[0][0],
+                     document_name=kwargs['filename']),
+        ])[0].id
+
+    def _generate(self, day):
+        from unittest import mock
+        from statistics.utils.daily_document_service import generate_daily_document
+
+        with mock.patch('statistics.utils.report_user_city_management_service.save_report',
+                        side_effect=self._fake_save_report):
+            return generate_daily_document(self.template, day, self.pending, self.cancelled)
+
+    def test_generates_the_document_for_the_period(self):
+        invoice = Invoice.objects.bulk_create([Invoice()])[0]
+        log = InvoiceLog.objects.bulk_create([
+            InvoiceLog(invoice=invoice, field_name='due_date', operation_token='op', user=self.user),
+        ])[0]
+        InvoiceLog.objects.filter(id=log.id).update(created_at=at(10))
+
+        daily_document = self._generate(D(2026, 3, 10))
+
+        self.assertIsNotNone(daily_document)
+        self.assertIsNotNone(daily_document.document)
+        self.assertIsNone(daily_document.creation_error)
+        self.assertTrue(daily_document.document.document_name.startswith('gestions_usuari_municipi_'))
+
+    def test_without_management_it_is_treated_as_no_data(self):
+        self.assertIsNone(self._generate(D(2026, 3, 10)))
+
+    def test_an_error_is_saved_as_error_not_as_no_data(self):
+        from unittest import mock
+
+        with mock.patch('statistics.utils.report_user_city_management_service.compute_user_city_management',
+                        side_effect=RuntimeError('boom')):
+            daily_document = self._generate(D(2026, 3, 10))
+
+        self.assertIsNotNone(daily_document)
+        self.assertIsNone(daily_document.document)
+        self.assertTrue(daily_document.creation_error)
+        self.assertNotIn('boom', daily_document.creation_error)

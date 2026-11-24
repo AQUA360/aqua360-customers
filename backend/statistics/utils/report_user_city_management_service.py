@@ -20,6 +20,8 @@ from django.db.models import F, Q
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 from django.utils.translation import gettext as _
+from rest_framework import status
+from rest_framework.response import Response
 
 from statistics.utils.daily_activity_service import (
     PAID_STATUS_TOKEN,
@@ -419,6 +421,10 @@ def generate_user_city_management_report(request, black_fill=None, white_bold_fo
         date_from, date_to = parse_activity_dates(start_value, end_value)
 
         users, metrics, payments = compute_user_city_management(date_from, date_to)
+        if not metrics:
+            # Sense fitxer i sense error: la cua i els informes diaris ho tracten com
+            # "sense dades" (l'informe diari respecta `create_without_data`).
+            return None, None, None
         workbook = build_workbook(date_from, date_to, users, metrics, payments,
                                   black_fill=black_fill, white_bold_font=white_bold_font)
 
@@ -431,4 +437,8 @@ def generate_user_city_management_report(request, black_fill=None, white_bold_fo
         return None, document_id, filename
     except Exception:
         logger.exception("Error generant l'informe de gestions per usuari i municipi")
-        return None, None, None
+        # Un error no es pot confondre amb "sense dades": l'informe diari el desa com a error.
+        return Response(
+            {'error': "Ha ocorregut un error inesperat."},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        ), None, None
