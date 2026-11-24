@@ -155,6 +155,55 @@ const downloadReport = async () => {
   }
 };
 
+// --- Excel de gestions per usuari i municipi (tots els usuaris, mateix rang) ---
+const generatingManagement = ref(false);
+const managementTaskId = ref(null);
+
+const generateManagementReport = async () => {
+  if (!isRangeValid.value) return;
+  generatingManagement.value = true;
+  try {
+    const response = await $DailyActivityApiService.generateUserCityManagementReport({
+      date_from: dateFrom.value,
+      date_to: dateTo.value,
+      name: t('daily_activity_block.user_city_management_report'),
+    });
+    if (response && response.task_id) {
+      managementTaskId.value = response.task_id;
+    }
+  } catch (error) {
+    console.error(error);
+    toast.error(t('reports_block.report_generation_failed', { name: t('daily_activity_block.user_city_management_report') }));
+  } finally {
+    generatingManagement.value = false;
+  }
+};
+
+const downloadManagementReport = async () => {
+  try {
+    const response = await $apiManager.checkTask(managementTaskId.value);
+    if (response && response.result && response.result.document_id) {
+      const file = await $DocumentManagerApiService.viewDocument(response.result.document_id);
+      const link = document.createElement('a');
+      const fileUrl = URL.createObjectURL(file);
+      link.href = fileUrl;
+      link.download = `gestions_usuari_municipi_${dateFrom.value}_${dateTo.value}.xlsx`;
+      link.click();
+      setTimeout(() => window.URL.revokeObjectURL(fileUrl), 250);
+    } else if (response && response.state === 'SUCCESS') {
+      // Sense fitxer: no hi ha cap gestió al període o la generació ha fallat (la
+      // tasca acaba igualment i ho indica al resultat).
+      toast.warning(t('daily_activity_block.user_city_management_empty'));
+    } else if (response && response.state === 'FAILURE') {
+      toast.error(t('reports_block.report_generation_failed', { name: t('daily_activity_block.user_city_management_report') }));
+    }
+  } catch (error) {
+    console.error(error);
+  } finally {
+    managementTaskId.value = null;
+  }
+};
+
 // --- Filtre de categoria sobre la cronologia ---
 const activeCategory = ref(null);
 
@@ -274,6 +323,15 @@ onMounted(() => {
         </button>
         <AtomsProcessColorBadge v-if="reportTaskId" class="w-fit" @refresh="downloadReport"
           :value="t('common.loading')" :color="'green'" :taskId="reportTaskId" />
+        <button v-if="canViewOtherUsers" type="button" class="button-secondary flex items-center gap-2"
+          :title="t('daily_activity_block.user_city_management_help')"
+          :disabled="!isRangeValid || generatingManagement || !!managementTaskId" @click="generateManagementReport">
+          <Icon :name="generatingManagement ? 'fa6-solid:spinner' : 'fa6-solid:map-location-dot'"
+            :class="{ 'animate-spin': generatingManagement }" />
+          {{ $t('daily_activity_block.user_city_management_report') }}
+        </button>
+        <AtomsProcessColorBadge v-if="managementTaskId" class="w-fit" @refresh="downloadManagementReport"
+          :value="t('common.loading')" :color="'green'" :taskId="managementTaskId" />
       </div>
     </div>
 

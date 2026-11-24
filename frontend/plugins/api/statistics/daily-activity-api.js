@@ -34,8 +34,18 @@ export default defineNuxtPlugin((nuxtApp) => {
     return await $apiManager.fetch(apiUrl, 'POST', payload, { 'Content-Type': 'application/json' });
   };
 
+  /**
+   * Encola l'Excel de gestions per usuari i municipi del rang i retorna `{ task_id }`.
+   * Inclou tots els usuaris: cal permís de veure usuaris (si no, 403).
+   */
+  const generateUserCityManagementReport = async (payload) => {
+    const apiUrl = `${apiHost}/statistics/billing/user-city-management`;
+    return await $apiManager.fetch(apiUrl, 'POST', payload, { 'Content-Type': 'application/json' });
+  };
+
   nuxtApp.provide(provideName, {
     getSummary,
     generateReport,
+    generateUserCityManagementReport,
   });
 });

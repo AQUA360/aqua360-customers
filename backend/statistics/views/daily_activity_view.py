@@ -182,3 +182,37 @@ class ReportDailyActivitySummary(views.APIView):
         except Exception as error:
             logger.exception("Error inesperat")
             return Response({'error': "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class ReportUserCityManagement(views.APIView):
+    """`POST /statistics/billing/user-city-management` → task_id de l'Excel de gestions
+    per usuari i municipi, amb el mateix rang de dates que la pantalla del resum.
+
+    L'informe inclou tots els usuaris: només el pot demanar qui pot consultar
+    l'activitat d'altres usuaris (el mateix criteri que "Tots els usuaris").
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        if not _can_view_other_users(request.user):
+            return Response({'error': NO_PERMISSION_ERROR}, status=status.HTTP_403_FORBIDDEN)
+
+        data = request.data or {}
+        date_from, date_to = parse_activity_dates(
+            data.get('date_from') or data.get('date'),
+            data.get('date_to') or data.get('date'),
+        )
+        payload = {
+            'start_date': date_from.isoformat(),
+            'end_date': date_to.isoformat(),
+            'date_range': [date_from.isoformat(), date_to.isoformat()],
+            'name': data.get('name') or "Gestions per usuari i municipi",
+        }
+
+        try:
+            task = run_report_task.delay('user_city_management_report', payload)
+            return Response({'task_id': task.id, 'status': 'pending'}, status=status.HTTP_202_ACCEPTED)
+        except Exception:
+            logger.exception("Error inesperat")
+            return Response({'error': "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

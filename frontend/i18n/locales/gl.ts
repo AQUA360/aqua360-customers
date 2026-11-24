@@ -3563,6 +3563,9 @@ export default {
     smart_metering_timestamp: 'Marca de tempo'
   },
   daily_activity_block:   {
+    user_city_management_report: 'Xestións por usuario e concello',
+    user_city_management_help: 'Excel coas xestións de todos os usuarios por concello (cambios de titular, altas, cambios de conta, cobros por forma de pagamento, modificacións de facturas) do período escollido.',
+    user_city_management_empty: 'Non se xerou ningún ficheiro: non hai xestións neste período ou non se puido xerar o informe.',
     title: 'Resumo de actividade diaria',
     description: 'Todo o que un usuario fixo nun día: cobros rexistrados, ordes de traballo novas, xestións de contrato, comunicacións, lecturas e cambios de estado.',
     report_name: 'Resumo de actividade diaria',
