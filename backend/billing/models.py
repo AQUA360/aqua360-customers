@@ -1526,7 +1526,8 @@ class InsolvencyProcess(models.Model):
 
 
 class InsolvencyProcessContract(models.Model):
-    """Canvi de forma de pagament d'un contracte fet des d'un procés d'insolvència."""
+    """Contracte on la persona és titular dins d'un procés d'insolvència: gestió d'impagats
+    i forma de pagament d'abans, per poder-les restaurar en tancar el procés."""
     created_at = models.DateTimeField(auto_now_add=True)
     process = models.ForeignKey(InsolvencyProcess, on_delete=models.CASCADE, related_name='contracts')
     contract = models.ForeignKey(Contract, on_delete=models.CASCADE, related_name='insolvency_process_changes')
@@ -1536,6 +1537,11 @@ class InsolvencyProcessContract(models.Model):
                                          related_name='+')
     general_payment = models.ForeignKey(GeneralPayment, on_delete=models.SET_NULL, null=True, blank=True,
                                         related_name='+')
+    payment_restored = models.BooleanField(default=False)
+    previous_debt_management = models.ForeignKey(ContractDebtManagement, on_delete=models.SET_NULL,
+                                                 null=True, blank=True, related_name='+')
+    debt_management_changed = models.BooleanField(default=False)
+    debt_management_restored = models.BooleanField(default=False)
 
     def __str__(self):
         return f'InsolvencyProcessContract {self.process_id} - {self.contract_id}'
