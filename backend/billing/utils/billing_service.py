@@ -13,6 +13,7 @@ from coredata.models import ConfigProject
 from service.models import Exploitation
 from service.utils.route_scope import effective_route, effective_route_q
 from statistics.views.reports_views import add_row, adjust_column_widths
+from coredata.utils.workbook_utils import workbook_to_bytes
 
 PERIOD_TYPE_INTERVAL = {
     'mensual': 1,
@@ -144,11 +145,10 @@ def generate_billing_missing_contracts_report(contracts_data, billing, first_sta
     clean_token = re.sub(r'[^A-Z0-9]', '', str(billing.token).upper())
     filename = f"{clean_token}.xlsx"
     
-    wb.save(filename)
+    xlsx_content = workbook_to_bytes(wb)
 
-    with open(filename, "rb") as f:
-        response = HttpResponse(f.read(), content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-        response["Content-Disposition"] = f"attachment; filename={filename}"
+    response = HttpResponse(xlsx_content, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    response["Content-Disposition"] = f"attachment; filename={filename}"
     
     return response
 
