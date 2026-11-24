@@ -3361,6 +3361,8 @@ export default {
     accounting_pricing_group_values_hint: 'Si está marcado, los valores con el mismo código y nombre se guardan en un solo registro. Si no, cada valor se declara en su propia línea.',
     accounting_pricing_separate_by_type: 'Separar por tipo de pago',
     accounting_pricing_separate_by_type_hint: 'Si está marcado, las líneas se separan según cada tipo de pago disponible.',
+    accounting_pricing_separate_by_sign: 'Separar cobros y devoluciones',
+    accounting_pricing_separate_by_sign_hint: 'Si está marcado, los movimientos positivos y las devoluciones (negativos) se declaran en líneas agrupadas separadas en lugar de compensarse en un solo total.',
     accounting_pricing_separate_by_origin: 'Separar por origen',
     accounting_pricing_separate_by_origin_hint: 'Si está marcado, las facturas de una misma tarifa se declaran en líneas separadas por origen y el nombre del origen se añade al título.',
     accounting_pricing_payment_origin_all: 'Todos los orígenes',
