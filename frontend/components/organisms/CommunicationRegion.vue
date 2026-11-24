@@ -104,7 +104,12 @@ const getData = async (load = true) => {
     // Els fitxers marcats per no adjuntar-se al correu (p. ex. el document del pas d'una
     // gestió d'impagats quan es desmarca l'opció) no es llisten aquí, per no fer pensar
     // que s'enviaran. `=== false` a posta: només s'amaguen els explícitament exclosos.
-    documents.value = (result.files || []).filter(doc => doc.attach_to_email !== false);
+    // Els documents substituïts en regenerar-los s'hi afegeixen marcats com a `replaced`:
+    // la llista els tracta com a inactius (només es veuen amb «Mostrar documents inactius»).
+    documents.value = [
+      ...(result.files || []).filter(doc => doc.attach_to_email !== false),
+      ...(result.historic_files || []).map(doc => ({ ...doc, replaced: true })),
+    ];
     await validateAndRetryDocuments();
   } catch (err) {
     console.error(err)
@@ -463,12 +468,6 @@ onMounted(async () => {
               {{ $t('common.no_records') }}
             </span>
           </div>
-          <details v-if="data?.historic_files?.length" class="my-3">
-            <summary class="cursor-pointer text-sm text-slate-500">
-              {{ t('customer_service_block.historic_documents') }} ({{ data.historic_files.length }})
-            </summary>
-            <DocumentList :documents="data.historic_files" :readonly="true" />
-          </details>
           <div v-if="objectPermissions?.can_change" class="w-[50%] my-3">
             <span class="text-slate-500 text-sm flex items-center gap-1">
               {{ t('common.add') }} {{ t('customer_service_block.attached_files') }}
