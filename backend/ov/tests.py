@@ -7913,14 +7913,15 @@ class PersonInvoicesOVTests(TestCase):
             q for q in queries.captured_queries if "ov_pdf_from" in q["sql"]
         ]
         self.assertEqual(len(config_queries), 1)
-        # Factures + configuració, sense consultes per factura (N+1). Es
-        # descompten les dels middlewares (grups de l'usuari i auditoria).
+        # Factures + configuració (data dels PDF i token de rebut retornat),
+        # sense consultes per factura (N+1). Es descompten les dels
+        # middlewares (grups de l'usuari i auditoria).
         data_queries = [
             q["sql"]
             for q in queries.captured_queries
             if q["sql"].startswith('SELECT "') and "auth_" not in q["sql"]
         ]
-        self.assertEqual(len(data_queries), 2, data_queries)
+        self.assertEqual(len(data_queries), 3, data_queries)
 
     # --- filtre de dates ---------------------------------------------------
 
@@ -7993,3 +7994,220 @@ class PersonInvoicesOVTests(TestCase):
         self.assertIs(
             resolve(reverse(self.URL_NAME)).func.view_class, PersonInvoicesOVView
         )
+
+
+class InvoiceReturnOVTests(TestCase):
+    """`is_returned` i `last_return` a les factures de l'OV: si el banc ha
+    retornat el rebut domiciliat. `is_returned` mentre algun rebut actiu
+    continuï retornat; `last_return`, el darrer retorn dels rebuts actius
+    (moviments de retorn o, sense moviments, la data i el motiu del rebut)."""
+
+    DNI = "11111111H"
+
+    @classmethod
+    def setUpTestData(cls):
+        from billing.models import RejectMotive
+
+        cls.user = User.objects.create_user(
+            username="ov-invoice-return-test", password="not-used"
+        )
+        cls.user.groups.add(Group.objects.get_or_create(name="ov")[0])
+        for token, value in (
+            ("contract_termination_completed_token", "3"),
+            ("contract_terminated_status", "-1"),
+            ("invoice_status_paid_token", "0"),
+            ("invoice_status_cancelled_token", "-6"),
+            ("payment_status_paid_token", "0"),
+            ("payment_status_returned_token", "-2"),
+        ):
+            ConfigProject.objects.update_or_create(
+                token=token, defaults={"value": value}
+            )
+        cls.paid = PaymentStatus.objects.get_or_create(
+            token="0", defaults={"name": "Pagat"}
+        )[0]
+        cls.returned = PaymentStatus.objects.get_or_create(
+            token="-2", defaults={"name": "Retornat"}
+        )[0]
+        cls.direct_debit = PaymentType.objects.get_or_create(token="DIRECT_DEBIT")[0]
+        cls.am04 = RejectMotive.objects.create(token="AM04", name="Fons insuficients")
+        cls.md01 = RejectMotive.objects.create(token="MD01", name="Sense mandat")
+        cls.ac04 = RejectMotive.objects.create(token="AC04", name="Compte cancel·lat")
+
+        cls.holder = Person.objects.create(
+            token=HOLDER_TOKEN, name="Test", surname="Holder"
+        )
+        cls.contract = Contract.objects.create(
+            token=PLAIN_TOKEN,
+            holder=cls.holder,
+            status=ContractStatus.objects.create(token="1", name="Alta"),
+        )
+        cls.expired = InvoiceStatus.objects.create(token="-1", name="Vençuda")
+
+        # Sense cap retorn
+        cls._invoice("RET-NONE", 0, cls.paid)
+        # Retornat dues vegades i encara retornat: mana el darrer moviment
+        payment = cls._invoice("RET-OPEN", 1, cls.returned)
+        cls._return(payment, date(2026, 1, 10), cls.am04)
+        cls._return(payment, date(2026, 2, 10), cls.md01)
+        # Retornat i tornat a cobrar: ja no està retornat, però consta el retorn
+        payment = cls._invoice("RET-REPAID", 2, cls.paid)
+        cls._return(payment, date(2026, 1, 20), cls.ac04)
+        # Rebut retornat inactiu (substituït): no compta
+        payment = cls._invoice("RET-INACTIVE", 3, cls.returned, is_active=False)
+        cls._return(payment, date(2026, 1, 5), cls.am04)
+        # Moviment de retorn desactivat d'un rebut pagat: no compta
+        payment = cls._invoice("RET-MOVE-OFF", 4, cls.paid)
+        cls._return(payment, date(2026, 1, 6), cls.am04, is_active=False)
+        # Dades antigues: rebut retornat sense moviments, amb data i motiu
+        cls._invoice(
+            "RET-LEGACY",
+            5,
+            cls.returned,
+            reject_date=date(2025, 12, 1),
+            reject=cls.am04,
+        )
+
+        cls.expected = {
+            "RET-NONE": (False, None),
+            "RET-OPEN": (
+                True,
+                {"date": "2026-02-10", "reason": {"code": "MD01", "name": "Sense mandat"}},
+            ),
+            "RET-REPAID": (
+                False,
+                {
+                    "date": "2026-01-20",
+                    "reason": {"code": "AC04", "name": "Compte cancel·lat"},
+                },
+            ),
+            "RET-INACTIVE": (False, None),
+            "RET-MOVE-OFF": (False, None),
+            "RET-LEGACY": (
+                True,
+                {
+                    "date": "2025-12-01",
+                    "reason": {"code": "AM04", "name": "Fons insuficients"},
+                },
+            ),
+        }
+
+    @classmethod
+    def _invoice(cls, token, offset, payment_status, is_active=True, **payment_fields):
+        invoice = Invoice.objects.create(
+            token=token,
+            serie_final=f"F-{token}",
+            contract=cls.contract,
+            status=cls.expired,
+            issue_date=date(2026, 1, 1) + timedelta(days=offset),
+            due_date=date(2026, 1, 31),
+            customer_token_final=cls.DNI,
+            payment_type_token_final="DIRECT_DEBIT",
+            total_final=Decimal("50.00"),
+            left_to_pay=Decimal("50.00"),
+        )
+        return Payment.objects.create(
+            token=f"PAY-{token}",
+            invoice=invoice,
+            contract=cls.contract,
+            status=payment_status,
+            amount=Decimal("50.00"),
+            payment_type_token="DIRECT_DEBIT",
+            is_active=is_active,
+            **payment_fields,
+        )
+
+    @classmethod
+    def _return(cls, payment, movement_date, motive, is_active=True):
+        PaymentMovement.objects.create(
+            payment=payment,
+            movement_date=movement_date,
+            payment_type=cls.direct_debit,
+            previous_status=cls.paid,
+            current_status=cls.returned,
+            reject_motive=motive,
+            is_positive=False,
+            is_active=is_active,
+        )
+
+    def setUp(self):
+        cache.clear()
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def _assert_items(self, items):
+        by_token = {item["invoice_token"]: item for item in items}
+        self.assertEqual(set(by_token), set(self.expected))
+        for token, (is_returned, last_return) in self.expected.items():
+            self.assertIs(by_token[token]["is_returned"], is_returned, token)
+            self.assertEqual(by_token[token]["last_return"], last_return, token)
+
+    def test_list(self):
+        response = self.client.get(
+            reverse("invoices-ov"), {"contract_token": PLAIN_TOKEN}
+        )
+        self.assertEqual(response.status_code, 200)
+        self._assert_items(response.data)
+
+    def test_list_json_body(self):
+        response = self.client.get(
+            reverse("invoices-ov"), {"contract_token": PLAIN_TOKEN}
+        )
+        items = {item["invoice_token"]: item for item in response.json()}
+        self.assertEqual(
+            items["RET-OPEN"]["last_return"],
+            {"date": "2026-02-10", "reason": {"code": "MD01", "name": "Sense mandat"}},
+        )
+
+    def test_unpaid_invoices(self):
+        response = self.client.get(
+            reverse("unpayed-invoices-ov"),
+            {"contract_token": PLAIN_TOKEN, "statuses": "-1"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self._assert_items(response.data)
+
+    def test_person_invoices(self):
+        response = self.client.get(reverse("person-invoices-ov"), {"dni": self.DNI})
+        self.assertEqual(response.status_code, 200)
+        self._assert_items(response.data["results"][0]["invoices"])
+
+    def test_single_invoice_and_full_detail(self):
+        for token, (is_returned, last_return) in self.expected.items():
+            single = self.client.get(
+                reverse("invoice-ov"),
+                {"contract_token": PLAIN_TOKEN, "invoice_token": token},
+            )
+            detail = self.client.get(
+                reverse("invoice-detail-by-token-ov", kwargs={"token": token})
+            )
+            for response in (single, detail):
+                self.assertEqual(response.status_code, 200, token)
+                self.assertIs(response.data["is_returned"], is_returned, token)
+                self.assertEqual(response.data["last_return"], last_return, token)
+
+    def test_list_queries_do_not_grow_with_invoices(self):
+        url = reverse("invoices-ov")
+        params = {"contract_token": PLAIN_TOKEN}
+        with CaptureQueriesContext(connection) as before:
+            self.client.get(url, params)
+        for index in range(3):
+            payment = self._invoice(f"RET-EXTRA-{index}", 10 + index, self.returned)
+            self._return(payment, date(2026, 3, 1), self.am04)
+        with CaptureQueriesContext(connection) as after:
+            response = self.client.get(url, params)
+
+        self.assertEqual(len(response.data), len(self.expected) + 3)
+        self.assertEqual(len(after.captured_queries), len(before.captured_queries))
+
+    def test_without_returned_status_config_nothing_is_returned(self):
+        ConfigProject.objects.filter(token="payment_status_returned_token").delete()
+
+        response = self.client.get(
+            reverse("invoices-ov"), {"contract_token": PLAIN_TOKEN}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        for item in response.data:
+            self.assertIs(item["is_returned"], False)
+            self.assertIsNone(item["last_return"])
