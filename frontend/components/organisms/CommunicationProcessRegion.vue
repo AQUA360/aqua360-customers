@@ -37,6 +37,13 @@ const pending = ref(true);
 const downloading = ref(false)
 const showDownloadModal = ref(false)
 const showRegenerateModal = ref(false)
+// Seguiment de la regeneració: s'atura en tancar la regió (la tasca del servidor continua)
+let progressTimer = null;
+let unmounted = false;
+onBeforeUnmount(() => {
+  unmounted = true;
+  clearTimeout(progressTimer);
+});
 const error = ref(null);
 const data = ref(null);
 const activeTab = ref('communications');
@@ -143,8 +150,10 @@ const regenerateDocuments = async ({ onlyPending }) => {
       return;
     }
     const checkProgress = async () => {
+      if (unmounted) return;
       try {
         const progressResponse = await $CommunicationApiService.checkGenerateFilesProgress(response.task_id);
+        if (unmounted) return;
         if (progressResponse.status === 'SUCCESS') {
           generatingFiles.value = false;
           generationProgress.value = 100;
@@ -162,7 +171,7 @@ const regenerateDocuments = async ({ onlyPending }) => {
           toast.error(t('common.error'));
         } else {
           generationProgress.value = progressResponse.progress || 0;
-          setTimeout(checkProgress, 2000);
+          progressTimer = setTimeout(checkProgress, 2000);
         }
       } catch (error) {
         console.error('Error checking progress:', error);

@@ -45,11 +45,11 @@ const close = () => {
         </p>
         <div class="space-y-2 mb-5">
           <label class="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
-            <input type="radio" :value="true" v-model="onlyPending" />
+            <input type="radio" name="regenerate-documents-scope" :value="true" v-model="onlyPending" />
             {{ t('customer_service_block.regenerate_documents_pending') }}
           </label>
           <label class="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
-            <input type="radio" :value="false" v-model="onlyPending" />
+            <input type="radio" name="regenerate-documents-scope" :value="false" v-model="onlyPending" />
             {{ t('customer_service_block.regenerate_documents_all') }}
           </label>
         </div>

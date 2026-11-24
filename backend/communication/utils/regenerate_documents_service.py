@@ -8,7 +8,9 @@ mateix document de la factura.
 """
 import logging
 
+from django.db import transaction
 from django.db.models import Q
+from django.http import JsonResponse
 
 from coredata.models import ConfigProject
 from coredata.utils.name_utils import generate_token
@@ -51,11 +53,13 @@ def _invoice_of(comm_file):
     return Invoice.objects.filter(id=comm_file.file.entity_id).first()
 
 
-def _regenerate_invoice_files(communication, regenerated_invoices):
+def _regenerate_invoice_files(communication, regenerated_invoices, generated_now):
     """Regenera el PDF de cada factura vinculada i el torna a vincular.
 
     `regenerated_invoices` (id factura -> Document) evita regenerar dues vegades la
-    mateixa factura quan surt a més d'una comunicació.
+    mateixa factura quan surt a més d'una comunicació. Les factures regenerades en
+    aquesta crida s'afegeixen a `generated_now`, per poder-les treure de la memòria
+    cau si la comunicació falla i es desfà.
     """
     from billing.views.invoice_pdf_view import generate_report_invoice_pdf
 
@@ -69,10 +73,15 @@ def _regenerate_invoice_files(communication, regenerated_invoices):
             continue
         if invoice.id not in regenerated_invoices:
             # El fitxer antic encara és actiu: generate_report_invoice_pdf el conserva
-            generate_report_invoice_pdf(invoice)
+            result = generate_report_invoice_pdf(invoice)
+            # Si el PDF falla, no llança cap excepció: retorna una resposta d'error
+            if isinstance(result, JsonResponse) or not invoice.invoice_file_id \
+                    or invoice.invoice_file_id == old_file.file_id:
+                raise ValueError(f"No s'ha pogut generar el PDF de la factura {invoice.id}")
             regenerated_invoices[invoice.id] = invoice.invoice_file
+            generated_now.append(invoice.id)
         new_document = regenerated_invoices[invoice.id]
-        if not new_document or new_document.id == old_file.file_id:
+        if new_document.id == old_file.file_id:
             continue
         CommunicationFile.objects.create(
             token=generate_token(CommunicationFile),
@@ -92,6 +101,7 @@ def _regenerate_invoice_files(communication, regenerated_invoices):
 def _regenerate_letter(communication):
     """Torna a renderitzar la carta si la comunicació en tenia. True si s'ha regenerat."""
     from communication.utils.communication_service import get_communication_file
+    from documentmanager.models import Document
 
     letters = communication.files.filter(is_letter=True).order_by('-id')
     previous = letters.first()
@@ -110,7 +120,8 @@ def _regenerate_letter(communication):
     except Exception:
         new_letter.delete()
         raise
-    if not document:
+    # Si el PDF falla, no llança cap excepció: retorna una resposta d'error
+    if not isinstance(document, Document):
         new_letter.delete()
         raise ValueError("No s'ha pogut generar la carta")
     new_letter.file = document
@@ -123,19 +134,28 @@ def regenerate_communication_documents(communication_ids, on_progress=None):
     """Regenera les factures i la carta de cada comunicació.
 
     Primer les factures: el cos de la carta pot fer referència a les seves dades.
-    Un error en una comunicació no atura les altres; els seus documents antics
-    queden actius.
+    Cada comunicació es fa en una transacció, amb la comunicació bloquejada perquè
+    dues regeneracions alhora no es trepitgin. Un error en una comunicació es desfà
+    sencer (els seus documents antics queden actius) i no atura les altres.
     """
     communications = Communication.objects.filter(id__in=communication_ids, is_active=True).order_by('id')
     total = communications.count()
     regenerated_invoices = {}
     summary = {'total': total, 'letters': 0, 'invoices': 0, 'errors': []}
     for index, communication in enumerate(communications, start=1):
+        generated_now = []
         try:
-            summary['invoices'] += _regenerate_invoice_files(communication, regenerated_invoices)
-            if _regenerate_letter(communication):
+            with transaction.atomic():
+                Communication.objects.select_for_update().filter(id=communication.id).first()
+                invoices = _regenerate_invoice_files(communication, regenerated_invoices, generated_now)
+                letter = _regenerate_letter(communication)
+            summary['invoices'] += invoices
+            if letter:
                 summary['letters'] += 1
         except Exception as e:
+            # La transacció s'ha desfet: els documents generats ja no existeixen
+            for invoice_id in generated_now:
+                regenerated_invoices.pop(invoice_id, None)
             logger.exception("Error regenerant els documents de la comunicació %s", communication.id)
             summary['errors'].append({'communication': communication.token or communication.id, 'error': str(e)})
         if on_progress:

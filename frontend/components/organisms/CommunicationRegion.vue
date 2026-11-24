@@ -164,14 +164,23 @@ const handleMessageChange = async (newMessage) => {
 
 // Regenera la carta i les factures de la comunicació; els antics queden a l'històric
 const regeneratingDocuments = ref(false);
+// Seguiment de la regeneració: s'atura en tancar la regió (la tasca del servidor continua)
+let progressTimer = null;
+let unmounted = false;
+onBeforeUnmount(() => {
+  unmounted = true;
+  clearTimeout(progressTimer);
+});
 const regenerateDocuments = async () => {
   if (!confirm(t('customer_service_block.confirm_regenerate_documents'))) return;
   regeneratingDocuments.value = true;
   try {
     const response = await $CommunicationApiService.regenerateDocuments({ communication_ids: [props.id] });
     const checkProgress = async () => {
+      if (unmounted) return;
       try {
         const progress = await $CommunicationApiService.checkGenerateFilesProgress(response.task_id);
+        if (unmounted) return;
         if (progress.status === 'SUCCESS') {
           regeneratingDocuments.value = false;
           const result = progress.result || {};
@@ -188,7 +197,7 @@ const regenerateDocuments = async () => {
           regeneratingDocuments.value = false;
           toast.error(t('common.error'));
         } else {
-          setTimeout(checkProgress, 2000);
+          progressTimer = setTimeout(checkProgress, 2000);
         }
       } catch (error) {
         console.error('Error checking progress:', error);
