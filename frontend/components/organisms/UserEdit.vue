@@ -290,7 +290,8 @@ const handleSubRegionEvent = (value) => {
             <option v-for="g in groups" :key="g.id" :value="g.id">{{ g.name }}</option>
           </select>
         </div>
-        <div>
+        <!-- Fila de la contrasenya alineada a dalt: les comprovacions fan més alta la cel·la esquerra -->
+        <div class="self-start">
           <label class="block text-sm font-medium text-slate-500 mb-2">{{ props.id? 
           `${t('common.change')} ${t('common.password')}` : t('common.password') }}</label>
           <input type="password" v-model="password" class="input" :disabled="!canManageUsers"
@@ -306,7 +307,7 @@ const handleSubRegionEvent = (value) => {
             </li>
           </ul>
         </div>
-        <div>
+        <div class="self-start">
           <label class="block text-sm font-medium text-slate-500 mb-2">{{ t('user_group.repeat_password') }}</label>
           <input type="password" v-model="repeatPassword" class="input" :disabled="!canManageUsers" :class="{ 'opacity-50 cursor-not-allowed': !canManageUsers }"/>
         </div>
