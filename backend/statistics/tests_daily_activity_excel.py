@@ -59,6 +59,22 @@ class DailyActivityByCityTests(TestCase):
         # Una remesa no és de cap municipi.
         self.assertEqual(by_city[None]['remittances_sent'][self.user.id], 1)
 
+    def test_blank_city_falls_back_to_the_next_path(self):
+        from order.models import Order
+
+        blank_sp = SupplyPoint.objects.bulk_create([SupplyPoint(address=Address.objects.create(city_name=''))])[0]
+        contract = Contract.objects.bulk_create([Contract(token='CX', supply_point_default=blank_sp)])[0]
+        order = Order.objects.bulk_create([
+            Order(contract=contract, supply_point=self.contract_b.supply_point_default, created_by=self.user),
+        ])[0]
+        Order.objects.filter(id=order.id).update(
+            created_at=timezone.make_aware(datetime.datetime.combine(DAY, datetime.time(11))),
+        )
+
+        by_city = build_activity_by_city([self.user.id], DAY, DAY)
+
+        self.assertEqual(by_city['Municipi B']['orders_created'][self.user.id], 1)
+
     def _generate(self):
         captured = {}
 

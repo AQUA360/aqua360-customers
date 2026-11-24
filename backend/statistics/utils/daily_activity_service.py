@@ -19,8 +19,8 @@ from collections import defaultdict
 from django.apps import apps
 from django.conf import settings
 from django.contrib.auth.models import User
-from django.db.models import Count, Exists, F, OuterRef, Q, Sum
-from django.db.models.functions import Coalesce
+from django.db.models import Count, Exists, F, OuterRef, Q, Sum, Value
+from django.db.models.functions import Coalesce, NullIf
 from django.utils import timezone
 from django.utils.translation import gettext as _, ngettext
 
@@ -1210,10 +1210,13 @@ def build_activity_by_city(user_ids, date_from=None, date_to=None):
                 by_city[None][source.key][row[source.user_field]] += row['activity_count']
             continue
 
-        if len(source.city_paths) > 1:
-            city_expression = Coalesce(*source.city_paths)
+        # Un municipi en blanc ('') no ha d'aturar el Coalesce: es passa a nul perquè
+        # agafi el camí següent.
+        city_lookups = [NullIf(F(path), Value('')) for path in source.city_paths]
+        if len(city_lookups) > 1:
+            city_expression = Coalesce(*city_lookups)
         else:
-            city_expression = F(source.city_paths[0])
+            city_expression = city_lookups[0]
         chosen = {}
         rows = (
             queryset.order_by()
@@ -1440,7 +1443,7 @@ def generate_daily_activity_summary_report(request, black_fill=None, white_bold_
                 ] + [user['categories'].get(key, 0) for key in visible_categories])
 
         _write_city_sheet(
-            workbook, activity, build_activity_by_city(user_ids, date_from, date_to),
+            workbook, activity, build_activity_by_city(user_ids, activity['date_from'], activity['date_to']),
             black_fill, white_bold_font,
         )
 
