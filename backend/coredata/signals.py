@@ -1,4 +1,5 @@
 from django.db.models.signals import post_save, pre_save
+from django.contrib.auth.models import User
 from django.dispatch import receiver
 
 from coredata.models import ConfigProject, Street, Address
@@ -109,3 +110,20 @@ def sync_aca_reports_with_public_org_type(sender, instance, **kwargs):
     AvailableReport.objects.filter(
         function_name__in=ACA_REPORT_FUNCTION_NAMES
     ).update(is_active=is_aca_org)
+
+
+@receiver(pre_save, sender=User)
+def user_password_change_pre_save(sender, instance, **kwargs):
+    """Marca si la contrasenya ha canviat, per revocar els tokens després de desar."""
+    instance._password_changed = bool(instance.pk) and User.objects.filter(
+        pk=instance.pk
+    ).exclude(password=instance.password).exists()
+
+
+@receiver(post_save, sender=User)
+def user_password_change_revoke_tokens(sender, instance, created, **kwargs):
+    """En canviar la contrasenya, es tanquen totes les sessions i el token de l'usuari."""
+    if getattr(instance, "_password_changed", False):
+        instance._password_changed = False
+        from coredata.authentication import revoke_user_tokens
+        revoke_user_tokens(instance)
