@@ -3380,6 +3380,8 @@ export default {
     accounting_pricing_group_values_hint: 'Si està marcat, els valors amb el mateix codi i nom es desen en un sol registre. Si no, cada valor es declara en la seva pròpia línia.',
     accounting_pricing_separate_by_type: 'Separar per tipus de pagament',
     accounting_pricing_separate_by_type_hint: 'Si està marcat, les línies es separen segons cada tipus de pagament disponible.',
+    accounting_pricing_separate_by_sign: 'Separar cobraments i retorns',
+    accounting_pricing_separate_by_sign_hint: 'Si està marcat, els moviments positius i els retorns (negatius) es declaren en línies agrupades separades en lloc de compensar-se en un sol total.',
     accounting_pricing_separate_by_origin: 'Separar per origen',
     accounting_pricing_separate_by_origin_hint: 'Si està marcat, les factures d\'una mateixa tarifa es declaren en línies separades per origen i el nom de l\'origen s\'afegeix al títol.',
     accounting_pricing_payment_origin_all: 'Tots els orígens',

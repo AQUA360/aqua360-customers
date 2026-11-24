@@ -118,7 +118,10 @@ def get_accounting_lines(accounting_pricings, invoices, movements, endowment_inv
     #   grouped_lines sums by movement_date (and payment_type when
     #   separate_by_type or is_default). When separate_by_payment_origin,
     #   BANK_PAYMENT lines are also summed by movement origin and that
-    #   origin name is appended to the title. Otherwise one line per movement.
+    #   origin name is appended to the title. When separate_by_sign,
+    #   positive cobraments and negative returns stay on separate summed
+    #   lines (return title when negative) instead of netting. Otherwise
+    #   one line per movement.
     #   That payment account is declared as debt. The same total is also
     #   declared as have on the original invoice/clients account, using the
     #   payment line's name and the same split (one have line per payment
@@ -1156,12 +1159,25 @@ def _optional_sign(value):
 
 
 def _line_has_negative_amount(line):
-    if _as_float(line.get('total')) < 0 or _as_float(line.get('subtotal')) < 0:
+    """True when the line's net amounts are negative (return/credit).
+
+    Grouped declarations can mix positive and negative VAT rates (e.g. 21%
+    invoices with 10% credit notes). Treat that as a return only when the
+    net total/subtotal (or net IVA if both are zero) is negative — not when
+    a single rate bucket happens to be negative.
+    """
+    total = _as_float(line.get('total'))
+    subtotal = _as_float(line.get('subtotal'))
+    if total < 0 or subtotal < 0:
         return True
-    for amounts in (line.get('iva') or {}).values():
-        if _as_float(amounts.get('base')) < 0 or _as_float(amounts.get('tax')) < 0:
-            return True
-    return False
+    if total != 0 or subtotal != 0:
+        return False
+    iva = line.get('iva') or {}
+    if not iva:
+        return False
+    tax_net = sum(_as_float(amounts.get('tax')) for amounts in iva.values())
+    base_net = sum(_as_float(amounts.get('base')) for amounts in iva.values())
+    return tax_net < 0 or base_net < 0
 
 
 def _default_declare_as_for_line(line):
@@ -1869,6 +1885,10 @@ def _payment_spec(accounting_pricing):
             and bool(accounting_pricing.grouped_lines)
             and _BANK_PAYMENT_TOKEN in payment_type_tokens
         ),
+        'separate_by_sign': (
+            bool(getattr(accounting_pricing, 'separate_by_sign', False))
+            and bool(accounting_pricing.grouped_lines)
+        ),
         'category': _normalize_invoice_category(accounting_pricing.invoice_category),
         'name': _line_title(accounting_pricing),
         'return_name': _line_title(accounting_pricing, is_return=True),
@@ -1926,7 +1946,11 @@ def _payment_contract(payment):
         if invoice.contract_id and invoice.contract is not None:
             return invoice.contract
         elif invoice.contract_request_id and invoice.contract_request is not None:
-            return Contract.objects.get(contract_request__id=invoice.contract_request_id)
+            try:
+                contract = Contract.objects.get(contract_request__id=invoice.contract_request_id)
+            except Contract.DoesNotExist:
+                contract = invoice.contract_request
+            return contract
         elif invoice.contract_termination_id and invoice.contract_termination is not None and invoice.contract_termination.contract_id and invoice.contract_termination.contract is not None:
             return invoice.contract_termination.contract
     commitment = payment.commitment_deposit if payment.commitment_deposit_id else None
@@ -2469,6 +2493,13 @@ def _payment_origin_detail(spec, row):
     return origin, _payment_origin_label(origin)
 
 
+def _payment_sign_group_key(amount, separate_by_sign):
+    """When separate_by_sign, bucket by signed amount polarity (None = net)."""
+    if not separate_by_sign:
+        return None
+    return 'negative' if _decimal_amount(amount) < 0 else 'positive'
+
+
 def _payment_register_key(
     payment_pricing_id,
     movement_date,
@@ -2477,6 +2508,7 @@ def _payment_register_key(
     origin_key,
     movement_declare_as,
     concept_rule_key=None,
+    sign_key=None,
 ):
     """Stable id shared by a payment line and its counterpart/counter lines."""
     return (
@@ -2488,6 +2520,7 @@ def _payment_register_key(
         origin_key,
         movement_declare_as,
         concept_rule_key,
+        sign_key,
     )
 
 
@@ -2652,6 +2685,7 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
                     'have',
                     movement_declare_as,
                     invoice_concept_rule_key,
+                    None,
                 )] += amount
             elif (
                 row.get('is_piggybank')
@@ -2670,6 +2704,7 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
                     spec['id'],
                     movement_declare_as,
                     None,
+                    None,
                 )] += amount
             continue
 
@@ -2679,6 +2714,7 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
         )
         type_key = row['payment_type_id'] if separate_by_type else None
         origin_key, origin_name = _payment_origin_detail(spec, row)
+        sign_key = _payment_sign_group_key(amount, spec.get('separate_by_sign'))
         group_key = (
             row['movement_date'],
             type_key,
@@ -2687,6 +2723,7 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
             origin_name,
             movement_declare_as,
             payment_concept_rule_key,
+            sign_key,
         )
         grouped_totals[spec['id']][group_key] += amount
         if invoice_id is not None:
@@ -2701,6 +2738,7 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
                 'have',
                 movement_declare_as,
                 invoice_concept_rule_key,
+                sign_key,
             )] += amount
         elif (
             row.get('is_piggybank')
@@ -2719,6 +2757,7 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
                 spec['id'],
                 movement_declare_as,
                 None,
+                sign_key,
             )] += amount
 
     for pricing_id, groups in grouped_totals.items():
@@ -2730,6 +2769,7 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
             origin_name,
             declare_as,
             concept_rule_key,
+            sign_key,
         ), total in groups.items():
             detail_name = _payment_detail_name(payment_type_name, origin_name)
             bucket_entry = {
@@ -2744,6 +2784,7 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
                     _origin_key,
                     declare_as,
                     concept_rule_key,
+                    sign_key,
                 ),
             }
             if declare_as in (_DECLARE_DEBT, _DECLARE_HAVE):
@@ -2766,6 +2807,7 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
         declare_as,
         movement_declare_as,
         concept_rule_key,
+        sign_key,
     ), total in debt_totals.items():
         spec = specs_by_id[payment_id]
         title_base = (
@@ -2788,6 +2830,7 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
                 _origin_key,
                 movement_declare_as,
                 concept_rule_key,
+                sign_key,
             ),
         }
         if concept_rule_key:
@@ -2815,6 +2858,7 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
         payment_id,
         movement_declare_as,
         concept_rule_key,
+        sign_key,
     ), total in counter_totals.items():
         spec = specs_by_id.get(payment_id) or {}
         title_base = (
@@ -2837,6 +2881,7 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
                 _origin_key,
                 movement_declare_as,
                 concept_rule_key,
+                sign_key,
             ),
         }
         if concept_rule_key:
@@ -3151,9 +3196,12 @@ def bulk_save_accounting_pricing(data, user):
                 cost_center_id = item.get('cost_center', None)
                 group_values = item.get('group_values', True)
                 separate_by_type = item.get('separate_by_type', True)
+                separate_by_sign = bool(item.get('separate_by_sign', False))
                 separate_by_origin = bool(item.get('separate_by_origin', False))
                 if category != 'invoice' or not group_values:
                     separate_by_origin = False
+                if category != 'payment' or not group_values:
+                    separate_by_sign = False
                 
                 product_ids = item.get('products', [])
                 price_rate_ids = item.get('price_rates', [])
@@ -3304,6 +3352,8 @@ def bulk_save_accounting_pricing(data, user):
                         )
                         accounting_pricing_saved.payment_origin = payment_origin
                         accounting_pricing_saved.separate_by_payment_origin = separate_by_payment_origin
+                        accounting_pricing_saved.separate_by_sign = separate_by_sign
+                        accounting_pricing_saved.separate_by_type = separate_by_type
                         bank_ids = _merge_related_ids(bank_ids, accounting_pricing_saved.banks)
                         origin_ids = _merge_related_ids(origin_ids, accounting_pricing_saved.origins)
                         contract_type_ids = _merge_related_ids(contract_type_ids, accounting_pricing_saved.contract_types)
@@ -3349,6 +3399,7 @@ def bulk_save_accounting_pricing(data, user):
                             foreign_iban=foreign_iban,
                             grouped_lines=group_values,
                             separate_by_type=separate_by_type,
+                            separate_by_sign=separate_by_sign,
                             separate_by_origin=separate_by_origin,
                             payment_origin=payment_origin,
                             separate_by_payment_origin=separate_by_payment_origin,
@@ -3398,6 +3449,7 @@ def bulk_save_accounting_pricing(data, user):
                     accounting_pricing_saved.foreign_iban = foreign_iban
                     accounting_pricing_saved.grouped_lines = group_values
                     accounting_pricing_saved.separate_by_type = separate_by_type
+                    accounting_pricing_saved.separate_by_sign = separate_by_sign
                     accounting_pricing_saved.separate_by_origin = separate_by_origin
                     accounting_pricing_saved.payment_origin = payment_origin
                     accounting_pricing_saved.separate_by_payment_origin = separate_by_payment_origin

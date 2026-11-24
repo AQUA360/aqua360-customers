@@ -328,6 +328,8 @@ const tokenReturnSummaryChips = computed(() => {
 const groupValues = ref(true);
 /** Payment only. Backend splits generated lines by each available payment type. */
 const separateByType = ref(false);
+/** Payment only. Grouped lines keep positive cobraments and negative returns separate. */
+const separateBySign = ref(false);
 /** Invoice only. Shared pricing, one generated line per invoice origin. */
 const separateByOrigin = ref(false);
 /** BANK_PAYMENT only. null handles every origin; a token handles just that one. */
@@ -1034,6 +1036,7 @@ const resetInvoiceScope = () => {
 const resetPaymentScope = () => {
     selectedPaymentCategory.value = 'normal';
     separateByType.value = false;
+    separateBySign.value = false;
     selectedPaymentOrigin.value = null;
     separateByPaymentOrigin.value = false;
     selectedCounterpartPricing.value = null;
@@ -1207,6 +1210,7 @@ const applyPaymentScope = (response) => {
         ? category
         : 'normal';
     separateByType.value = response?.separate_by_type === true;
+    separateBySign.value = response?.separate_by_sign === true;
     separateByPaymentOrigin.value = response?.separate_by_payment_origin === true;
     selectedPaymentOrigin.value =
         response?.payment_origin === 'box_office' || response?.payment_origin === 'post_office'
@@ -2368,6 +2372,7 @@ const buildBasePayload = () => ({
     is_active: is_active.value,
     group_values: groupValues.value,
     separate_by_type: selectedCategory.value === 'payment' && groupValues.value ? !!separateByType.value : false,
+    separate_by_sign: selectedCategory.value === 'payment' && groupValues.value ? !!separateBySign.value : false,
     separate_by_origin: selectedCategory.value === 'invoice' && groupValues.value ? !!separateByOrigin.value : false,
     ...bankPaymentOriginPayload(),
     exploitation: exploitationIdForSave(),
@@ -2722,6 +2727,7 @@ const save = async () => {
                 covers_undeclared: entry.covers_undeclared ?? false,
                 grouped_lines: entry.grouped_lines,
                 separate_by_type: selectedCategory.value === 'payment' && groupValues.value ? !!separateByType.value : false,
+                separate_by_sign: selectedCategory.value === 'payment' && groupValues.value ? !!separateBySign.value : false,
                 separate_by_origin: selectedCategory.value === 'invoice' && !!entry.group_values ? !!separateByOrigin.value : false,
                 ...bankPaymentOriginPayload(entry.payment_types, entry.group_values),
                 cost_center: showsCostCenter.value
@@ -4030,6 +4036,17 @@ onMounted(async () => {
                                             :disabled="!!existingSelection" />
                                         <span>{{ t('pricing_block.accounting_pricing_separate_by_type') }}</span>
                                     </label>
+                                </div>
+                                <div>
+                                    <label class="inline-flex items-center gap-2 text-[12px] text-sky-950"
+                                        :class="existingSelection ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'">
+                                        <input v-model="separateBySign" type="checkbox" class="checkbox"
+                                            :disabled="!!existingSelection" />
+                                        <span>{{ t('pricing_block.accounting_pricing_separate_by_sign') }}</span>
+                                    </label>
+                                    <p class="mt-1 text-[11px] leading-snug text-slate-500">
+                                        {{ t('pricing_block.accounting_pricing_separate_by_sign_hint') }}
+                                    </p>
                                 </div>
                                 <div v-if="showsBankPaymentOrigin">
                                     <label class="inline-flex items-center gap-2 text-[12px] text-sky-950"
