@@ -1388,15 +1388,24 @@ def generate_daily_activity_summary_report(request, black_fill=None, white_bold_
         row = jump_row(row)
 
         # Primer, la taula de conceptes com la de la pantalla (accions de cada
-        # categoria, subtotal i total), que és la que fa servir l'oficina.
-        source_counts = {
-            source['key']: source['count']
+        # categoria, subtotal i total), que és la que fa servir l'oficina, amb una
+        # columna per persona i el total.
+        sources_by_key = {
+            source['key']: source
             for category in activity['categories'] for source in category['sources']
         }
+        active_users = [user for user in activity['by_user'] if user['total']]
+
+        def summary_values(source_key):
+            source = sources_by_key.get(source_key)
+            if not source:
+                return [0] * (len(active_users) + 1)
+            return [source['counts_by_user'].get(user['id'], 0) for user in active_users] + [source['count']]
+
         row = _write_concept_table(
-            summary_sheet, row, activity['categories'], [_("Accions")],
-            lambda source_key: [source_counts.get(source_key, 0)],
-            black_fill, white_bold_font,
+            summary_sheet, row, activity['categories'],
+            [user['name'] or user['username'] for user in active_users] + [_("Total")],
+            summary_values, black_fill, white_bold_font,
         )
         row = jump_row(row)
 

@@ -78,14 +78,15 @@ class DailyActivityByCityTests(TestCase):
         workbook = self._generate()
 
         self.assertEqual(workbook.sheetnames, ['Resum', 'Per municipi', 'Detall'])
-        rows = [row[:2] for row in workbook['Resum'].iter_rows(values_only=True)]
-        start = rows.index(('Concepte', 'Accions'))
-        table = rows[start + 1:rows.index(('TOTAL', 4)) + 1]
-        self.assertIn(('Modificacions de contracte', 3), table)
-        self.assertIn(('Gestions de contracte', 3), table)
+        # Una columna per persona i el total.
+        rows = [row[:3] for row in workbook['Resum'].iter_rows(values_only=True)]
+        start = rows.index(('Concepte', 'Anna Oficina', 'Total'))
+        table = rows[start + 1:rows.index(('TOTAL', 4, 4)) + 1]
+        self.assertIn(('Modificacions de contracte', 3, 3), table)
+        self.assertIn(('Gestions de contracte', 3, 3), table)
         # El subtotal va després de les accions de la seva categoria.
-        self.assertLess(table.index(('Modificacions de contracte', 3)), table.index(('Gestions de contracte', 3)))
-        self.assertEqual(table[-1], ('TOTAL', 4))
+        self.assertLess(table.index(('Modificacions de contracte', 3, 3)), table.index(('Gestions de contracte', 3, 3)))
+        self.assertEqual(table[-1], ('TOTAL', 4, 4))
 
     def test_city_sheet_has_one_table_per_city(self):
         workbook = self._generate()
