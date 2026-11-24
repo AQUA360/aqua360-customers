@@ -603,6 +603,12 @@ paths:
                         pdf_available: true
                         is_holder: true
                         is_payer: true
+                        is_returned: false
+                        last_return:
+                          date: "2026-03-10"
+                          reason:
+                            code: AM04
+                            name: Fondos insuficientes
                   - contract_number: null
                     contract_status: null
                     supply_address: null
@@ -620,6 +626,8 @@ paths:
                         pdf_available: true
                         is_holder: true
                         is_payer: true
+                        is_returned: false
+                        last_return: null
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -640,6 +648,11 @@ paths:
         posterior a hoy.
 
         El importe devuelto en `invoice_amount` corresponde al pendiente de pago (`left_to_pay`).
+
+        `is_returned` y `last_return` indican si el banco ha devuelto el recibo
+        domiciliado de la factura. No existe un estado de factura «devuelta»:
+        tras la devolución, la factura queda `Confirmada` o `Vencida` (ver
+        `InvoiceIsReturned`).
 
         `404` si el `contract_token` no corresponde a ningún contrato.
       operationId: listInvoices
@@ -662,12 +675,18 @@ paths:
                   invoice_token: INV-001
                   invoice_date: "2026-01-15"
                   invoice_amount: 45.50
-                  invoice_status: Enviada
+                  invoice_status: Vencida
                   status:
-                    token: "3"
-                    name: Enviada
+                    token: "-1"
+                    name: Vencida
                   payment_type: DIRECT_DEBIT
                   pdf_available: true
+                  is_returned: true
+                  last_return:
+                    date: "2026-02-10"
+                    reason:
+                      code: AM04
+                      name: Fondos insuficientes
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -795,6 +814,8 @@ paths:
                   name: Enviada
                 payment_type: DIRECT_DEBIT
                 pdf_available: true
+                is_returned: false
+                last_return: null
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -852,6 +873,8 @@ paths:
                 payment_method: Domiciliació Bancària - SEPA
                 payment_type: DIRECT_DEBIT
                 pdf_available: true
+                is_returned: false
+                last_return: null
                 billing_period:
                   year: 2026
                   month: 3
@@ -4009,6 +4032,10 @@ components:
           description: |
             La persona es la pagadora guardada en la factura (o la titular, si
             la factura no tiene pagador)
+        is_returned:
+          $ref: "#/components/schemas/InvoiceIsReturned"
+        last_return:
+          $ref: "#/components/schemas/InvoiceLastReturn"
     InvoiceSummary:
       type: object
       properties:
@@ -4063,6 +4090,58 @@ components:
         pdf_available:
           type: boolean
           description: Indica si el PDF está disponible según la configuración `ov_pdf_from`
+        is_returned:
+          $ref: "#/components/schemas/InvoiceIsReturned"
+        last_return:
+          $ref: "#/components/schemas/InvoiceLastReturn"
+
+    InvoiceIsReturned:
+      type: boolean
+      description: |
+        `true` mientras algún recibo activo de la factura siga devuelto por el
+        banco (estado de recibo `payment_status_returned_token`). Vuelve a
+        `false` cuando el recibo deja de estar devuelto (por ejemplo, cuando
+        se vuelve a cobrar). Es el mismo
+        criterio por el que `POST /ov/invoice/return-request/` responde `409`.
+
+        La factura no tiene un estado «devuelta»: cuando el banco devuelve el
+        recibo domiciliado, la factura vuelve a `Confirmada` (token `2`) si aún
+        no ha vencido o a `Vencida` (token `-1`) si ya ha vencido, y pasa a
+        `Vencida` al llegar el vencimiento. La forma de pago no cambia, salvo
+        en las devoluciones por cuenta no válida, en las que la factura pasa a
+        pago bancario.
+      example: true
+    InvoiceLastReturn:
+      type: object
+      nullable: true
+      description: |
+        Última devolución bancaria de un recibo activo de la factura, aunque
+        después se haya vuelto a cobrar (en ese caso `is_returned` es `false`).
+        `null` si la factura no ha tenido ninguna devolución.
+      properties:
+        date:
+          type: string
+          format: date
+          nullable: true
+          description: Fecha de la devolución
+        reason:
+          type: object
+          nullable: true
+          description: |
+            Motivo de la devolución; `null` si no consta. `code` es el código
+            del motivo (en las devoluciones SEPA, el código ISO, p. ej. `AM04`).
+          properties:
+            code:
+              type: string
+              nullable: true
+            name:
+              type: string
+              nullable: true
+      example:
+        date: "2026-02-10"
+        reason:
+          code: AM04
+          name: Fondos insuficientes
 
     InvoicePaidRequest:
       type: object
@@ -5227,6 +5306,10 @@ components:
         pdf_available:
           type: boolean
           description: Indica si el PDF está disponible según la configuración `ov_pdf_from`
+        is_returned:
+          $ref: "#/components/schemas/InvoiceIsReturned"
+        last_return:
+          $ref: "#/components/schemas/InvoiceLastReturn"
         billing_period:
           type: object
           description: Periodo de facturación de la factura
