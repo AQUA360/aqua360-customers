@@ -8167,3 +8167,196 @@ class PersonInvoicesOVTests(TestCase):
         self.assertIs(
             resolve(reverse(self.URL_NAME)).func.view_class, PersonInvoicesOVView
         )
+
+
+class MaskDniTests(TestCase):
+    def test_nif_of_nine_chars_shows_four_central_digits(self):
+        from ov.serializers import mask_dni
+
+        self.assertEqual(mask_dni("12345678Z"), "***4567**")
+
+    def test_keeps_original_length(self):
+        from ov.serializers import mask_dni
+
+        self.assertEqual(mask_dni("X1234567L"), "***3456**")
+        self.assertEqual(len(mask_dni("B1234567890")), 11)
+        self.assertEqual(mask_dni("B1234567890"), "***3456****")
+
+    def test_shorter_than_nine_is_fully_masked(self):
+        from ov.serializers import mask_dni
+
+        self.assertEqual(mask_dni("1234567"), "*******")
+
+    def test_empty_values(self):
+        from ov.serializers import mask_dni
+
+        self.assertEqual(mask_dni(None), "")
+        self.assertEqual(mask_dni(""), "")
+
+
+class InvoiceDirectDebitAccountTests(TestCase):
+    """`direct_debit_account` al detall de factura: compte de cobrament
+    d'aquella factura, amb el titular resolt pel pagador o pel IBAN."""
+
+    DEBIT = "DEBIT-TEST"
+    IBAN_A = "ES9121000418450200051332"
+    IBAN_B = "ES7921000813610123456789"
+    IBAN_C = "ES6621000418401234567891"
+    HOLDER_NIF = "11111111H"
+    OTHER_NIF = "22222222J"
+    THIRD_NIF = "33333333P"
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(username="ov-dda-test", password="x")
+        for token, value in (
+            ("direct_debit_token", cls.DEBIT),
+            ("contract_termination_completed_token", "3"),
+            ("contract_terminated_status", "-1"),
+            ("invoice_status_paid_token", "0"),
+            ("invoice_status_cancelled_token", "-1"),
+        ):
+            ConfigProject.objects.update_or_create(
+                token=token, defaults={"value": value}
+            )
+        cls.status = InvoiceStatus.objects.create(token="3", name="Enviada")
+        cls.holder = Person.objects.create(
+            token=cls.HOLDER_NIF, name="Titular", surname="Prova"
+        )
+        cls.other = Person.objects.create(
+            token=cls.OTHER_NIF, name="Altre", surname="Prova"
+        )
+        cls.third = Person.objects.create(
+            token=cls.THIRD_NIF, name="Tercer", surname="Prova"
+        )
+        cls.bank_a = PersonBank.objects.create(person=cls.holder, iban=cls.IBAN_A)
+        cls.payment_type = PaymentType.objects.create(token=cls.DEBIT, name="SEPA")
+        cls.contract_payment = GeneralPayment.objects.create(
+            type=cls.payment_type, IBAN=cls.bank_a
+        )
+        cls.contract = Contract.objects.create(
+            token="DDA-1", holder=cls.holder, payment=cls.contract_payment
+        )
+        cls.seq = 0
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def _invoice(self, **extra):
+        type(self).seq += 1
+        values = dict(
+            token=f"DDA-INV-{self.seq}",
+            contract=self.contract,
+            status=self.status,
+            issue_date=date(2026, 1, 15),
+            payment_type_token_final=self.DEBIT,
+            customer_token_final=self.HOLDER_NIF,
+            payment_bank_final=self.IBAN_A,
+        )
+        values.update(extra)
+        return Invoice.objects.create(**values)
+
+    def _account(self, invoice):
+        response = self.client.get(
+            reverse("invoice-detail-by-token-ov", kwargs={"token": invoice.token})
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("direct_debit_account", response.data)
+        return response.data["direct_debit_account"]
+
+    def test_not_direct_debit_is_null(self):
+        invoice = self._invoice(payment_type_token_final="CASH")
+        self.assertIsNone(self._account(invoice))
+
+    def test_without_iban_is_null(self):
+        invoice = self._invoice(payment_bank_final=None)
+        self.assertIsNone(self._account(invoice))
+
+    def test_payer_fields_take_precedence(self):
+        invoice = self._invoice(
+            payer_final="Pagador Prova", payer_token_final=self.HOLDER_NIF
+        )
+        self.assertEqual(
+            self._account(invoice),
+            {
+                "iban": "ES912100********00051332",
+                "nombre": "Pagador Prova",
+                "dni": self.HOLDER_NIF,
+            },
+        )
+
+    def test_payer_third_party_masks_dni(self):
+        invoice = self._invoice(
+            payer_final="Pagador Tercer", payer_token_final=self.THIRD_NIF
+        )
+        account = self._account(invoice)
+        self.assertEqual(account["nombre"], "Pagador Tercer")
+        self.assertEqual(account["dni"], "***3333**")
+
+    def test_migrated_invoice_uses_contract_account_when_iban_matches(self):
+        invoice = self._invoice()
+        with CaptureQueriesContext(connection) as queries:
+            account = self._account(invoice)
+        self.assertEqual(account["nombre"], "Titular Prova")
+        self.assertEqual(account["dni"], self.HOLDER_NIF)
+        self.assertFalse(
+            [q for q in queries if "coredata_personbank" in q["sql"] and "UPPER" in q["sql"]]
+        )
+
+    def test_migrated_invoice_with_iban_different_from_current_account(self):
+        PersonBank.objects.create(person=self.holder, iban=self.IBAN_B)
+        invoice = self._invoice(payment_bank_final=self.IBAN_B)
+        account = self._account(invoice)
+        self.assertEqual(account["iban"], "ES792100********23456789")
+        self.assertEqual(account["nombre"], "Titular Prova")
+        self.assertEqual(account["dni"], self.HOLDER_NIF)
+
+    def test_iban_is_matched_ignoring_spaces_and_case(self):
+        PersonBank.objects.create(person=self.holder, iban="es79 2100 0813 6101 2345 6789")
+        invoice = self._invoice(payment_bank_final=self.IBAN_B.lower())
+        self.assertEqual(self._account(invoice)["dni"], self.HOLDER_NIF)
+
+    def test_shared_iban_resolved_by_contract_holder(self):
+        PersonBank.objects.create(person=self.other, iban=self.IBAN_B)
+        PersonBank.objects.create(person=self.holder, iban=self.IBAN_B)
+        invoice = self._invoice(payment_bank_final=self.IBAN_B)
+        account = self._account(invoice)
+        self.assertEqual(account["nombre"], "Titular Prova")
+        self.assertEqual(account["dni"], self.HOLDER_NIF)
+
+    def test_shared_iban_resolved_by_invoice_customer(self):
+        other_contract = Contract.objects.create(token="DDA-2", holder=self.third)
+        PersonBank.objects.create(person=self.holder, iban=self.IBAN_C)
+        PersonBank.objects.create(person=self.other, iban=self.IBAN_C)
+        invoice = self._invoice(
+            contract=other_contract,
+            payment_bank_final=self.IBAN_C,
+            customer_token_final=self.OTHER_NIF,
+        )
+        account = self._account(invoice)
+        self.assertEqual(account["nombre"], "Altre Prova")
+        self.assertEqual(account["dni"], self.OTHER_NIF)
+
+    def test_single_candidate_third_party_masks_dni(self):
+        PersonBank.objects.create(person=self.third, iban=self.IBAN_C)
+        invoice = self._invoice(payment_bank_final=self.IBAN_C)
+        account = self._account(invoice)
+        self.assertEqual(account["nombre"], "Tercer Prova")
+        self.assertEqual(account["dni"], "***3333**")
+
+    def test_ambiguous_iban_leaves_holder_null(self):
+        PersonBank.objects.create(person=self.other, iban=self.IBAN_C)
+        PersonBank.objects.create(person=self.third, iban=self.IBAN_C)
+        invoice = self._invoice(payment_bank_final=self.IBAN_C)
+        self.assertEqual(
+            self._account(invoice),
+            {"iban": "ES662100********34567891", "nombre": None, "dni": None},
+        )
+
+    def test_unknown_iban_leaves_holder_null(self):
+        invoice = self._invoice(payment_bank_final=self.IBAN_C)
+        account = self._account(invoice)
+        self.assertEqual(account["iban"], "ES662100********34567891")
+        self.assertIsNone(account["nombre"])
+        self.assertIsNone(account["dni"])
