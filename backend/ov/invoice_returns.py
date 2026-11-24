@@ -15,7 +15,7 @@ Els valors s'afegeixen com a anotacions a la consulta de factures
 (`annotate_ov_returns`), per no fer consultes per factura als llistats.
 """
 
-from django.db.models import BooleanField, Exists, OuterRef, Subquery, Value
+from django.db.models import BooleanField, Exists, F, OuterRef, Subquery, Value
 from django.db.models.fields import CharField, DateField
 
 from billing.models import Invoice, Payment, PaymentMovement
@@ -23,6 +23,7 @@ from coredata.models import ConfigProject
 
 RETURN_ANNOTATIONS = (
     "ov_is_returned",
+    "ov_has_return_movement",
     "ov_return_movement_date",
     "ov_return_movement_code",
     "ov_return_movement_name",
@@ -48,21 +49,24 @@ def annotate_ov_returns(queryset, returned_token=None):
     if not returned_token:
         return queryset.annotate(
             ov_is_returned=Value(False, output_field=BooleanField()),
+            ov_has_return_movement=Value(False, output_field=BooleanField()),
             **{
                 name: Value(None, output_field=CharField())
-                for name in RETURN_ANNOTATIONS[1:]
+                for name in RETURN_ANNOTATIONS[2:]
             },
         )
 
     returned_payments = Payment.objects.filter(
         invoice=OuterRef("pk"), is_active=True, status__token=returned_token
     )
+    # Els moviments sense data, al final: PostgreSQL posa els NULL primer en
+    # ordre descendent
     return_movements = PaymentMovement.objects.filter(
         payment__invoice=OuterRef("pk"),
         payment__is_active=True,
         is_active=True,
         current_status__token=returned_token,
-    ).order_by("-movement_date", "-timestamp", "-id")
+    ).order_by(F("movement_date").desc(nulls_last=True), "-timestamp", "-id")
     # Rebuts retornats sense cap moviment de retorn (dades antigues): la data i
     # el motiu són al mateix rebut
     returned_without_movements = (
@@ -76,11 +80,12 @@ def annotate_ov_returns(queryset, returned_token=None):
             )
         )
         .exclude(reject_date__isnull=True, reject__isnull=True)
-        .order_by("-reject_date", "-id")
+        .order_by(F("reject_date").desc(nulls_last=True), "-id")
     )
 
     return queryset.annotate(
         ov_is_returned=Exists(returned_payments),
+        ov_has_return_movement=Exists(return_movements),
         ov_return_movement_date=Subquery(
             return_movements.values("movement_date")[:1], output_field=DateField()
         ),
@@ -125,9 +130,13 @@ def ov_return_info(invoice):
     last_return = None
     movement_date = invoice.ov_return_movement_date
     payment_date = invoice.ov_return_payment_date
-    # El darrer retorn conegut: el moviment de retorn més recent o, si un rebut
-    # retornat sense moviments és més recent, el d'aquest rebut
-    if movement_date and not (payment_date and payment_date > movement_date):
+    # El darrer retorn conegut: el moviment de retorn més recent (encara que no
+    # tingui data) o, si un rebut retornat sense moviments té una data
+    # posterior (o el moviment no en té), el d'aquest rebut
+    payment_is_newer = payment_date is not None and (
+        movement_date is None or payment_date > movement_date
+    )
+    if invoice.ov_has_return_movement and not payment_is_newer:
         last_return = {
             "date": movement_date,
             "reason": _reason(

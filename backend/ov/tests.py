@@ -8067,6 +8067,13 @@ class InvoiceReturnOVTests(TestCase):
             reject_date=date(2025, 12, 1),
             reject=cls.am04,
         )
+        # Moviment de retorn sense data: es conserva el motiu
+        payment = cls._invoice("RET-NODATE", 6, cls.returned)
+        cls._return(payment, None, cls.md01)
+        # Un moviment amb data i un sense: mana el que té data
+        payment = cls._invoice("RET-MIXED", 7, cls.returned)
+        cls._return(payment, date(2026, 1, 15), cls.am04)
+        cls._return(payment, None, cls.md01)
 
         cls.expected = {
             "RET-NONE": (False, None),
@@ -8087,6 +8094,17 @@ class InvoiceReturnOVTests(TestCase):
                 True,
                 {
                     "date": "2025-12-01",
+                    "reason": {"code": "AM04", "name": "Fons insuficients"},
+                },
+            ),
+            "RET-NODATE": (
+                True,
+                {"date": None, "reason": {"code": "MD01", "name": "Sense mandat"}},
+            ),
+            "RET-MIXED": (
+                True,
+                {
+                    "date": "2026-01-15",
                     "reason": {"code": "AM04", "name": "Fons insuficients"},
                 },
             ),
