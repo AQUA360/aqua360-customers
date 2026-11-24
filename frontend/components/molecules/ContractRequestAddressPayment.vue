@@ -208,12 +208,16 @@ const openInputSepa = () => {
 const sendingSepaDocument = ref(false);
 const showSendSepaModal = ref(false);
 const noSepaDocumentId = ref(null);
+const noSepaDocumentPerson = ref(null);
 
 const generateDocumentNoSepa = async ({ sendByEmail = false } = {}) => {
   const contractId = props.request?.id ?? props.request?.contract?.id;
   if (!contractId) return;
 
-  const personId = holder.value?.id
+  // Amb domiciliació, el deutor del mandat és el titular del compte triat (com a les
+  // accions ràpides de l'indicador SEPA): nom, DNI, adreça i contactes de la mateixa persona.
+  const documentPerson = isDirectDebitSelected.value ? (selectedBankDebitPerson.value || holder.value) : holder.value;
+  const personId = documentPerson?.id
     ?? props.request?.holder?.id
     ?? props.request?.holder
     ?? null;
@@ -240,6 +244,8 @@ const generateDocumentNoSepa = async ({ sendByEmail = false } = {}) => {
     );
     if (sendByEmail) {
       noSepaDocumentId.value = sepa?.sepa_document_id ?? null;
+      // La persona del document generat, no la del compte triat en aquest moment.
+      noSepaDocumentPerson.value = documentPerson;
       showSendSepaModal.value = !!noSepaDocumentId.value;
       return;
     }
@@ -1224,7 +1230,7 @@ const handleSubRegionEvent = (show) => {
                   {{ t('contract_block.sepa_send_email') }}
                 </button>
                 <SendSepaEmailModal :show="showSendSepaModal" :sepa-document-id="noSepaDocumentId" :contract="request"
-                  :is-request="sepaValue !== 'contract'" :person="selectedBankDebitPerson || holder"
+                  :is-request="sepaValue !== 'contract'" :person="noSepaDocumentPerson || holder"
                   @close="showSendSepaModal = false" />
 
               </fieldset>
