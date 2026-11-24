@@ -89,6 +89,7 @@ from pricing.models import PriceRate, Product
 from service.models import Property, SupplyPoint
 from service.utils.route_scope import effective_route
 from ov.invoice_visibility import exclude_future_invoices
+from ov.invoice_returns import annotate_ov_returns
 from ov.serializers import (
     BASE64_TOO_LARGE_CODE,
     SEPA_SIGNED_DEFAULT_FILENAME,
@@ -334,10 +335,12 @@ class BillingContractInvoicesOVView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        invoices = exclude_future_invoices(
-            Invoice.objects.filter(contract=contract)
-            .exclude(status__token="1")  # excluïm les factures de pre-factura
-            .select_related("status", "contract", "payment_type")
+        invoices = annotate_ov_returns(
+            exclude_future_invoices(
+                Invoice.objects.filter(contract=contract)
+                .exclude(status__token="1")  # excluïm les factures de pre-factura
+                .select_related("status", "contract", "payment_type")
+            )
         )
 
         serializer = BillingContractInvoicesOVSerializer(invoices, many=True)
@@ -358,8 +361,10 @@ class BillingContractInvoiceOVView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        invoice = exclude_future_invoices(self.queryset).filter(
-            token=invoice_token, contract__token=contract_token
+        invoice = annotate_ov_returns(
+            exclude_future_invoices(self.queryset).filter(
+                token=invoice_token, contract__token=contract_token
+            )
         ).first()
 
         if not invoice:
@@ -471,8 +476,8 @@ class UnpayedInvoicesOVView(APIView):
                     payment_type_token_final__in=payment_type_tokens
                 )
 
-        invoices = invoices_queryset.select_related(
-            "status", "payment_type", "contract"
+        invoices = annotate_ov_returns(
+            invoices_queryset.select_related("status", "payment_type", "contract")
         )
         serializer = BillingContractInvoicesOVSerializer(invoices, many=True)
 
@@ -845,12 +850,14 @@ class InvoiceDetailByTokenOVView(RetrieveAPIView):
     def get_queryset(self):
         cfg = ConfigProject.objects.filter(token="invoice_type_invoice_token").first()
         invoice_type_token = cfg.value if cfg and cfg.value else None
-        queryset = exclude_future_invoices(
-            Invoice.objects.exclude(status__token="1")
-            .select_related(
-                "contract__holder", "contract__payment__IBAN__person", "status"
+        queryset = annotate_ov_returns(
+            exclude_future_invoices(
+                Invoice.objects.exclude(status__token="1")
+                .select_related(
+                    "contract__holder", "contract__payment__IBAN__person", "status"
+                )
+                .prefetch_related("readings__previous_reading")
             )
-            .prefetch_related("readings__previous_reading")
         )
         if invoice_type_token:
             queryset = queryset.filter(type_final=invoice_type_token)
@@ -2261,6 +2268,7 @@ class PersonInvoicesOVView(APIView):
             invoices = invoices.filter(issue_date__gte=date_from)
         if date_to:
             invoices = invoices.filter(issue_date__lte=date_to)
+        invoices = annotate_ov_returns(invoices)
 
         # Context compartit: el DNI per als indicadors i la data dels PDF,
         # que es llegeix un sol cop per petició.

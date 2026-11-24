@@ -3,6 +3,7 @@ from typing import Optional
 from django.conf import settings
 from rest_framework import serializers
 from ov.invoice_visibility import exclude_future_invoices
+from ov.invoice_returns import ov_return_info
 from contract.models import (
     Contract,
     ContractDataChange,
@@ -630,8 +631,29 @@ class OVPaymentTypeMixin:
         return None
 
 
+class OVInvoiceReturnMixin:
+    """`is_returned` i `last_return`: retorn bancari dels rebuts de la factura
+    (vegeu `ov.invoice_returns`). La vista ha d'anotar la consulta amb
+    `annotate_ov_returns`; si no ho fa, es llegeix factura a factura."""
+
+    def _ov_return(self, obj):
+        cache = self.context.setdefault("ov_invoice_returns", {})
+        if obj.pk not in cache:
+            is_returned, last_return = ov_return_info(obj)
+            if last_return and last_return["date"]:
+                last_return["date"] = last_return["date"].isoformat()
+            cache[obj.pk] = (is_returned, last_return)
+        return cache[obj.pk]
+
+    def get_is_returned(self, obj) -> bool:
+        return self._ov_return(obj)[0]
+
+    def get_last_return(self, obj):
+        return self._ov_return(obj)[1]
+
+
 class BillingContractInvoicesOVSerializer(
-    OVPaymentTypeMixin, OVPdfAvailableMixin, serializers.Serializer
+    OVPaymentTypeMixin, OVInvoiceReturnMixin, OVPdfAvailableMixin, serializers.Serializer
 ):
 
     contract_number = serializers.CharField(source="contract.token", read_only=True)
@@ -646,6 +668,8 @@ class BillingContractInvoicesOVSerializer(
     status = serializers.SerializerMethodField()
     payment_type = serializers.SerializerMethodField()
     pdf_available = serializers.SerializerMethodField()
+    is_returned = serializers.SerializerMethodField()
+    last_return = serializers.SerializerMethodField()
 
     class Meta:
         model = Invoice
@@ -659,6 +683,8 @@ class BillingContractInvoicesOVSerializer(
             "pdf_available",
             "status",
             "payment_type",
+            "is_returned",
+            "last_return",
         ]
 
     def get_status(self, obj):
@@ -671,7 +697,7 @@ class BillingContractInvoicesOVSerializer(
 
 
 class PersonInvoiceOVSerializer(
-    OVPaymentTypeMixin, OVPdfAvailableMixin, serializers.Serializer
+    OVPaymentTypeMixin, OVInvoiceReturnMixin, OVPdfAvailableMixin, serializers.Serializer
 ):
     """Una factura de `GET /ov/person-invoices/`. A diferència de
     `/ov/invoices/`, `invoice_amount` és el total i el pendent va a
@@ -688,6 +714,8 @@ class PersonInvoiceOVSerializer(
     status = serializers.SerializerMethodField()
     payment_type = serializers.SerializerMethodField()
     pdf_available = serializers.SerializerMethodField()
+    is_returned = serializers.SerializerMethodField()
+    last_return = serializers.SerializerMethodField()
     is_holder = serializers.SerializerMethodField()
     is_payer = serializers.SerializerMethodField()
 
@@ -1384,7 +1412,9 @@ class ContractByNicSerializer(ContractFullDetailSerializer):
         fields = ContractFullDetailSerializer.Meta.fields + ["contract_token"]
 
 
-class InvoiceFullDetailSerializer(OVPaymentTypeMixin, serializers.ModelSerializer):
+class InvoiceFullDetailSerializer(
+    OVPaymentTypeMixin, OVInvoiceReturnMixin, serializers.ModelSerializer
+):
     """Detalle completo de una factura definitiva. Corresponde al esquema
     `InvoiceFullDetail` del documento OpenAPI (`GET /ov/invoice/{token}/detail/`)."""
 
@@ -1401,6 +1431,8 @@ class InvoiceFullDetailSerializer(OVPaymentTypeMixin, serializers.ModelSerialize
     payment_method = serializers.CharField(source="payment_type_final", read_only=True, allow_null=True)
     payment_type = serializers.SerializerMethodField()
     pdf_available = serializers.SerializerMethodField()
+    is_returned = serializers.SerializerMethodField()
+    last_return = serializers.SerializerMethodField()
     billing_period = serializers.SerializerMethodField()
     dwelling_code = serializers.SerializerMethodField()
     tax_address = serializers.SerializerMethodField()
@@ -1430,6 +1462,8 @@ class InvoiceFullDetailSerializer(OVPaymentTypeMixin, serializers.ModelSerialize
             "tariffs",
             "fiscal_breakdown",
             "status",
+            "is_returned",
+            "last_return",
         ]
 
     def get_status(self, obj):

@@ -9,6 +9,10 @@ const props = defineProps({
     loading: Boolean,
 });
 
+// Un document substituït (p. ex. en regenerar els d'una comunicació) compta com a inactiu
+// i no es pot esborrar.
+const isInactive = (item) => !item.file.is_active || item.replaced;
+
 const emit = defineEmits(['change']);
 
 const today_date_string = new Date().toISOString().slice(0, 10);
@@ -88,7 +92,7 @@ const filteredDocumentData = computed(() => {
     let localData = [...documentsData.value];
     localData.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
     if (!showInactiveDocuments.value) {
-        localData = localData.filter(item => item.file.is_active);
+        localData = localData.filter(item => !isInactive(item));
     }
     if (selectedExtension.value !== 'allext') {
         localData = localData.filter(
@@ -178,6 +182,7 @@ watch(() => props.loading, (newVal) => {
                 </div>
                 <div class="footering text-slate-500 p-2 w-full">
                     {{ item.file.document_name }}
+                    <span v-if="item.replaced" class="ml-1 text-xs text-slate-400">({{ t('customer_service_block.replaced_document') }})</span>
                 </div>
                 <div class="footering text-slate-500 p-2 w-full text-center items-center">
                     <abbr :title="`${t('common.download')} ${t('common.doc')}`"
@@ -188,7 +193,7 @@ watch(() => props.loading, (newVal) => {
                     </abbr>
                 </div>
                 <div class="footering text-slate-500 p-2 w-full text-center items-center">
-                    <abbr :title="`${t('common.delete')} ${t('common.doc')}`"
+                    <abbr v-if="!item.replaced" :title="`${t('common.delete')} ${t('common.doc')}`"
                         class="text-slate-500 rounded-full border border-slate-500 cursor-pointer p-1 hover:bg-red-50 hover:text-red-700 hover:border-red-700">
                         <button type="button" @click="deleteDocument(item)" class="w-4 h-4">
                             <Icon name="fa6-solid:trash-can" />
