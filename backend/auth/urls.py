@@ -5,6 +5,7 @@ from documentmanager.views_export.generic_export_view import GenericExportView
 
 from .views import (
     CustomAuthToken,
+    LogoutView,
     UserViewSet,
     GroupViewSet,
     UserPermissionsView
@@ -22,6 +23,7 @@ urlpatterns = [
     # re-envien la redirecció com a GET i perden el cos, fallant l'auth.
     # Mateixa vista; nom distint perquè `reverse('login')` no canvia.
     path('login', CustomAuthToken.as_view(), name='login-no-slash'),
+    path('logout/', LogoutView.as_view(), name='logout'),
     # Han d'anar abans d'`include(router.urls)`: el router registra `<recurs>/<pk>/`
     # amb un patró de pk genèric que, si es col·loca abans, capturaria "export" com a pk.
     path('group/export/', GenericExportView.as_view(entity='group'), name='group-export'),

@@ -1,10 +1,10 @@
 from rest_framework import viewsets, generics
 from rest_framework.decorators import action
 from rest_framework import status
-from rest_framework.authtoken.models import Token
 from rest_framework.authtoken.views import ObtainAuthToken
 from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
 from rest_framework.response import Response
+from rest_framework.views import APIView
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.throttling import ScopedRateThrottle
 from axes.handlers.proxy import AxesProxyHandler
@@ -17,6 +17,7 @@ from auth.filters import UserFilter, GroupFilter
 from auth.roles import CANONICAL_SUPERUSER_USERNAME, get_user_role, is_canonical_superuser
 from auth.serializers import GroupSerializer, UserSerializer, PermissionSerializer
 from auth.permissions import PermissionManager
+from coredata.authentication import issue_token_key
 from coredata.permissions import can_edit_config_project
 
 
@@ -70,12 +71,21 @@ class CustomAuthToken(ObtainAuthToken):
                 {'non_field_errors': [_('Unable to log in with provided credentials.')]},
                 code='authorization',
             )
-        token, created = Token.objects.get_or_create(user=user)
 
         return Response({
             'username': user.username,
-            'token': token.key
+            'token': issue_token_key(user)
         })
+
+
+class LogoutView(APIView):
+    """Revoca el token amb què s'ha fet la petició (només aquesta sessió)."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        if request.auth is not None:
+            request.auth.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
     
 
 class UserViewSet(viewsets.ModelViewSet):

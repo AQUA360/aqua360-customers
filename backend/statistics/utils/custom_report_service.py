@@ -30,6 +30,7 @@ PARAM_REGEX = re.compile(r"\$\$([a-z0-9_]+)(?:\|([^\$\:]+))?(?:\:([^\$]+))?\$\$"
 # Taules que el rol d'informes no pot llegir de cap manera.
 EXCLUDED_TABLES = (
     "authtoken_token",
+    "coredata_authsessiontoken",
     "django_session",
     "lecturapp_token",
     "explorer_databaseconnection",
