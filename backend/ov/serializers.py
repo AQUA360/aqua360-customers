@@ -1,3 +1,5 @@
+from typing import Optional
+
 from django.conf import settings
 from rest_framework import serializers
 from ov.invoice_visibility import exclude_future_invoices
@@ -603,7 +605,32 @@ class OVPdfAvailableMixin:
         return True
 
 
-class BillingContractInvoicesOVSerializer(OVPdfAvailableMixin, serializers.Serializer):
+class OVPaymentTypeMixin:
+    """`payment_type`: token de la forma de pagament de la factura
+    (`payment_type_token_final`), el mateix que torna
+    `/ov/dictionary/payment-types/`. Torna `None` si el token no correspon a cap
+    `PaymentType` (buit, «-», «Sense pagament configurat»...). Els tokens
+    vàlids es carreguen una sola vegada per petició: es desen al context del
+    serialitzador arrel, que comparteixen tots els elements d'un `many=True`."""
+
+    def _ov_payment_type_tokens(self):
+        context = self.context
+        if "ov_payment_type_tokens" not in context:
+            context["ov_payment_type_tokens"] = set(
+                PaymentType.objects.values_list("token", flat=True)
+            )
+        return context["ov_payment_type_tokens"]
+
+    def get_payment_type(self, obj) -> Optional[str]:
+        token = obj.payment_type_token_final
+        if token and token in self._ov_payment_type_tokens():
+            return token
+        return None
+
+
+class BillingContractInvoicesOVSerializer(
+    OVPaymentTypeMixin, OVPdfAvailableMixin, serializers.Serializer
+):
 
     contract_number = serializers.CharField(source="contract.token", read_only=True)
     invoice_number = serializers.CharField(source="serie_final", read_only=True)
@@ -615,6 +642,7 @@ class BillingContractInvoicesOVSerializer(OVPdfAvailableMixin, serializers.Seria
 
     invoice_status = serializers.CharField(source="status.name", read_only=True)
     status = serializers.SerializerMethodField()
+    payment_type = serializers.SerializerMethodField()
     pdf_available = serializers.SerializerMethodField()
 
     class Meta:
@@ -628,6 +656,7 @@ class BillingContractInvoicesOVSerializer(OVPdfAvailableMixin, serializers.Seria
             "invoice_token",
             "pdf_available",
             "status",
+            "payment_type",
         ]
 
     def get_status(self, obj):
@@ -639,7 +668,9 @@ class BillingContractInvoicesOVSerializer(OVPdfAvailableMixin, serializers.Seria
         return {"token": obj.status.token, "name": obj.status.name}
 
 
-class PersonInvoiceOVSerializer(OVPdfAvailableMixin, serializers.Serializer):
+class PersonInvoiceOVSerializer(
+    OVPaymentTypeMixin, OVPdfAvailableMixin, serializers.Serializer
+):
     """Una factura de `GET /ov/person-invoices/`. A diferència de
     `/ov/invoices/`, `invoice_amount` és el total i el pendent va a
     `pending_amount`. `is_holder`/`is_payer` es calculen amb el DNI ja
@@ -653,6 +684,7 @@ class PersonInvoiceOVSerializer(OVPdfAvailableMixin, serializers.Serializer):
     pending_amount = serializers.FloatField(source="left_to_pay", read_only=True)
     invoice_status = serializers.SerializerMethodField()
     status = serializers.SerializerMethodField()
+    payment_type = serializers.SerializerMethodField()
     pdf_available = serializers.SerializerMethodField()
     is_holder = serializers.SerializerMethodField()
     is_payer = serializers.SerializerMethodField()
@@ -1303,7 +1335,7 @@ class ContractByNicSerializer(ContractFullDetailSerializer):
         fields = ContractFullDetailSerializer.Meta.fields + ["contract_token"]
 
 
-class InvoiceFullDetailSerializer(serializers.ModelSerializer):
+class InvoiceFullDetailSerializer(OVPaymentTypeMixin, serializers.ModelSerializer):
     """Detalle completo de una factura definitiva. Corresponde al esquema
     `InvoiceFullDetail` del documento OpenAPI (`GET /ov/invoice/{token}/detail/`)."""
 
@@ -1318,6 +1350,7 @@ class InvoiceFullDetailSerializer(serializers.ModelSerializer):
     total_amount = serializers.FloatField(source="total_final", read_only=True)
     subtotal_amount = serializers.FloatField(source="subtotal_final", read_only=True)
     payment_method = serializers.CharField(source="payment_type_final", read_only=True, allow_null=True)
+    payment_type = serializers.SerializerMethodField()
     pdf_available = serializers.SerializerMethodField()
     billing_period = serializers.SerializerMethodField()
     dwelling_code = serializers.SerializerMethodField()
@@ -1338,6 +1371,7 @@ class InvoiceFullDetailSerializer(serializers.ModelSerializer):
             "total_amount",
             "subtotal_amount",
             "payment_method",
+            "payment_type",
             "pdf_available",
             "billing_period",
             "dwelling_code",

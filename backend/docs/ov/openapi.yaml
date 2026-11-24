@@ -599,6 +599,7 @@ paths:
                         status:
                           token: "0"
                           name: Cobrada
+                        payment_type: CASH
                         pdf_available: true
                         is_holder: true
                         is_payer: true
@@ -615,6 +616,7 @@ paths:
                         status:
                           token: "3"
                           name: Enviada
+                        payment_type: DIRECT_DEBIT
                         pdf_available: true
                         is_holder: true
                         is_payer: true
@@ -664,6 +666,7 @@ paths:
                   status:
                     token: "3"
                     name: Enviada
+                  payment_type: DIRECT_DEBIT
                   pdf_available: true
         "400":
           $ref: "#/components/responses/BadRequest"
@@ -790,6 +793,7 @@ paths:
                 status:
                   token: "3"
                   name: Enviada
+                payment_type: DIRECT_DEBIT
                 pdf_available: true
         "400":
           $ref: "#/components/responses/BadRequest"
@@ -846,6 +850,7 @@ paths:
                 total_amount: 48.19
                 subtotal_amount: 45.50
                 payment_method: Domiciliació Bancària - SEPA
+                payment_type: DIRECT_DEBIT
                 pdf_available: true
                 billing_period:
                   year: 2026
@@ -3980,6 +3985,15 @@ components:
             name:
               type: string
               nullable: true
+        payment_type:
+          type: string
+          nullable: true
+          description: |
+            Token de la forma de pago de la factura (`payment_type_token_final`),
+            el mismo que devuelve `/ov/dictionary/payment-types/`. Es `null` si el
+            token de la factura no corresponde a ninguna forma de pago del
+            diccionario.
+          example: DIRECT_DEBIT
         pdf_available:
           type: boolean
           description: Indica si el PDF está disponible según la configuración `ov_pdf_from`
@@ -4033,6 +4047,15 @@ components:
           example:
             token: "3"
             name: Enviada
+        payment_type:
+          type: string
+          nullable: true
+          description: |
+            Token de la forma de pago de la factura (`payment_type_token_final`),
+            el mismo que devuelve `/ov/dictionary/payment-types/` (por ejemplo
+            `DIRECT_DEBIT`, `CASH`, `BANK_TRANSFER`). Es `null` si el token de la
+            factura no corresponde a ninguna forma de pago del diccionario.
+          example: DIRECT_DEBIT
         pdf_available:
           type: boolean
           description: Indica si el PDF está disponible según la configuración `ov_pdf_from`
@@ -5186,7 +5209,17 @@ components:
         payment_method:
           type: string
           nullable: true
-          description: Método de pago (`payment_type_final`)
+          description: Nombre del método de pago (`payment_type_final`)
+        payment_type:
+          type: string
+          nullable: true
+          description: |
+            Token de la forma de pago de la factura (`payment_type_token_final`),
+            el mismo que devuelve `/ov/dictionary/payment-types/` (por ejemplo
+            `DIRECT_DEBIT`, `CASH`, `BANK_TRANSFER`). Es `null` si el token de la
+            factura no corresponde a ninguna forma de pago del diccionario.
+            `payment_method` (nombre) se mantiene por compatibilidad.
+          example: DIRECT_DEBIT
         pdf_available:
           type: boolean
           description: Indica si el PDF está disponible según la configuración `ov_pdf_from`
