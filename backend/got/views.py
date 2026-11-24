@@ -23,6 +23,7 @@ from order.serializers.order_serializer import OrderSerializer
 from lecturapp.decorators import lecturapp_auth_required as token_required
 from lecturapp.models import ReadingOperator
 import logging
+from coredata.utils.workbook_utils import workbook_to_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -1767,10 +1768,9 @@ def get_orders_report(request):
     
     filename = f"orders_time_{datetime.datetime.now().strftime('%m_%y')}.xlsx"
     
-    wb.save(filename)
+    xlsx_content = workbook_to_bytes(wb)
 
-    with open(filename, "rb") as f:
-        response = HttpResponse(f.read(), content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-        response["Content-Disposition"] = f"attachment; filename={filename}"
+    response = HttpResponse(xlsx_content, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    response["Content-Disposition"] = f"attachment; filename={filename}"
     
     return response

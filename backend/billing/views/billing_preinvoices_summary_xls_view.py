@@ -14,6 +14,7 @@ from billing.models import Billing, Invoice
 from billing.serializers.invoice_serializer import InvoiceMinimalListSerializer
 from django.shortcuts import get_object_or_404
 import logging
+from coredata.utils.workbook_utils import workbook_to_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -118,14 +119,12 @@ class BillingPreInvoicesSummaryXLSViewSet(views.APIView):
            
             filename = f"billing_{datetime.datetime.now().strftime('%m_%y')}.xlsx"
            
-            wb.save(filename)
+            xlsx_content = workbook_to_bytes(wb)
 
             # Send the file as a response
-            with open(filename, "rb") as f:
-                response = HttpResponse(f.read(), content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-                response["Content-Disposition"] = f"attachment; filename={filename}"
+            response = HttpResponse(xlsx_content, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            response["Content-Disposition"] = f"attachment; filename={filename}"
             
-            os.remove(filename)
             return response
             
         
