@@ -1,6 +1,9 @@
+from typing import Optional
+
 from django.conf import settings
 from rest_framework import serializers
 from ov.invoice_visibility import exclude_future_invoices
+from ov.invoice_returns import ov_return_info
 from contract.models import (
     Contract,
     ContractDataChange,
@@ -42,7 +45,8 @@ from django.core.exceptions import SuspiciousFileOperation
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import validate_email
 from django.db import transaction
-from django.db.models import Count
+from django.db.models import Count, Value
+from django.db.models.functions import Replace, Upper
 from django.utils.dateparse import parse_date
 from django.utils.text import get_valid_filename
 import copy
@@ -603,7 +607,53 @@ class OVPdfAvailableMixin:
         return True
 
 
-class BillingContractInvoicesOVSerializer(OVPdfAvailableMixin, serializers.Serializer):
+class OVPaymentTypeMixin:
+    """`payment_type`: token de la forma de pagament de la factura
+    (`payment_type_token_final`), el mateix que torna
+    `/ov/dictionary/payment-types/`. Torna `None` si el token no correspon a cap
+    `PaymentType` (buit, «-», «Sense pagament configurat»...). Els tokens
+    vàlids es carreguen una sola vegada per petició: es desen al context del
+    serialitzador arrel, que comparteixen tots els elements d'un `many=True`."""
+
+    def _ov_payment_type_tokens(self):
+        context = self.context
+        if "ov_payment_type_tokens" not in context:
+            context["ov_payment_type_tokens"] = set(
+                PaymentType.objects.values_list("token", flat=True)
+            )
+        return context["ov_payment_type_tokens"]
+
+    def get_payment_type(self, obj) -> Optional[str]:
+        token = obj.payment_type_token_final
+        if token and token in self._ov_payment_type_tokens():
+            return token
+        return None
+
+
+class OVInvoiceReturnMixin:
+    """`is_returned` i `last_return`: retorn bancari dels rebuts de la factura
+    (vegeu `ov.invoice_returns`). La vista ha d'anotar la consulta amb
+    `annotate_ov_returns`; si no ho fa, es llegeix factura a factura."""
+
+    def _ov_return(self, obj):
+        cache = self.context.setdefault("ov_invoice_returns", {})
+        if obj.pk not in cache:
+            is_returned, last_return = ov_return_info(obj)
+            if last_return and last_return["date"]:
+                last_return["date"] = last_return["date"].isoformat()
+            cache[obj.pk] = (is_returned, last_return)
+        return cache[obj.pk]
+
+    def get_is_returned(self, obj) -> bool:
+        return self._ov_return(obj)[0]
+
+    def get_last_return(self, obj):
+        return self._ov_return(obj)[1]
+
+
+class BillingContractInvoicesOVSerializer(
+    OVPaymentTypeMixin, OVInvoiceReturnMixin, OVPdfAvailableMixin, serializers.Serializer
+):
 
     contract_number = serializers.CharField(source="contract.token", read_only=True)
     invoice_number = serializers.CharField(source="serie_final", read_only=True)
@@ -615,7 +665,10 @@ class BillingContractInvoicesOVSerializer(OVPdfAvailableMixin, serializers.Seria
 
     invoice_status = serializers.CharField(source="status.name", read_only=True)
     status = serializers.SerializerMethodField()
+    payment_type = serializers.SerializerMethodField()
     pdf_available = serializers.SerializerMethodField()
+    is_returned = serializers.SerializerMethodField()
+    last_return = serializers.SerializerMethodField()
 
     class Meta:
         model = Invoice
@@ -628,6 +681,9 @@ class BillingContractInvoicesOVSerializer(OVPdfAvailableMixin, serializers.Seria
             "invoice_token",
             "pdf_available",
             "status",
+            "payment_type",
+            "is_returned",
+            "last_return",
         ]
 
     def get_status(self, obj):
@@ -639,7 +695,9 @@ class BillingContractInvoicesOVSerializer(OVPdfAvailableMixin, serializers.Seria
         return {"token": obj.status.token, "name": obj.status.name}
 
 
-class PersonInvoiceOVSerializer(OVPdfAvailableMixin, serializers.Serializer):
+class PersonInvoiceOVSerializer(
+    OVPaymentTypeMixin, OVInvoiceReturnMixin, OVPdfAvailableMixin, serializers.Serializer
+):
     """Una factura de `GET /ov/person-invoices/`. A diferència de
     `/ov/invoices/`, `invoice_amount` és el total i el pendent va a
     `pending_amount`. `is_holder`/`is_payer` es calculen amb el DNI ja
@@ -653,7 +711,10 @@ class PersonInvoiceOVSerializer(OVPdfAvailableMixin, serializers.Serializer):
     pending_amount = serializers.FloatField(source="left_to_pay", read_only=True)
     invoice_status = serializers.SerializerMethodField()
     status = serializers.SerializerMethodField()
+    payment_type = serializers.SerializerMethodField()
     pdf_available = serializers.SerializerMethodField()
+    is_returned = serializers.SerializerMethodField()
+    last_return = serializers.SerializerMethodField()
     is_holder = serializers.SerializerMethodField()
     is_payer = serializers.SerializerMethodField()
 
@@ -861,6 +922,30 @@ def mask_iban(iban):
     if len(iban) <= 16:
         return "*" * len(iban)
     return f"{iban[:8]}{'*' * (len(iban) - 16)}{iban[-8:]}"
+
+
+def mask_dni(dni):
+    """
+    Emmascara un NIF/DNI seguint el criteri de l'AEPD: es deixen visibles les
+    4 xifres centrals i la resta es substitueix per asteriscos, mantenint la
+    llargada original (p. ex. 9 caràcters -> 3 asteriscos, 4 visibles, 2
+    asteriscos).
+
+    Retorna "" si no hi ha valor. Els valors de menys de 9 caràcters
+    s'emmascaren sencers: no tenen prou llargada per mostrar-ne el centre
+    sense revelar-ne massa.
+    """
+    if not dni:
+        return ""
+    dni = str(dni)
+    if len(dni) < 9:
+        return "*" * len(dni)
+    return f"{'*' * 3}{dni[3:7]}{'*' * (len(dni) - 7)}"
+
+
+def normalize_iban(iban):
+    """IBAN sense espais i en majúscules (`""` si no hi ha valor)."""
+    return "".join(str(iban or "").split()).upper()
 
 
 class ContractHolderOVSerializer(serializers.Serializer):
@@ -1303,7 +1388,9 @@ class ContractByNicSerializer(ContractFullDetailSerializer):
         fields = ContractFullDetailSerializer.Meta.fields + ["contract_token"]
 
 
-class InvoiceFullDetailSerializer(serializers.ModelSerializer):
+class InvoiceFullDetailSerializer(
+    OVPaymentTypeMixin, OVInvoiceReturnMixin, serializers.ModelSerializer
+):
     """Detalle completo de una factura definitiva. Corresponde al esquema
     `InvoiceFullDetail` del documento OpenAPI (`GET /ov/invoice/{token}/detail/`)."""
 
@@ -1318,10 +1405,14 @@ class InvoiceFullDetailSerializer(serializers.ModelSerializer):
     total_amount = serializers.FloatField(source="total_final", read_only=True)
     subtotal_amount = serializers.FloatField(source="subtotal_final", read_only=True)
     payment_method = serializers.CharField(source="payment_type_final", read_only=True, allow_null=True)
+    payment_type = serializers.SerializerMethodField()
     pdf_available = serializers.SerializerMethodField()
+    is_returned = serializers.SerializerMethodField()
+    last_return = serializers.SerializerMethodField()
     billing_period = serializers.SerializerMethodField()
     dwelling_code = serializers.SerializerMethodField()
     tax_address = serializers.SerializerMethodField()
+    direct_debit_account = serializers.SerializerMethodField()
     tariffs = serializers.SerializerMethodField()
     fiscal_breakdown = serializers.SerializerMethodField()
 
@@ -1338,13 +1429,17 @@ class InvoiceFullDetailSerializer(serializers.ModelSerializer):
             "total_amount",
             "subtotal_amount",
             "payment_method",
+            "payment_type",
             "pdf_available",
             "billing_period",
             "dwelling_code",
             "tax_address",
+            "direct_debit_account",
             "tariffs",
             "fiscal_breakdown",
             "status",
+            "is_returned",
+            "last_return",
         ]
 
     def get_status(self, obj):
@@ -1420,6 +1515,79 @@ class InvoiceFullDetailSerializer(serializers.ModelSerializer):
         if not is_anonymized:
             payload["address"] = obj.address_final
         return payload
+
+    @staticmethod
+    def _holder_nif(person_bank):
+        """NIF normalitzat del titular d'un `PersonBank` (el propi `dni` o, si
+        no n'hi ha, el de la persona vinculada); `""` si no se'n coneix cap."""
+        nif = person_bank.dni or (person_bank.person.token if person_bank.person else None)
+        return str(nif or "").strip().upper()
+
+    def _resolve_account_holder(self, obj, iban):
+        """`PersonBank` titular de l'IBAN de la factura, o `None` si no es pot
+        determinar sense ambigüitat. Una sola consulta (com a molt)."""
+        payment = obj.contract.payment if obj.contract else None
+        current = payment.IBAN if payment else None
+        # 1) El compte actual del contracte, si encara és el de la factura.
+        if current and normalize_iban(current.iban) == iban:
+            return current
+        # 2) Comptes amb el mateix IBAN (ignorant espais i majúscules).
+        candidates = list(
+            PersonBank.objects.annotate(
+                iban_normalized=Upper(Replace("iban", Value(" "), Value("")))
+            )
+            .filter(iban_normalized=iban)
+            .select_related("person")
+            .order_by("id")
+        )
+        if not candidates:
+            return None
+        # 3) IBAN compartit per diversos NIF: el del titular del contracte o el
+        # de la persona/client de la factura.
+        wanted = {
+            str(nif).strip().upper()
+            for nif in (
+                obj.contract.holder.token if obj.contract and obj.contract.holder else None,
+                obj.customer_token_final,
+            )
+            if nif
+        }
+        for candidate in candidates:
+            if self._holder_nif(candidate) in wanted:
+                return candidate
+        # 4) Sense coincidència: només es resol si tots els candidats són d'un
+        # mateix NIF.
+        if len({self._holder_nif(c) for c in candidates}) == 1:
+            return candidates[0]
+        return None
+
+    def get_direct_debit_account(self, obj):
+        """Compte de cobrament de AQUESTA factura (no l'actual del contracte):
+        `{iban, nombre, dni}`. `null` si la factura no és domiciliada o no té
+        IBAN. El titular surt del pagador de la factura o, si no n'hi ha (factures
+        migrades), del `PersonBank` amb el mateix IBAN. El NIF s'emmascara quan és
+        diferent del de la persona de la factura."""
+        if obj.payment_type_token_final != self._direct_debit_token():
+            return None
+        iban = normalize_iban(obj.payment_bank_final)
+        if not iban:
+            return None
+
+        nombre = None
+        nif = None
+        if obj.payer_final or obj.payer_token_final:
+            nombre = obj.payer_final or None
+            nif = (obj.payer_token_final or "").strip().upper() or None
+        else:
+            holder = self._resolve_account_holder(obj, iban)
+            if holder is not None:
+                data = ContractDebitHolderOVSerializer(holder).data
+                nombre = data["nombre"]
+                nif = str(data["dni"] or "").strip().upper() or None
+
+        if nif and nif != (obj.customer_token_final or "").strip().upper():
+            nif = mask_dni(nif)
+        return {"iban": mask_iban(iban), "nombre": nombre, "dni": nif}
 
     def get_tariffs(self, obj):
         tariffs = []

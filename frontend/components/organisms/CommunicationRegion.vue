@@ -104,7 +104,12 @@ const getData = async (load = true) => {
     // Els fitxers marcats per no adjuntar-se al correu (p. ex. el document del pas d'una
     // gestió d'impagats quan es desmarca l'opció) no es llisten aquí, per no fer pensar
     // que s'enviaran. `=== false` a posta: només s'amaguen els explícitament exclosos.
-    documents.value = (result.files || []).filter(doc => doc.attach_to_email !== false);
+    // Els documents substituïts en regenerar-los s'hi afegeixen marcats com a `replaced`:
+    // la llista els tracta com a inactius (només es veuen amb «Mostrar documents inactius»).
+    documents.value = [
+      ...(result.files || []).filter(doc => doc.attach_to_email !== false),
+      ...(result.historic_files || []).map(doc => ({ ...doc, replaced: true })),
+    ];
     await validateAndRetryDocuments();
   } catch (err) {
     console.error(err)
@@ -157,17 +162,54 @@ const handleMessageChange = async (newMessage) => {
   }
 }
 
-const generateLetter = async () => {
+// Regenera la carta i les factures de la comunicació; els antics queden a l'històric
+const regeneratingDocuments = ref(false);
+// Seguiment de la regeneració: s'atura en tancar la regió (la tasca del servidor continua)
+let progressTimer = null;
+let unmounted = false;
+onBeforeUnmount(() => {
+  unmounted = true;
+  clearTimeout(progressTimer);
+});
+const regenerateDocuments = async () => {
+  if (!confirm(t('customer_service_block.confirm_regenerate_documents'))) return;
+  regeneratingDocuments.value = true;
   try {
-    const response = await $CommunicationApiService.generateFiles({
-      communication_ids: [props.id]
-    });
-    if (response) {
-      await getData(false)
-      emit('changed')
-    }
+    const response = await $CommunicationApiService.regenerateDocuments({ communication_ids: [props.id] });
+    const checkProgress = async () => {
+      if (unmounted) return;
+      try {
+        const progress = await $CommunicationApiService.checkGenerateFilesProgress(response.task_id);
+        if (unmounted) return;
+        if (progress.status === 'SUCCESS') {
+          regeneratingDocuments.value = false;
+          const result = progress.result || {};
+          if (result.errors?.length) {
+            toast.error(result.errors[0].error || t('common.error'));
+          } else {
+            toast.success(t('customer_service_block.regenerate_documents_done', {
+              letters: result.letters || 0, invoices: result.invoices || 0,
+            }));
+          }
+          await getData(false);
+          emit('changed');
+        } else if (progress.status === 'FAILURE') {
+          regeneratingDocuments.value = false;
+          toast.error(t('common.error'));
+        } else {
+          progressTimer = setTimeout(checkProgress, 2000);
+        }
+      } catch (error) {
+        console.error('Error checking progress:', error);
+        regeneratingDocuments.value = false;
+        toast.error(t('common.error'));
+      }
+    };
+    checkProgress();
   } catch (error) {
-    console.error('Error generating letter:', error);
+    console.error('Error regenerating documents:', error);
+    regeneratingDocuments.value = false;
+    toast.error(t('common.error'));
   }
 }
 
@@ -297,10 +339,11 @@ onMounted(async () => {
       <div class="flex justify-between relative mb-3">
         <H1Region class="">{{ $t('communication') }}</H1Region>
         <OptionsDropdown v-if="objectPermissions?.can_change" id="CommunicationRegionOptions">
-          <DropdownOption :name="`${t('common.generate')} ${t('customer_service_block.letter')}`"
-            @click="generateLetter()">
-            <Icon name="fa6-solid:envelope" class="display-inline mr-2" /> {{ t('common.generate') }} {{
-              t('customer_service_block.letter') }}
+          <DropdownOption :name="t('customer_service_block.regenerate_documents')" :disabled="regeneratingDocuments"
+            @click="regenerateDocuments()">
+            <Icon :name="regeneratingDocuments ? 'fa6-solid:spinner' : 'fa6-solid:rotate'" class="display-inline mr-2"
+              :class="{ 'animate-spin': regeneratingDocuments }" />
+            {{ t('customer_service_block.regenerate_documents') }}
           </DropdownOption>
           <DropdownOption :name="`${t('common.send')} ${t('communication')}`" @click="sendComm()">
             <Icon name="fa6-solid:paper-plane" class="display-inline mr-2" /> {{ t('common.send') }} {{
@@ -328,7 +371,7 @@ onMounted(async () => {
       </div>
 
       <div v-if="data" id="item_data" :data-rel=id>
-        <CommunicationDetail :id="props.id" :data="data" @show-detail="showDetail" />
+        <CommunicationDetail :id="props.id" :data="data" :isSubRegion="isSubRegion" @show-detail="showDetail" />
       </div>
 
       <AtomsTabs>

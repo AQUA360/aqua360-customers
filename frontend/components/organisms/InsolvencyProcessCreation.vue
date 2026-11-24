@@ -1,6 +1,6 @@
 <script setup>
 // Alta d'un procés d'insolvència: persona i dades del procés, canvi de forma de pagament dels
-// contractes on és titular, factures emeses des de la data (opcionalment vinculades) i documentació
+// contractes on és titular, factures emeses des de la data (hi entren totes) i documentació
 import { ref, computed, watch, onMounted } from 'vue';
 import debounce from 'lodash.debounce';
 import { useI18n } from 'vue-i18n';
@@ -36,7 +36,6 @@ const paymentTypes = ref([]);
 const preview = ref(null);
 const previewLoading = ref(false);
 const previewError = ref(false);
-const selectedInvoiceIds = ref([]);
 const newPaymentTypes = ref({}); // contract_id -> payment_type_id (null = mantenir)
 const attemptedSave = ref(false);
 const saving = ref(false);
@@ -62,7 +61,6 @@ const loadPreview = async () => {
   const current = ++previewRequestId;
   preview.value = null;
   previewError.value = false;
-  selectedInvoiceIds.value = [];
   newPaymentTypes.value = {};
   if (!person.value?.id || !startDate.value) {
     previewLoading.value = false;
@@ -86,13 +84,6 @@ watch([() => person.value?.id, startDate], () => {
   preview.value = null;
   debouncedPreview();
 });
-
-const allInvoicesSelected = computed(() =>
-  !!preview.value?.invoices?.length && selectedInvoiceIds.value.length === preview.value.invoices.length
-);
-const toggleAllInvoices = () => {
-  selectedInvoiceIds.value = allInvoicesSelected.value ? [] : preview.value.invoices.map((invoice) => invoice.id);
-};
 
 const paymentTypeOptions = (contract) => paymentTypes.value.map((type) => ({
   ...type,
@@ -133,7 +124,6 @@ const save = async () => {
       start_date: startDate.value,
       case_number: caseNumber.value?.trim() || null,
       observation: observation.value?.trim() || null,
-      invoice_ids: selectedInvoiceIds.value,
       payment_changes: paymentChanges,
     });
     // El procés ja és creat: si falla algun document, es pot tornar a pujar des del detall
@@ -255,16 +245,22 @@ onMounted(async () => {
         <h2 class="font-semibold text-slate-700">{{ t('insolvency.contracts') }} ({{ preview.contracts.length }})</h2>
         <p class="text-sm text-slate-500 mb-2">{{ t('insolvency.contracts_help') }}</p>
         <div v-if="preview.contracts.length" class="rounded-md border border-gray-300 divide-y bg-white">
-          <div class="grid grid-cols-[1fr,1fr,1.2fr,1.5fr] divide-x text-sm leading-4">
+          <div class="grid grid-cols-[1fr,1fr,1.2fr,1.2fr,1.5fr] divide-x text-sm leading-4">
             <span class="p-2 pl-3 text-slate-600">{{ t('insolvency.contract') }}</span>
             <span class="p-2 pl-3 text-slate-600">{{ t('common.status') }}</span>
+            <span class="p-2 pl-3 text-slate-600">{{ t('insolvency.debt_management') }}</span>
             <span class="p-2 pl-3 text-slate-600">{{ t('insolvency.current_payment_type') }}</span>
             <span class="p-2 pl-3 text-slate-600">{{ t('insolvency.new_payment_type') }}</span>
           </div>
           <div v-for="contract in preview.contracts" :key="contract.id"
-            class="grid grid-cols-[1fr,1fr,1.2fr,1.5fr] divide-x text-sm leading-4 items-center">
+            class="grid grid-cols-[1fr,1fr,1.2fr,1.2fr,1.5fr] divide-x text-sm leading-4 items-center">
             <span class="footering text-slate-800 p-2">{{ contract.token }}</span>
             <span class="footering text-slate-500 p-2">{{ contract.status_name || '-' }}</span>
+            <span class="footering text-slate-500 p-2">
+              {{ contract.debt_management_name || '-' }}
+              <Icon name="fa6-solid:arrow-right" class="mx-1 text-slate-400" />
+              <span class="text-red-700">{{ t('insolvency.debt_management_insolvent') }}</span>
+            </span>
             <span class="footering text-slate-500 p-2">
               {{ contract.payment_type?.name || '-' }}
               <span v-if="!contract.has_iban" class="block text-xs text-slate-400">{{ t('insolvency.no_iban') }}</span>
@@ -288,27 +284,21 @@ onMounted(async () => {
         <h2 class="font-semibold text-slate-700">{{ t('insolvency.invoices_since') }} ({{ preview.invoices.length }})</h2>
         <p class="text-sm text-slate-500 mb-2">{{ t('insolvency.invoices_help') }}</p>
         <div v-if="preview.invoices.length" class="rounded-md border border-gray-300 divide-y bg-white">
-          <div class="grid grid-cols-[40px,1.2fr,1fr,1fr,1fr,1fr] divide-x text-sm leading-4">
-            <span class="p-2 flex justify-center">
-              <input type="checkbox" :checked="allInvoicesSelected" @change="toggleAllInvoices" />
-            </span>
+          <div class="grid grid-cols-[1.2fr,1fr,1fr,1fr,1fr] divide-x text-sm leading-4">
             <span class="p-2 pl-3 text-slate-600">{{ t('invoice') }}</span>
             <span class="p-2 pl-3 text-slate-600">{{ t('common.date') }}</span>
             <span class="p-2 pl-3 text-slate-600">{{ t('insolvency.contract') }}</span>
             <span class="p-2 pl-3 text-slate-600">{{ t('common.total') }}</span>
             <span class="p-2 pl-3 text-slate-600">{{ t('common.status') }}</span>
           </div>
-          <label v-for="invoice in preview.invoices" :key="invoice.id"
-            class="grid grid-cols-[40px,1.2fr,1fr,1fr,1fr,1fr] divide-x text-sm leading-4 cursor-pointer hover:bg-slate-50">
-            <span class="p-2 flex justify-center">
-              <input type="checkbox" v-model="selectedInvoiceIds" :value="invoice.id" />
-            </span>
+          <div v-for="invoice in preview.invoices" :key="invoice.id"
+            class="grid grid-cols-[1.2fr,1fr,1fr,1fr,1fr] divide-x text-sm leading-4">
             <span class="footering text-slate-800 p-2">{{ invoice.serie_final || '-' }}</span>
             <span class="footering text-slate-500 p-2">{{ formatDate(invoice.issue_date) }}</span>
             <span class="footering text-slate-500 p-2">{{ invoice.contract_token || '-' }}</span>
             <span class="footering text-slate-500 p-2">{{ formatMoneyWithCurrency(invoice.total_final) }}</span>
             <span class="footering text-slate-500 p-2">{{ invoice.status_name || '-' }}</span>
-          </label>
+          </div>
         </div>
         <div v-else class="footering text-slate-500 p-2">{{ t('insolvency.no_invoices') }}</div>
       </section>

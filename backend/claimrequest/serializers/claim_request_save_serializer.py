@@ -62,8 +62,13 @@ class ClaimRequestSaveSerializer(serializers.ModelSerializer):
         status_pending = ClaimRequestStatus.objects.get(token=ConfigProject.objects.get(token='claim_request_status_pending_token').value)
         validated_data['status'] = status_pending
 
+        # Titulars amb un procés d'insolvència obert: no entren a la gestió, encara que el client els enviï
+        from billing.utils.insolvency_service import open_insolvency_person_ids
+        insolvent_person_ids = set(open_insolvency_person_ids())
+
         if contract_ids:
-            contracts = Contract.objects.filter(id__in=contract_ids).distinct('id')
+            contracts = Contract.objects.filter(id__in=contract_ids).exclude(
+                holder_id__in=insolvent_person_ids).distinct('id')
             validated_data['contracts'] = contracts
 
         # Resoldre els pagaments abans de desar: el post_save de ClaimRequest ja
@@ -90,11 +95,14 @@ class ClaimRequestSaveSerializer(serializers.ModelSerializer):
                     continue
                 if contract.id in ignored_contract_ids:
                     continue
+                if contract.holder_id in insolvent_person_ids:
+                    continue
                 claimable_payments.append((payment, contract))
 
         if payment_ids and not claimable_payments:
             raise serializers.ValidationError(
-                "Cap dels pagaments triats es pot reclamar: el contracte no està d'alta o no existeix."
+                "Cap dels pagaments triats es pot reclamar: el contracte no està d'alta, no existeix "
+                "o el titular té un procés d'insolvència obert."
             )
 
         claim_request = super(ClaimRequestSaveSerializer, self).create(validated_data)

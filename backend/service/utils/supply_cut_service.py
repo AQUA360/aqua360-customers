@@ -382,10 +382,18 @@ class SupplyCutActivationError(ValueError):
 
 
 def validate_activation(supply_cut, *, override_vulnerable=False):
-    """Recheck current vulnerability before manual or scheduled activation."""
+    """Recheck current vulnerability (and open insolvency processes) before manual or scheduled activation."""
     from .supply_cut_bulk_planner import detect_vulnerable
 
+    from billing.utils.insolvency_service import insolvent_supply_point_ids
+
     point_ids = list(supply_cut.supply_points.values_list('id', flat=True))
+    # Un tall indefinit (impagament...) no s'activa sobre titulars amb un procés d'insolvència obert
+    if not is_temporary_cause(supply_cut) and insolvent_supply_point_ids(point_ids):
+        raise SupplyCutActivationError(
+            "Activació bloquejada: el tall és permanent i afecta titulars amb un procés d'insolvència obert.",
+            'insolvency_blocked', [], 400,
+        )
     vulnerable = detect_vulnerable(point_ids)
     if vulnerable and not is_temporary_cause(supply_cut):
         raise SupplyCutActivationError(

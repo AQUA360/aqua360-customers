@@ -706,6 +706,180 @@ class InvoiceStatusObjectTests(TestCase):
         self.assertIsNone(self._billing_period("INV-001")["days"])
 
 
+class InvoicePaymentTypeTokenOVTests(TestCase):
+    """`payment_type`: token de la forma de pagament (`payment_type_token_final`)
+    al llistat, al detall, a les impagades i a les factures d'una persona.
+    Torna `null` si el token no és de cap `PaymentType`, i els tokens vàlids es
+    consulten una sola vegada per petició."""
+
+    DNI = "11111111H"
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(
+            username="ov-invoice-payment-type-test", password="not-used"
+        )
+        cls.user.groups.add(Group.objects.get_or_create(name="ov")[0])
+        for token, value in (
+            ("contract_termination_completed_token", "3"),
+            ("contract_terminated_status", "-1"),
+            ("invoice_status_paid_token", "0"),
+            ("invoice_status_cancelled_token", "-1"),
+        ):
+            if not ConfigProject.objects.filter(token=token).exists():
+                ConfigProject.objects.create(token=token, value=value)
+        for token in ("DIRECT_DEBIT", "CASH", "BANK_TRANSFER"):
+            PaymentType.objects.get_or_create(token=token)
+
+        cls.holder = Person.objects.create(
+            token=HOLDER_TOKEN, name="Test", surname="Holder"
+        )
+        cls.contract = Contract.objects.create(
+            token=PLAIN_TOKEN,
+            holder=cls.holder,
+            status=ContractStatus.objects.create(token="1", name="Alta"),
+        )
+        cls.status = InvoiceStatus.objects.create(token="3", name="Enviada")
+
+        tokens = {
+            "PT-DD": "DIRECT_DEBIT",
+            "PT-CASH": "CASH",
+            "PT-BT": "BANK_TRANSFER",
+            "PT-DASH": "-",
+            "PT-TEXT": "Sense pagament configurat",
+            "PT-EMPTY": "",
+            "PT-NONE": None,
+        }
+        for index, (invoice_token, payment_token) in enumerate(tokens.items()):
+            Invoice.objects.create(
+                token=invoice_token,
+                serie_final=f"F-{invoice_token}",
+                contract=cls.contract,
+                status=cls.status,
+                issue_date=date(2026, 1, 1) + timedelta(days=index),
+                customer_token_final=cls.DNI,
+                payment_type_token_final=payment_token,
+                payment_type_final="Nom de la forma de pagament",
+                total_final=Decimal("100.00"),
+                left_to_pay=Decimal("40.00"),
+            )
+        cls.expected = {
+            "PT-DD": "DIRECT_DEBIT",
+            "PT-CASH": "CASH",
+            "PT-BT": "BANK_TRANSFER",
+            "PT-DASH": None,
+            "PT-TEXT": None,
+            "PT-EMPTY": None,
+            "PT-NONE": None,
+        }
+
+    def setUp(self):
+        cache.clear()
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    @staticmethod
+    def _by_token(items):
+        return {item["invoice_token"]: item for item in items}
+
+    @staticmethod
+    def _payment_type_queries(queries):
+        return [
+            q
+            for q in queries.captured_queries
+            if 'FROM "contract_paymenttype"' in q["sql"]
+        ]
+
+    def test_list_returns_payment_type_token_or_null(self):
+        response = self.client.get(
+            reverse("invoices-ov"), {"contract_token": PLAIN_TOKEN}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        items = self._by_token(response.data)
+        for token, expected in self.expected.items():
+            self.assertEqual(items[token]["payment_type"], expected, token)
+
+    def test_list_loads_payment_types_once_per_request(self):
+        with CaptureQueriesContext(connection) as queries:
+            response = self.client.get(
+                reverse("invoices-ov"), {"contract_token": PLAIN_TOKEN}
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), len(self.expected))
+        self.assertEqual(len(self._payment_type_queries(queries)), 1)
+
+    def test_single_invoice_returns_payment_type(self):
+        for token, expected in (("PT-CASH", "CASH"), ("PT-DASH", None)):
+            response = self.client.get(
+                reverse("invoice-ov"),
+                {"contract_token": PLAIN_TOKEN, "invoice_token": token},
+            )
+
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.data["payment_type"], expected, token)
+
+    def test_unpaid_invoices_return_payment_type(self):
+        response = self.client.get(
+            reverse("unpayed-invoices-ov"),
+            {"contract_token": PLAIN_TOKEN, "statuses": "3"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        items = self._by_token(response.data)
+        for token, expected in self.expected.items():
+            self.assertEqual(items[token]["payment_type"], expected, token)
+
+    def test_full_detail_returns_payment_type_and_keeps_payment_method(self):
+        for token, expected in (
+            ("PT-DD", "DIRECT_DEBIT"),
+            ("PT-BT", "BANK_TRANSFER"),
+            ("PT-TEXT", None),
+            ("PT-NONE", None),
+        ):
+            response = self.client.get(
+                reverse("invoice-detail-by-token-ov", kwargs={"token": token})
+            )
+
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.data["payment_type"], expected, token)
+            self.assertEqual(
+                response.data["payment_method"], "Nom de la forma de pagament"
+            )
+
+    def test_full_detail_loads_payment_types_once(self):
+        with CaptureQueriesContext(connection) as queries:
+            response = self.client.get(
+                reverse("invoice-detail-by-token-ov", kwargs={"token": "PT-DD"})
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(self._payment_type_queries(queries)), 1)
+
+    def test_person_invoices_return_payment_type(self):
+        response = self.client.get(reverse("person-invoices-ov"), {"dni": self.DNI})
+
+        self.assertEqual(response.status_code, 200)
+        items = self._by_token(
+            item
+            for group in response.data["results"]
+            for item in group["invoices"]
+        )
+        self.assertEqual(set(items), set(self.expected))
+        for token, expected in self.expected.items():
+            self.assertEqual(items[token]["payment_type"], expected, token)
+
+    def test_person_invoices_load_payment_types_once_per_request(self):
+        with CaptureQueriesContext(connection) as queries:
+            response = self.client.get(
+                reverse("person-invoices-ov"), {"dni": self.DNI}
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(self._payment_type_queries(queries)), 1)
+
+
 class InvoiceFilterAlignmentTests(TestCase):
     """Phase 2: `/ov/unpayed-invoices/` comparteix els filtres base de
     `/ov/invoices/` (sense pre-factures) i `/ov/invoices/` retorna 404 si el
@@ -7913,14 +8087,15 @@ class PersonInvoicesOVTests(TestCase):
             q for q in queries.captured_queries if "ov_pdf_from" in q["sql"]
         ]
         self.assertEqual(len(config_queries), 1)
-        # Factures + configuració, sense consultes per factura (N+1). Es
-        # descompten les dels middlewares (grups de l'usuari i auditoria).
+        # Factures + configuració (data dels PDF i token de rebut retornat),
+        # sense consultes per factura (N+1). Es descompten les dels
+        # middlewares (grups de l'usuari i auditoria).
         data_queries = [
             q["sql"]
             for q in queries.captured_queries
             if q["sql"].startswith('SELECT "') and "auth_" not in q["sql"]
         ]
-        self.assertEqual(len(data_queries), 2, data_queries)
+        self.assertEqual(len(data_queries), 3, data_queries)
 
     # --- filtre de dates ---------------------------------------------------
 
@@ -7993,3 +8168,431 @@ class PersonInvoicesOVTests(TestCase):
         self.assertIs(
             resolve(reverse(self.URL_NAME)).func.view_class, PersonInvoicesOVView
         )
+
+
+class MaskDniTests(TestCase):
+    def test_nif_of_nine_chars_shows_four_central_digits(self):
+        from ov.serializers import mask_dni
+
+        self.assertEqual(mask_dni("12345678Z"), "***4567**")
+
+    def test_keeps_original_length(self):
+        from ov.serializers import mask_dni
+
+        self.assertEqual(mask_dni("X1234567L"), "***3456**")
+        self.assertEqual(len(mask_dni("B1234567890")), 11)
+        self.assertEqual(mask_dni("B1234567890"), "***3456****")
+
+    def test_shorter_than_nine_is_fully_masked(self):
+        from ov.serializers import mask_dni
+
+        self.assertEqual(mask_dni("1234567"), "*******")
+
+    def test_empty_values(self):
+        from ov.serializers import mask_dni
+
+        self.assertEqual(mask_dni(None), "")
+        self.assertEqual(mask_dni(""), "")
+
+
+class InvoiceDirectDebitAccountTests(TestCase):
+    """`direct_debit_account` al detall de factura: compte de cobrament
+    d'aquella factura, amb el titular resolt pel pagador o pel IBAN."""
+
+    DEBIT = "DEBIT-TEST"
+    IBAN_A = "ES9121000418450200051332"
+    IBAN_B = "ES7921000813610123456789"
+    IBAN_C = "ES6621000418401234567891"
+    HOLDER_NIF = "11111111H"
+    OTHER_NIF = "22222222J"
+    THIRD_NIF = "33333333P"
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(username="ov-dda-test", password="x")
+        for token, value in (
+            ("direct_debit_token", cls.DEBIT),
+            ("contract_termination_completed_token", "3"),
+            ("contract_terminated_status", "-1"),
+            ("invoice_status_paid_token", "0"),
+            ("invoice_status_cancelled_token", "-1"),
+        ):
+            ConfigProject.objects.update_or_create(
+                token=token, defaults={"value": value}
+            )
+        cls.status = InvoiceStatus.objects.create(token="3", name="Enviada")
+        cls.holder = Person.objects.create(
+            token=cls.HOLDER_NIF, name="Titular", surname="Prova"
+        )
+        cls.other = Person.objects.create(
+            token=cls.OTHER_NIF, name="Altre", surname="Prova"
+        )
+        cls.third = Person.objects.create(
+            token=cls.THIRD_NIF, name="Tercer", surname="Prova"
+        )
+        cls.bank_a = PersonBank.objects.create(person=cls.holder, iban=cls.IBAN_A)
+        cls.payment_type = PaymentType.objects.create(token=cls.DEBIT, name="SEPA")
+        cls.contract_payment = GeneralPayment.objects.create(
+            type=cls.payment_type, IBAN=cls.bank_a
+        )
+        cls.contract = Contract.objects.create(
+            token="DDA-1", holder=cls.holder, payment=cls.contract_payment
+        )
+        cls.seq = 0
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def _invoice(self, **extra):
+        type(self).seq += 1
+        values = dict(
+            token=f"DDA-INV-{self.seq}",
+            contract=self.contract,
+            status=self.status,
+            issue_date=date(2026, 1, 15),
+            payment_type_token_final=self.DEBIT,
+            customer_token_final=self.HOLDER_NIF,
+            payment_bank_final=self.IBAN_A,
+        )
+        values.update(extra)
+        return Invoice.objects.create(**values)
+
+    def _account(self, invoice):
+        response = self.client.get(
+            reverse("invoice-detail-by-token-ov", kwargs={"token": invoice.token})
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("direct_debit_account", response.data)
+        return response.data["direct_debit_account"]
+
+    def test_not_direct_debit_is_null(self):
+        invoice = self._invoice(payment_type_token_final="CASH")
+        self.assertIsNone(self._account(invoice))
+
+    def test_without_iban_is_null(self):
+        invoice = self._invoice(payment_bank_final=None)
+        self.assertIsNone(self._account(invoice))
+
+    def test_payer_fields_take_precedence(self):
+        invoice = self._invoice(
+            payer_final="Pagador Prova", payer_token_final=self.HOLDER_NIF
+        )
+        self.assertEqual(
+            self._account(invoice),
+            {
+                "iban": "ES912100********00051332",
+                "nombre": "Pagador Prova",
+                "dni": self.HOLDER_NIF,
+            },
+        )
+
+    def test_payer_third_party_masks_dni(self):
+        invoice = self._invoice(
+            payer_final="Pagador Tercer", payer_token_final=self.THIRD_NIF
+        )
+        account = self._account(invoice)
+        self.assertEqual(account["nombre"], "Pagador Tercer")
+        self.assertEqual(account["dni"], "***3333**")
+
+    def test_migrated_invoice_uses_contract_account_when_iban_matches(self):
+        invoice = self._invoice()
+        with CaptureQueriesContext(connection) as queries:
+            account = self._account(invoice)
+        self.assertEqual(account["nombre"], "Titular Prova")
+        self.assertEqual(account["dni"], self.HOLDER_NIF)
+        self.assertFalse(
+            [q for q in queries if "coredata_personbank" in q["sql"] and "UPPER" in q["sql"]]
+        )
+
+    def test_migrated_invoice_with_iban_different_from_current_account(self):
+        PersonBank.objects.create(person=self.holder, iban=self.IBAN_B)
+        invoice = self._invoice(payment_bank_final=self.IBAN_B)
+        account = self._account(invoice)
+        self.assertEqual(account["iban"], "ES792100********23456789")
+        self.assertEqual(account["nombre"], "Titular Prova")
+        self.assertEqual(account["dni"], self.HOLDER_NIF)
+
+    def test_iban_is_matched_ignoring_spaces_and_case(self):
+        PersonBank.objects.create(person=self.holder, iban="es79 2100 0813 6101 2345 6789")
+        invoice = self._invoice(payment_bank_final=self.IBAN_B.lower())
+        self.assertEqual(self._account(invoice)["dni"], self.HOLDER_NIF)
+
+    def test_shared_iban_resolved_by_contract_holder(self):
+        PersonBank.objects.create(person=self.other, iban=self.IBAN_B)
+        PersonBank.objects.create(person=self.holder, iban=self.IBAN_B)
+        invoice = self._invoice(payment_bank_final=self.IBAN_B)
+        account = self._account(invoice)
+        self.assertEqual(account["nombre"], "Titular Prova")
+        self.assertEqual(account["dni"], self.HOLDER_NIF)
+
+    def test_shared_iban_resolved_by_invoice_customer(self):
+        other_contract = Contract.objects.create(token="DDA-2", holder=self.third)
+        PersonBank.objects.create(person=self.holder, iban=self.IBAN_C)
+        PersonBank.objects.create(person=self.other, iban=self.IBAN_C)
+        invoice = self._invoice(
+            contract=other_contract,
+            payment_bank_final=self.IBAN_C,
+            customer_token_final=self.OTHER_NIF,
+        )
+        account = self._account(invoice)
+        self.assertEqual(account["nombre"], "Altre Prova")
+        self.assertEqual(account["dni"], self.OTHER_NIF)
+
+    def test_single_candidate_third_party_masks_dni(self):
+        PersonBank.objects.create(person=self.third, iban=self.IBAN_C)
+        invoice = self._invoice(payment_bank_final=self.IBAN_C)
+        account = self._account(invoice)
+        self.assertEqual(account["nombre"], "Tercer Prova")
+        self.assertEqual(account["dni"], "***3333**")
+
+    def test_ambiguous_iban_leaves_holder_null(self):
+        PersonBank.objects.create(person=self.other, iban=self.IBAN_C)
+        PersonBank.objects.create(person=self.third, iban=self.IBAN_C)
+        invoice = self._invoice(payment_bank_final=self.IBAN_C)
+        self.assertEqual(
+            self._account(invoice),
+            {"iban": "ES662100********34567891", "nombre": None, "dni": None},
+        )
+
+    def test_unknown_iban_leaves_holder_null(self):
+        invoice = self._invoice(payment_bank_final=self.IBAN_C)
+        account = self._account(invoice)
+        self.assertEqual(account["iban"], "ES662100********34567891")
+        self.assertIsNone(account["nombre"])
+        self.assertIsNone(account["dni"])
+
+
+class InvoiceReturnOVTests(TestCase):
+    """`is_returned` i `last_return` a les factures de l'OV: si el banc ha
+    retornat el rebut domiciliat. `is_returned` mentre algun rebut actiu
+    continuï retornat; `last_return`, el darrer retorn dels rebuts actius
+    (moviments de retorn o, sense moviments, la data i el motiu del rebut)."""
+
+    DNI = "11111111H"
+
+    @classmethod
+    def setUpTestData(cls):
+        from billing.models import RejectMotive
+
+        cls.user = User.objects.create_user(
+            username="ov-invoice-return-test", password="not-used"
+        )
+        cls.user.groups.add(Group.objects.get_or_create(name="ov")[0])
+        for token, value in (
+            ("contract_termination_completed_token", "3"),
+            ("contract_terminated_status", "-1"),
+            ("invoice_status_paid_token", "0"),
+            ("invoice_status_cancelled_token", "-6"),
+            ("payment_status_paid_token", "0"),
+            ("payment_status_returned_token", "-2"),
+        ):
+            ConfigProject.objects.update_or_create(
+                token=token, defaults={"value": value}
+            )
+        cls.paid = PaymentStatus.objects.get_or_create(
+            token="0", defaults={"name": "Pagat"}
+        )[0]
+        cls.returned = PaymentStatus.objects.get_or_create(
+            token="-2", defaults={"name": "Retornat"}
+        )[0]
+        cls.direct_debit = PaymentType.objects.get_or_create(token="DIRECT_DEBIT")[0]
+        cls.am04 = RejectMotive.objects.create(token="AM04", name="Fons insuficients")
+        cls.md01 = RejectMotive.objects.create(token="MD01", name="Sense mandat")
+        cls.ac04 = RejectMotive.objects.create(token="AC04", name="Compte cancel·lat")
+
+        cls.holder = Person.objects.create(
+            token=HOLDER_TOKEN, name="Test", surname="Holder"
+        )
+        cls.contract = Contract.objects.create(
+            token=PLAIN_TOKEN,
+            holder=cls.holder,
+            status=ContractStatus.objects.create(token="1", name="Alta"),
+        )
+        cls.expired = InvoiceStatus.objects.create(token="-1", name="Vençuda")
+
+        # Sense cap retorn
+        cls._invoice("RET-NONE", 0, cls.paid)
+        # Retornat dues vegades i encara retornat: mana el darrer moviment
+        payment = cls._invoice("RET-OPEN", 1, cls.returned)
+        cls._return(payment, date(2026, 1, 10), cls.am04)
+        cls._return(payment, date(2026, 2, 10), cls.md01)
+        # Retornat i tornat a cobrar: ja no està retornat, però consta el retorn
+        payment = cls._invoice("RET-REPAID", 2, cls.paid)
+        cls._return(payment, date(2026, 1, 20), cls.ac04)
+        # Rebut retornat inactiu (substituït): no compta
+        payment = cls._invoice("RET-INACTIVE", 3, cls.returned, is_active=False)
+        cls._return(payment, date(2026, 1, 5), cls.am04)
+        # Moviment de retorn desactivat d'un rebut pagat: no compta
+        payment = cls._invoice("RET-MOVE-OFF", 4, cls.paid)
+        cls._return(payment, date(2026, 1, 6), cls.am04, is_active=False)
+        # Dades antigues: rebut retornat sense moviments, amb data i motiu
+        cls._invoice(
+            "RET-LEGACY",
+            5,
+            cls.returned,
+            reject_date=date(2025, 12, 1),
+            reject=cls.am04,
+        )
+        # Moviment de retorn sense data: es conserva el motiu
+        payment = cls._invoice("RET-NODATE", 6, cls.returned)
+        cls._return(payment, None, cls.md01)
+        # Un moviment amb data i un sense: mana el que té data
+        payment = cls._invoice("RET-MIXED", 7, cls.returned)
+        cls._return(payment, date(2026, 1, 15), cls.am04)
+        cls._return(payment, None, cls.md01)
+
+        cls.expected = {
+            "RET-NONE": (False, None),
+            "RET-OPEN": (
+                True,
+                {"date": "2026-02-10", "reason": {"code": "MD01", "name": "Sense mandat"}},
+            ),
+            "RET-REPAID": (
+                False,
+                {
+                    "date": "2026-01-20",
+                    "reason": {"code": "AC04", "name": "Compte cancel·lat"},
+                },
+            ),
+            "RET-INACTIVE": (False, None),
+            "RET-MOVE-OFF": (False, None),
+            "RET-LEGACY": (
+                True,
+                {
+                    "date": "2025-12-01",
+                    "reason": {"code": "AM04", "name": "Fons insuficients"},
+                },
+            ),
+            "RET-NODATE": (
+                True,
+                {"date": None, "reason": {"code": "MD01", "name": "Sense mandat"}},
+            ),
+            "RET-MIXED": (
+                True,
+                {
+                    "date": "2026-01-15",
+                    "reason": {"code": "AM04", "name": "Fons insuficients"},
+                },
+            ),
+        }
+
+    @classmethod
+    def _invoice(cls, token, offset, payment_status, is_active=True, **payment_fields):
+        invoice = Invoice.objects.create(
+            token=token,
+            serie_final=f"F-{token}",
+            contract=cls.contract,
+            status=cls.expired,
+            issue_date=date(2026, 1, 1) + timedelta(days=offset),
+            due_date=date(2026, 1, 31),
+            customer_token_final=cls.DNI,
+            payment_type_token_final="DIRECT_DEBIT",
+            total_final=Decimal("50.00"),
+            left_to_pay=Decimal("50.00"),
+        )
+        return Payment.objects.create(
+            token=f"PAY-{token}",
+            invoice=invoice,
+            contract=cls.contract,
+            status=payment_status,
+            amount=Decimal("50.00"),
+            payment_type_token="DIRECT_DEBIT",
+            is_active=is_active,
+            **payment_fields,
+        )
+
+    @classmethod
+    def _return(cls, payment, movement_date, motive, is_active=True):
+        PaymentMovement.objects.create(
+            payment=payment,
+            movement_date=movement_date,
+            payment_type=cls.direct_debit,
+            previous_status=cls.paid,
+            current_status=cls.returned,
+            reject_motive=motive,
+            is_positive=False,
+            is_active=is_active,
+        )
+
+    def setUp(self):
+        cache.clear()
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def _assert_items(self, items):
+        by_token = {item["invoice_token"]: item for item in items}
+        self.assertEqual(set(by_token), set(self.expected))
+        for token, (is_returned, last_return) in self.expected.items():
+            self.assertIs(by_token[token]["is_returned"], is_returned, token)
+            self.assertEqual(by_token[token]["last_return"], last_return, token)
+
+    def test_list(self):
+        response = self.client.get(
+            reverse("invoices-ov"), {"contract_token": PLAIN_TOKEN}
+        )
+        self.assertEqual(response.status_code, 200)
+        self._assert_items(response.data)
+
+    def test_list_json_body(self):
+        response = self.client.get(
+            reverse("invoices-ov"), {"contract_token": PLAIN_TOKEN}
+        )
+        items = {item["invoice_token"]: item for item in response.json()}
+        self.assertEqual(
+            items["RET-OPEN"]["last_return"],
+            {"date": "2026-02-10", "reason": {"code": "MD01", "name": "Sense mandat"}},
+        )
+
+    def test_unpaid_invoices(self):
+        response = self.client.get(
+            reverse("unpayed-invoices-ov"),
+            {"contract_token": PLAIN_TOKEN, "statuses": "-1"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self._assert_items(response.data)
+
+    def test_person_invoices(self):
+        response = self.client.get(reverse("person-invoices-ov"), {"dni": self.DNI})
+        self.assertEqual(response.status_code, 200)
+        self._assert_items(response.data["results"][0]["invoices"])
+
+    def test_single_invoice_and_full_detail(self):
+        for token, (is_returned, last_return) in self.expected.items():
+            single = self.client.get(
+                reverse("invoice-ov"),
+                {"contract_token": PLAIN_TOKEN, "invoice_token": token},
+            )
+            detail = self.client.get(
+                reverse("invoice-detail-by-token-ov", kwargs={"token": token})
+            )
+            for response in (single, detail):
+                self.assertEqual(response.status_code, 200, token)
+                self.assertIs(response.data["is_returned"], is_returned, token)
+                self.assertEqual(response.data["last_return"], last_return, token)
+
+    def test_list_queries_do_not_grow_with_invoices(self):
+        url = reverse("invoices-ov")
+        params = {"contract_token": PLAIN_TOKEN}
+        with CaptureQueriesContext(connection) as before:
+            self.client.get(url, params)
+        for index in range(3):
+            payment = self._invoice(f"RET-EXTRA-{index}", 10 + index, self.returned)
+            self._return(payment, date(2026, 3, 1), self.am04)
+        with CaptureQueriesContext(connection) as after:
+            response = self.client.get(url, params)
+
+        self.assertEqual(len(response.data), len(self.expected) + 3)
+        self.assertEqual(len(after.captured_queries), len(before.captured_queries))
+
+    def test_without_returned_status_config_nothing_is_returned(self):
+        ConfigProject.objects.filter(token="payment_status_returned_token").delete()
+
+        response = self.client.get(
+            reverse("invoices-ov"), {"contract_token": PLAIN_TOKEN}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        for item in response.data:
+            self.assertIs(item["is_returned"], False)
+            self.assertIsNone(item["last_return"])

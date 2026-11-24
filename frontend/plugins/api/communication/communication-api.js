@@ -175,6 +175,16 @@ export default defineNuxtPlugin(nuxtApp => {
       }
     }
 
+    // data: { process, only_pending } o { communication_ids }. Retorna { task_id, total_communications }
+    const regenerateDocuments = async (data) => {
+      const apiUrl = `${apiHost}/communication/communication-regenerate-documents/`;
+      const response = await $apiManager.fetch(apiUrl, 'POST', data)
+      if (!response) {
+        throw new Error('Error no trobat');
+      }
+      return response;
+    }
+
     const getClientData = async (data) => {
       let apiUrl = `${apiHost}${entity}get-client-info/`;
       if (data.contract_id) {
@@ -334,6 +344,7 @@ export default defineNuxtPlugin(nuxtApp => {
       saveDocumentationFile,
       saveMessage,
       generateFiles,
+      regenerateDocuments,
       checkGenerateFilesProgress,
       sendCommunications,
       markAsSent,
