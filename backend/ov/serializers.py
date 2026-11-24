@@ -42,7 +42,8 @@ from django.core.exceptions import SuspiciousFileOperation
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import validate_email
 from django.db import transaction
-from django.db.models import Count
+from django.db.models import Count, Value
+from django.db.models.functions import Replace, Upper
 from django.utils.dateparse import parse_date
 from django.utils.text import get_valid_filename
 import copy
@@ -863,6 +864,30 @@ def mask_iban(iban):
     return f"{iban[:8]}{'*' * (len(iban) - 16)}{iban[-8:]}"
 
 
+def mask_dni(dni):
+    """
+    Emmascara un NIF/DNI seguint el criteri de l'AEPD: es deixen visibles les
+    4 xifres centrals i la resta es substitueix per asteriscos, mantenint la
+    llargada original (p. ex. 9 caràcters -> 3 asteriscos, 4 visibles, 2
+    asteriscos).
+
+    Retorna "" si no hi ha valor. Els valors de menys de 9 caràcters
+    s'emmascaren sencers: no tenen prou llargada per mostrar-ne el centre
+    sense revelar-ne massa.
+    """
+    if not dni:
+        return ""
+    dni = str(dni)
+    if len(dni) < 9:
+        return "*" * len(dni)
+    return f"{'*' * 3}{dni[3:7]}{'*' * (len(dni) - 7)}"
+
+
+def normalize_iban(iban):
+    """IBAN sense espais i en majúscules (`""` si no hi ha valor)."""
+    return "".join(str(iban or "").split()).upper()
+
+
 class ContractHolderOVSerializer(serializers.Serializer):
     """
     `contract_holder` — the contract holder (``Contract.holder``, a
@@ -1322,6 +1347,7 @@ class InvoiceFullDetailSerializer(serializers.ModelSerializer):
     billing_period = serializers.SerializerMethodField()
     dwelling_code = serializers.SerializerMethodField()
     tax_address = serializers.SerializerMethodField()
+    direct_debit_account = serializers.SerializerMethodField()
     tariffs = serializers.SerializerMethodField()
     fiscal_breakdown = serializers.SerializerMethodField()
 
@@ -1342,6 +1368,7 @@ class InvoiceFullDetailSerializer(serializers.ModelSerializer):
             "billing_period",
             "dwelling_code",
             "tax_address",
+            "direct_debit_account",
             "tariffs",
             "fiscal_breakdown",
             "status",
@@ -1420,6 +1447,79 @@ class InvoiceFullDetailSerializer(serializers.ModelSerializer):
         if not is_anonymized:
             payload["address"] = obj.address_final
         return payload
+
+    @staticmethod
+    def _holder_nif(person_bank):
+        """NIF normalitzat del titular d'un `PersonBank` (el propi `dni` o, si
+        no n'hi ha, el de la persona vinculada); `""` si no se'n coneix cap."""
+        nif = person_bank.dni or (person_bank.person.token if person_bank.person else None)
+        return str(nif or "").strip().upper()
+
+    def _resolve_account_holder(self, obj, iban):
+        """`PersonBank` titular de l'IBAN de la factura, o `None` si no es pot
+        determinar sense ambigüitat. Una sola consulta (com a molt)."""
+        payment = obj.contract.payment if obj.contract else None
+        current = payment.IBAN if payment else None
+        # 1) El compte actual del contracte, si encara és el de la factura.
+        if current and normalize_iban(current.iban) == iban:
+            return current
+        # 2) Comptes amb el mateix IBAN (ignorant espais i majúscules).
+        candidates = list(
+            PersonBank.objects.annotate(
+                iban_normalized=Upper(Replace("iban", Value(" "), Value("")))
+            )
+            .filter(iban_normalized=iban)
+            .select_related("person")
+            .order_by("id")
+        )
+        if not candidates:
+            return None
+        # 3) IBAN compartit per diversos NIF: el del titular del contracte o el
+        # de la persona/client de la factura.
+        wanted = {
+            str(nif).strip().upper()
+            for nif in (
+                obj.contract.holder.token if obj.contract and obj.contract.holder else None,
+                obj.customer_token_final,
+            )
+            if nif
+        }
+        for candidate in candidates:
+            if self._holder_nif(candidate) in wanted:
+                return candidate
+        # 4) Sense coincidència: només es resol si tots els candidats són d'un
+        # mateix NIF.
+        if len({self._holder_nif(c) for c in candidates}) == 1:
+            return candidates[0]
+        return None
+
+    def get_direct_debit_account(self, obj):
+        """Compte de cobrament de AQUESTA factura (no l'actual del contracte):
+        `{iban, nombre, dni}`. `null` si la factura no és domiciliada o no té
+        IBAN. El titular surt del pagador de la factura o, si no n'hi ha (factures
+        migrades), del `PersonBank` amb el mateix IBAN. El NIF s'emmascara quan és
+        diferent del de la persona de la factura."""
+        if obj.payment_type_token_final != self._direct_debit_token():
+            return None
+        iban = normalize_iban(obj.payment_bank_final)
+        if not iban:
+            return None
+
+        nombre = None
+        nif = None
+        if obj.payer_final or obj.payer_token_final:
+            nombre = obj.payer_final or None
+            nif = (obj.payer_token_final or "").strip().upper() or None
+        else:
+            holder = self._resolve_account_holder(obj, iban)
+            if holder is not None:
+                data = ContractDebitHolderOVSerializer(holder).data
+                nombre = data["nombre"]
+                nif = str(data["dni"] or "").strip().upper() or None
+
+        if nif and nif != (obj.customer_token_final or "").strip().upper():
+            nif = mask_dni(nif)
+        return {"iban": mask_iban(iban), "nombre": nombre, "dni": nif}
 
     def get_tariffs(self, obj):
         tariffs = []
