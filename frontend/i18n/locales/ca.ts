@@ -33,6 +33,7 @@ export default {
     already_open: "Aquesta persona ja té un procés d'insolvència obert.",
     created: "Procés d'insolvència creat",
     closed_at: "Data de tancament",
+    closed_by: "Tancat per",
     payment_changes: "Canvis de forma de pagament",
     debt_management: "Gestió d'impagats",
     debt_management_insolvent: "Insolvent",
@@ -65,7 +66,7 @@ export default {
     },
   },
   person_anomaly: {
-    opens_process_help: "La insolvència es gestiona amb un procés: s'hi indica la data, les factures i la forma de pagament dels contractes. En iniciar-lo, la persona queda marcada com a insolvent.",
+    opens_process_help: "La insolvència es gestiona amb un procés: s'hi indica la data i la forma de pagament dels contractes, i hi entren totes les factures emeses des de la data. En iniciar-lo, la persona queda marcada com a insolvent i els contractes passen a la gestió d'impagats «Insolvent».",
     managed_by_process: "Es gestiona des del procés d'insolvència",
     title: 'Anomalies',
     anomaly_type: 'Tipus d\'anomalia',

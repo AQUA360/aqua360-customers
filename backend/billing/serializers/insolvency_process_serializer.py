@@ -2,7 +2,7 @@ from rest_framework import serializers
 
 from auth.serializers import UserMinimalSerializer
 from billing.models import InsolvencyProcess, InsolvencyProcessContract
-from billing.utils.insolvency_service import eligible_invoices
+from billing.utils.insolvency_service import eligible_invoices, excluded_invoice_status_tokens
 
 
 class InsolvencyInvoiceSerializer(serializers.Serializer):
@@ -64,9 +64,15 @@ class InsolvencyProcessListSerializer(serializers.ModelSerializer):
             'start_date', 'case_number', 'status', 'status_display', 'invoices_count', 'user', 'closed_at',
         ]
 
+    def _excluded_status(self):
+        # Una sola lectura per petició: el context és compartit per totes les files del llistat
+        if 'insolvency_excluded_status' not in self.context:
+            self.context['insolvency_excluded_status'] = excluded_invoice_status_tokens()
+        return self.context['insolvency_excluded_status']
+
     def get_invoices_count(self, obj):
         if obj.status == InsolvencyProcess.STATUS_OPEN:
-            return eligible_invoices(obj.person, obj.start_date).count()
+            return eligible_invoices(obj.person, obj.start_date, self._excluded_status()).count()
         return getattr(obj, 'invoices_count', None) or obj.invoices.count()
 
     def get_person_name(self, obj):
@@ -78,16 +84,25 @@ class InsolvencyProcessSerializer(InsolvencyProcessListSerializer):
     contracts = InsolvencyProcessContractSerializer(many=True, read_only=True)
     documents = serializers.SerializerMethodField()
     closed_by = UserMinimalSerializer(read_only=True)
+    end_date = serializers.SerializerMethodField()
 
     class Meta(InsolvencyProcessListSerializer.Meta):
         fields = InsolvencyProcessListSerializer.Meta.fields + [
-            'observation', 'invoices', 'contracts', 'documents', 'closed_by', 'anomaly',
+            'observation', 'invoices', 'contracts', 'documents', 'closed_by', 'anomaly', 'end_date',
         ]
+
+    def get_end_date(self, obj):
+        # Data de tancament triada (la de fi de l'anomalia); closed_at és el moment de l'operació
+        if obj.status != InsolvencyProcess.STATUS_CLOSED:
+            return None
+        if obj.anomaly_id and obj.anomaly and obj.anomaly.end_date:
+            return obj.anomaly.end_date
+        return obj.closed_at.date() if obj.closed_at else None
 
     def get_invoices(self, obj):
         # Obert: totes les factures emeses des de la data, també les noves; tancat: les que hi havia en tancar-lo
         if obj.status == InsolvencyProcess.STATUS_OPEN:
-            invoices = eligible_invoices(obj.person, obj.start_date).select_related('contract')
+            invoices = eligible_invoices(obj.person, obj.start_date, self._excluded_status()).select_related('contract')
         else:
             invoices = obj.invoices.all()
         return InsolvencyInvoiceSerializer(invoices, many=True).data

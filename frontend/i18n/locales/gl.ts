@@ -33,6 +33,7 @@ export default {
     already_open: "Esta persoa xa ten un proceso de insolvencia aberto.",
     created: "Proceso de insolvencia creado",
     closed_at: "Data de peche",
+    closed_by: "Pechado por",
     payment_changes: "Cambios de forma de pagamento",
     debt_management: "Xestión de impagados",
     debt_management_insolvent: "Insolvente",
@@ -65,7 +66,7 @@ export default {
     },
   },
   person_anomaly: {
-    opens_process_help: "A insolvencia xestiónase cun proceso: indícase a data, as facturas e a forma de pagamento dos contratos. Ao inicialo, a persoa queda marcada como insolvente.",
+    opens_process_help: "A insolvencia xestiónase cun proceso: indícase a data e a forma de pagamento dos contratos, e entran todas as facturas emitidas desde a data. Ao inicialo, a persoa queda marcada como insolvente e os contratos pasan á xestión de impagados «Insolvente».",
     managed_by_process: "Xestiónase desde o proceso de insolvencia",
     title: 'Anomalías',
     anomaly_type: 'Tipo de anomalía',

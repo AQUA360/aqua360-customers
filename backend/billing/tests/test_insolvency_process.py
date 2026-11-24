@@ -238,6 +238,7 @@ class InsolvencyProcessApiTestCase(TestCase):
                               pk=response.data['id'])
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.data['status'], 'closed')
+        self.assertEqual(str(response.data['end_date']), '2026-06-01')
 
     def test_invalid_data_returns_400(self):
         response = self._post(self.user, {'post': 'create'}, {'person_id': self.person.id, 'kind': 'x', 'start_date': '2026-02-01'})

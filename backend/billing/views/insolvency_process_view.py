@@ -68,7 +68,7 @@ def _get_date(raw):
 
 class InsolvencyProcessViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
     """Processos d'insolvència: llistat, detall, previsualització, alta, documents i tancament."""
-    queryset = InsolvencyProcess.objects.select_related('person', 'user', 'closed_by').annotate(
+    queryset = InsolvencyProcess.objects.select_related('person', 'user', 'closed_by', 'anomaly').annotate(
         invoices_count=Count('invoices', distinct=True))
     permission_classes = [IsAuthenticated, PaymentPermission]
     filter_backends = (filters.DjangoFilterBackend,)

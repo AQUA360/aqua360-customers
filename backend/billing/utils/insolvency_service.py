@@ -74,14 +74,21 @@ def is_person_insolvent(person):
 # Previsualització: factures i contractes de la persona
 # ---------------------------------------------------------------------------
 
-def eligible_invoices(person, start_date):
-    """Factures emeses de la persona des de la data d'insolvència (sense anul·lades ni esborranys)."""
-    from billing.models import Invoice
-    excluded_status = [value for value in (
+def excluded_invoice_status_tokens():
+    """Estats de factura que no compten com a emeses: esborrany, anul·lada i donada de baixa."""
+    return [value for value in (
         _config_value('invoice_status_pending_token'),
         _config_value('invoice_status_cancelled_token'),
         _config_value('invoice_status_dropped_token'),
     ) if value]
+
+
+def eligible_invoices(person, start_date, excluded_status=None):
+    """Factures emeses de la persona des de la data d'insolvència (sense anul·lades ni esborranys).
+    `excluded_status`: els tokens ja calculats, per no tornar-los a llegir a cada fila d'un llistat."""
+    from billing.models import Invoice
+    if excluded_status is None:
+        excluded_status = excluded_invoice_status_tokens()
     return (
         Invoice.objects.filter(person=person, issue_date__gte=start_date)
         .exclude(status__token__in=excluded_status)

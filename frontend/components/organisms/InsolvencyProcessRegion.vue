@@ -178,8 +178,10 @@ watch(() => props.id, getData);
         <FieldDetail :label="t('insolvency.case_number')" :value="data.case_number || '-'" />
         <FieldDetail :label="t('insolvency.user')" :value="userName(data.user)" />
         <FieldDetail :label="t('insolvency.created_at')" :value="formatDateTime(data.created_at)" />
-        <FieldDetail v-if="data.closed_at" :label="t('insolvency.closed_at')"
-          :value="`${formatDateTime(data.closed_at)} · ${userName(data.closed_by)}`" />
+        <!-- La data de tancament triada; el moment de l'operació va amb qui l'ha fet -->
+        <FieldDetail v-if="data.closed_at" :label="t('insolvency.closed_at')" :value="formatDate(data.end_date)" />
+        <FieldDetail v-if="data.closed_at" :label="t('insolvency.closed_by')"
+          :value="`${userName(data.closed_by)} · ${formatDateTime(data.closed_at)}`" />
         <FieldDetail v-if="data.observation" class="col-span-2" :label="t('insolvency.observation')">
           <span class="whitespace-pre-line">{{ data.observation }}</span>
         </FieldDetail>

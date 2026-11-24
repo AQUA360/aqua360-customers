@@ -33,6 +33,7 @@ export default {
     already_open: "This person already has an open insolvency process.",
     created: "Insolvency process created",
     closed_at: "Closing date",
+    closed_by: "Closed by",
     payment_changes: "Payment method changes",
     debt_management: "Debt management",
     debt_management_insolvent: "Insolvent",
@@ -65,7 +66,7 @@ export default {
     },
   },
   person_anomaly: {
-    opens_process_help: "Insolvency is managed through a process: it sets the date, the invoices and the contracts' payment method. Starting it marks the person as insolvent.",
+    opens_process_help: "Insolvency is managed through a process: it sets the date and the contracts' payment method, and includes every invoice issued since the date. Starting it marks the person as insolvent and moves the contracts to the «Insolvent» debt management.",
     managed_by_process: "Managed from the insolvency process",
     title: 'Anomalies',
     anomaly_type: 'Anomaly type',
