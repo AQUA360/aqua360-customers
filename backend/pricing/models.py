@@ -559,6 +559,9 @@ class AccountingPricing(models.Model):
     payment_origin = models.CharField(max_length=20, choices=PAYMENT_ORIGIN_CHOICES, null=True, blank=True)
     # When grouped_lines and BANK_PAYMENT is among the payment types, split those lines by origin.
     separate_by_payment_origin = models.BooleanField(default=False)
+    # When grouped_lines, keep positive cobraments and negative returns on
+    # separate summed lines instead of netting them into one total.
+    separate_by_sign = models.BooleanField(default=False)
     # Payment category only. When set, the payment have counterpart uses this
     # pricing's account instead of the matched invoice clients account.
     counterpart_accounting_pricing = models.ForeignKey(
