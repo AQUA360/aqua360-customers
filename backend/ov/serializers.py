@@ -26,6 +26,7 @@ from billing.models import (
     Reading,
 )
 from billing.utils.payment_service import get_status_map
+from billing.utils.remittance_mark_service import in_pending_remittance
 from decouple import config
 from coredata.models import (
     ConfigProject,
@@ -750,9 +751,21 @@ class BilledConsumptionsOVSerializer(serializers.Serializer):
         return [serializer.data]
 
 
+INVOICE_IN_PENDING_REMITTANCE_ERROR = (
+    "Invoice has a receipt in a pending remittance and will be collected by direct debit."
+)
+
+
+class InvoiceInPendingRemittance(Exception):
+    """La factura té algun rebut no cobrat en una remesa pendent d'enviar."""
+
+
 class InvoicePaidSerializer(serializers.Serializer):
     contract_token = serializers.CharField(required=True)
     invoice_token = serializers.CharField(required=True)
+
+    # Després d'`update`: si la factura ja estava pagada abans de la crida
+    already_paid = False
 
     def validate(self, data):
         contract_token = data.get("contract_token")
@@ -792,29 +805,40 @@ class InvoicePaidSerializer(serializers.Serializer):
             payment_type_by_token = PaymentType.objects.filter(token="TPV_ONLINE").first()
             
             
-            payments = Payment.objects.filter(invoice=invoice)
-            if not payments.exists():
-                raise serializers.ValidationError(
-                    {"error": "No payments found for this invoice."}
+            with transaction.atomic():
+                # Bloqueja els rebuts: una remesa o un altre pagament no els pot canviar alhora
+                payments = list(
+                    Payment.objects.select_for_update().filter(invoice=invoice)
                 )
+                if not payments:
+                    raise serializers.ValidationError(
+                        {"error": "No payments found for this invoice."}
+                    )
 
-            for payment in payments:
-                # Skip payments that are already paid
-                if payment.status == paid_status:
-                    continue
-                payment.status = paid_status
-                payment.payment_type = "TPV ONLINE"
-                
-                if payment_type_by_token:
-                    payment.payment_type_token = payment_type_by_token.token
-                    
-                payment.payment_date = timezone.now().date()
-                payment.save()
+                unpaid = [p for p in payments if p.status != paid_status]
+                # Un rebut en una remesa pendent d'enviar el cobrarà el banc: no es marca pagat
+                if unpaid and in_pending_remittance(
+                    Payment.objects.filter(id__in=[p.id for p in unpaid])
+                ).exists():
+                    raise InvoiceInPendingRemittance()
+                self.already_paid = not unpaid
+
+                for payment in unpaid:
+                    payment.status = paid_status
+                    payment.payment_type = "TPV ONLINE"
+
+                    if payment_type_by_token:
+                        payment.payment_type_token = payment_type_by_token.token
+
+                    payment.payment_date = timezone.now().date()
+                    payment.save()
 
             invoice.refresh_from_db()
 
             return invoice
 
+        except InvoiceInPendingRemittance:
+            raise
         except Exception as e:
             logger.exception("Error inesperat")
             raise serializers.ValidationError(

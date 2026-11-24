@@ -910,6 +910,12 @@ paths:
         por TPV online. Solo aplica a facturas de tipo factura (no presupuestos).
 
         Los pagos se actualizan con tipo de pago `TPV_ONLINE` y fecha de pago actual.
+        También se aceptan facturas domiciliadas con recibos pendientes o devueltos.
+
+        Si algún recibo no cobrado está en una remesa pendiente de enviar, responde
+        `409` (`reason: pending_remittance`) y no cambia nada: lo cobrará el banco.
+        Si la factura ya estaba pagada responde `200` igualmente, con
+        `already_paid: true`.
       operationId: markInvoicePaid
       security:
         - tokenAuth: []
@@ -934,6 +940,7 @@ paths:
                 message: Invoice marked as paid successfully
                 invoice_token: INV-001
                 new_status: Pagada
+                already_paid: false
         "400":
           description: Datos inválidos o factura no encontrada
           content:
@@ -944,6 +951,15 @@ paths:
                   - $ref: "#/components/schemas/ErrorMessage"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: Algún recibo no cobrado está en una remesa pendiente de enviar
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PendingRemittanceConflict"
+              example:
+                error: Invoice has a receipt in a pending remittance and will be collected by direct debit.
+                reason: pending_remittance
 
   /ov/invoice/quick-pay/:
     post:
@@ -966,7 +982,8 @@ paths:
         irrecuperable o importe pendiente cero), se devuelve `409` con el estado
         actual. También se devuelve `409` si falta la configuración
         `invoice_status_paid_token` o no existe ningún `Payment` para confirmar
-        el cobro mediante `POST /ov/invoice/paid/`.
+        el cobro mediante `POST /ov/invoice/paid/`, y si algún recibo no cobrado
+        está en una remesa pendiente de enviar (`reason: pending_remittance`).
       operationId: quickPayInvoice
       security:
         - tokenAuth: []
@@ -1023,12 +1040,24 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/QuickPayNotPayableResponse"
-              example:
-                error: Invoice is not payable
-                status:
-                  token: "0"
-                  name: Pagada
-                left_to_pay: 101.73
+              examples:
+                notPayable:
+                  summary: Factura no pagable
+                  value:
+                    error: Invoice is not payable
+                    status:
+                      token: "0"
+                      name: Pagada
+                    left_to_pay: 101.73
+                pendingRemittance:
+                  summary: Recibo en una remesa pendiente de enviar
+                  value:
+                    error: Invoice has a receipt in a pending remittance and will be collected by direct debit.
+                    reason: pending_remittance
+                    status:
+                      token: "3"
+                      name: Enviada
+                    left_to_pay: 101.73
         "429":
           $ref: "#/components/responses/TooManyRequests"
 
@@ -2933,8 +2962,8 @@ paths:
         defecte `BANK_TRANSFER` no está en la base de datos.
 
         Operación **idempotente**: si el contrato ya tiene el tipo de pago
-        objetivo no se escribe nada (ni cambio de tipo, ni `ContractLog`, ni
-        `ContractObservation`) y se responde `200` con
+        objetivo no se cambia el contrato (ni cambio de tipo, ni `ContractLog`)
+        y se responde `200` con
         `message: "Direct debit already cancelled."`.
 
         Cuando sí hay cambio, se actualiza `contract.payment.type` y se
@@ -2942,6 +2971,16 @@ paths:
         `payment_type`, con el token anterior y el nuevo) y una
         `ContractObservation` con el `period` y el `role` solicitados, todo
         dentro de una transacción.
+
+        En los dos casos, las facturas emitidas del contrato que aún se iban a
+        cobrar por domiciliación (activas, confirmadas, enviadas o vencidas,
+        importe positivo, con algún recibo pendiente o devuelto y sin ningún
+        recibo en una remesa pendiente de enviar) pasan al nuevo tipo de pago
+        sin cuenta, sea cual sea su periodo. Los abonos no se tocan. El cambio
+        queda en el historial de cada factura y en una `ContractObservation`
+        con el número de facturas. Sus tokens se devuelven en
+        `updated_invoices`. Si el nuevo tipo es `DIRECT_DEBIT` no se cambia
+        ninguna factura.
       operationId: cancelDirectDebit
       security:
         - tokenAuth: []
@@ -2961,7 +3000,7 @@ paths:
         "200":
           description: |
             Cancelación aplicada (cambio de tipo de pago + auditoría) o bien
-            ya estaba cancelada (respuesta idempotente, sin escrituras).
+            ya estaba cancelada (respuesta idempotente, sin cambiar el contrato).
           content:
             application/json:
               schema:
@@ -2973,12 +3012,15 @@ paths:
                     contract_token: CTR-001
                     success: true
                     message: Direct debit cancelled successfully.
+                    updated_invoices:
+                      - INV-001
                 alreadyCancelled:
-                  summary: Ya estaba cancelada (idempotente, sin escrituras)
+                  summary: Ya estaba cancelada (idempotente, sin cambiar el contrato)
                   value:
                     contract_token: CTR-001
                     success: true
                     message: Direct debit already cancelled.
+                    updated_invoices: []
         "400":
           description: |
             Faltan campos (formato Django REST Framework), el contrato no
@@ -4088,6 +4130,22 @@ components:
           type: string
           nullable: true
           description: Nombre del nuevo estado de la factura
+        already_paid:
+          type: boolean
+          description: La factura ya estaba pagada antes de la llamada (no se ha cambiado nada)
+
+    PendingRemittanceConflict:
+      type: object
+      required:
+        - error
+        - reason
+      properties:
+        error:
+          type: string
+        reason:
+          type: string
+          enum:
+            - pending_remittance
 
     QuickPayRequest:
       type: object
@@ -4179,6 +4237,11 @@ components:
           format: double
           nullable: true
           description: Importe pendiente de pago en el momento de la consulta
+        reason:
+          type: string
+          enum:
+            - pending_remittance
+          description: Solo si algún recibo está en una remesa pendiente de enviar
 
     ReturnRequest:
       type: object
@@ -5612,8 +5675,17 @@ components:
             `Direct debit cancelled successfully.` cuando se ha aplicado el
             cambio; `Direct debit already cancelled.` cuando el contrato ya
             tenía el tipo de pago objetivo (respuesta idempotente, sin
-            escrituras).
+            cambiar el contrato).
           example: Direct debit cancelled successfully.
+        updated_invoices:
+          type: array
+          items:
+            type: string
+          description: |
+            Tokens de las facturas domiciliadas pendientes o devueltas que han
+            pasado al nuevo tipo de pago (vacío si no había ninguna).
+          example:
+            - INV-001
 
     ContractRequestTypeItem:
       type: object

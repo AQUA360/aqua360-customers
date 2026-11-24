@@ -29,6 +29,8 @@ import zipfile
 import logging
 from io import BytesIO, StringIO
 from billing.utils.biller_period_service import current_and_next_cycles
+from billing.utils.direct_debit_cancel_service import move_direct_debit_invoices
+from billing.utils.remittance_mark_service import in_pending_remittance
 from billing.views.invoice_pdf_view import generate_report_invoice_pdf
 from coredata.utils.pdf_utils import merge_pdfs
 from coredata.models import (
@@ -99,6 +101,8 @@ from ov.serializers import (
     UpdateBillingDataOVSerializer,
     UpdateBillingDataOVIBANSerializer,
     BilledConsumptionsOVSerializer,
+    INVOICE_IN_PENDING_REMITTANCE_ERROR,
+    InvoiceInPendingRemittance,
     InvoicePaidSerializer,
     InvoicePDFSerializer,
     ContractListItemOVSerializer,
@@ -499,18 +503,35 @@ class BilledConsumptionsOVView(APIView):
 
 
 class InvoicePaidView(APIView):
+    """POST /ov/invoice/paid/: confirma el pagament TPV d'una factura.
+
+    Si algun rebut no cobrat és en una remesa pendent d'enviar respon 409 i no
+    canvia res: el banc el cobrarà amb la remesa. Si la factura ja estava
+    pagada respon 200 igual, amb `already_paid: true`.
+    """
+
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
         serializer = InvoicePaidSerializer(data=request.data)
         if serializer.is_valid():
-            invoice = serializer.update(serializer.validated_data)
+            try:
+                invoice = serializer.update(serializer.validated_data)
+            except InvoiceInPendingRemittance:
+                return Response(
+                    {
+                        "error": INVOICE_IN_PENDING_REMITTANCE_ERROR,
+                        "reason": "pending_remittance",
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
             return Response(
                 {
                     "success": True,
                     "message": "Invoice marked as paid successfully",
                     "invoice_token": invoice.token,
                     "new_status": invoice.status.name if invoice.status else None,
+                    "already_paid": serializer.already_paid,
                 },
                 status=status.HTTP_200_OK,
             )
@@ -1329,6 +1350,12 @@ class SepaDocumentDownloadView(APIView):
         return response
 
 
+def _cancel_direct_debit_invoices_observation(invoices):
+    """Observació del contracte amb les factures que han deixat de ser domiciliades."""
+    numbers = ", ".join(i.serie_final or i.token for i in invoices)
+    return f"Facturas pendientes que dejan de domiciliarse ({len(invoices)}): {numbers}"
+
+
 class CancelDirectDebitView(APIView):
     """POST /ov/procedures/{contract_token}/cancel-direct-debit/
 
@@ -1336,9 +1363,15 @@ class CancelDirectDebitView(APIView):
     Valida `period`, `role` i `new_payment_type` (opcional), comprova que el
     contracte tingui forma de pagament i resol el `PaymentType` objectiu
     (`new_payment_type` si ve, sinó `BANK_TRANSFER`). La trucada és
-    idempotent: si el contracte ja té el tipus objectiu no escriu res i
-    respon «already cancelled». La migració de tipus, el `ContractLog` i
+    idempotent: si el contracte ja té el tipus objectiu no canvia el contracte
+    i respon «already cancelled». La migració de tipus, el `ContractLog` i
     l'`ContractObservation` es fan dins d'un `transaction.atomic()`.
+
+    En tots dos casos, les factures emeses del contracte que encara s'esperaven
+    cobrar per domiciliació (rebuts pendents o retornats, fora de remeses
+    pendents d'enviar, sense abonaments) passen al tipus nou sense compte
+    (`move_direct_debit_invoices`). La resposta en porta els tokens a
+    `updated_invoices`.
     """
 
     permission_classes = [IsAuthenticated]
@@ -1384,11 +1417,25 @@ class CancelDirectDebitView(APIView):
             contract.payment.type.token if contract.payment.type else None
         )
         if current_payment_token == target_payment_type.token:
+            # El contracte ja està canviat, però hi pot haver factures domiciliades obertes
+            with transaction.atomic():
+                updated_invoices = move_direct_debit_invoices(
+                    contract, target_payment_type, request.user
+                )
+                if updated_invoices:
+                    ContractObservation.objects.create(
+                        contract=contract,
+                        observation=_cancel_direct_debit_invoices_observation(
+                            updated_invoices
+                        ),
+                        user=request.user,
+                    )
             return Response(
                 {
                     "contract_token": contract_token,
                     "success": True,
                     "message": "Direct debit already cancelled.",
+                    "updated_invoices": [i.token for i in updated_invoices],
                 },
                 status=status.HTTP_200_OK,
             )
@@ -1413,13 +1460,22 @@ class CancelDirectDebitView(APIView):
                 user=request.user,
             )
 
+            updated_invoices = move_direct_debit_invoices(
+                contract, target_payment_type, request.user
+            )
+
+            observation = (
+                "Cancelación de domiciliación solicitada desde la Oficina Virtual:\n"
+                f"period = {serializer.validated_data['period']}\n"
+                f"role = {serializer.validated_data['role']}"
+            )
+            if updated_invoices:
+                observation += "\n" + _cancel_direct_debit_invoices_observation(
+                    updated_invoices
+                )
             ContractObservation.objects.create(
                 contract=contract,
-                observation=(
-                    "Cancelación de domiciliación solicitada desde la Oficina Virtual:\n"
-                    f"period = {serializer.validated_data['period']}\n"
-                    f"role = {serializer.validated_data['role']}"
-                ),
+                observation=observation,
                 user=request.user,
             )
 
@@ -1427,7 +1483,8 @@ class CancelDirectDebitView(APIView):
             f"Direct debit cancelled for contract {contract_token}: "
             f"period={serializer.validated_data['period']}, "
             f"role={serializer.validated_data['role']}, "
-            f"new_payment_type={target_payment_type.token}"
+            f"new_payment_type={target_payment_type.token}, "
+            f"updated_invoices={len(updated_invoices)}"
         )
 
         return Response(
@@ -1435,6 +1492,7 @@ class CancelDirectDebitView(APIView):
                 "contract_token": contract_token,
                 "success": True,
                 "message": "Direct debit cancelled successfully.",
+                "updated_invoices": [i.token for i in updated_invoices],
             },
             status=status.HTTP_200_OK,
         )
@@ -2280,6 +2338,8 @@ class QuickPayOVView(APIView):
     returns the same 404 so the endpoint cannot be used as a partial-match
     oracle. Once all three fields match, a non-payable status returns 409 with
     the current status so the frontend can explain the situation.
+    A receipt still in a remittance pending to be sent also returns 409, with
+    `reason: "pending_remittance"`: the bank will collect it.
     """
 
     permission_classes = [IsAuthenticated]
@@ -2341,6 +2401,20 @@ class QuickPayOVView(APIView):
             return Response(
                 {
                     "error": "Invoice is not payable",
+                    "status": status_payload,
+                    "left_to_pay": invoice.left_to_pay,
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        # Un rebut en una remesa pendent d'enviar el cobrarà el banc: no es pot pagar per TPV
+        if in_pending_remittance(
+            invoice.payments.exclude(status__token=paid_payment_status_token)
+        ).exists():
+            return Response(
+                {
+                    "error": INVOICE_IN_PENDING_REMITTANCE_ERROR,
+                    "reason": "pending_remittance",
                     "status": status_payload,
                     "left_to_pay": invoice.left_to_pay,
                 },
