@@ -31,6 +31,7 @@ from billing.models import (
     InvoiceStatus,
     Payment,
     PaymentMovement,
+    PaymentRemittance,
     PaymentRemittanceReturn,
     PaymentStatus,
     Reading,
@@ -55,6 +56,7 @@ from coredata.models import (
 from contract.models import (
     ContractDataChange,
     Contract,
+    ContractObservation,
     ContractPriceRate,
     ContractRequest,
     ContractRequestStatus,
@@ -69,7 +71,7 @@ from contract.models import (
 )
 from contract.utils.contract_pdf_service import ContractPdfGenerationError
 from documentmanager.models import Document
-from logger.models import LogContractRequestStatus, LogIncidentStatusChange
+from logger.models import LogContractRequestStatus, LogIncidentStatusChange, LogInvoiceDataChange
 from notification.models import Incident, IncidentStatus, IncidentType
 from order.models import OrderType
 from pricing.models import (
@@ -8361,6 +8363,301 @@ class InvoiceDirectDebitAccountTests(TestCase):
         self.assertEqual(account["iban"], "ES662100********34567891")
         self.assertIsNone(account["nombre"])
         self.assertIsNone(account["dni"])
+
+
+class DirectDebitTpvOVTests(TestCase):
+    """Tiquet 2890: pagament per TPV de factures domiciliades pendents o retornades.
+
+    - `cancel-direct-debit` passa també les factures obertes domiciliades del contracte a
+      la forma de pagament nova (excepte abonaments i rebuts en remeses pendents d'enviar).
+    - `/ov/invoice/paid/` i `quick-pay` no deixen pagar una factura amb un rebut en una
+      remesa pendent d'enviar (409); `/paid/` d'una factura ja pagada respon 200 amb
+      `already_paid`.
+    """
+
+    PAYMENT_STATUSES = (
+        ("payment_status_paid_token", "0", "Pagat"),
+        ("payment_status_pending_token", "1", "Pendent"),
+        ("payment_status_expired_token", "2", "Vençut"),
+        ("payment_status_commitment_token", "3", "Compromís"),
+        ("payment_status_endowment_token", "4", "Dotació"),
+        ("payment_status_irrecoverable_token", "5", "Irrecuperable"),
+        ("payment_status_sent_token", "6", "Enviat"),
+        ("payment_status_returned_token", "7", "Retornat"),
+        ("payment_status_cancelled_token", "8", "Anul·lat"),
+        ("payment_status_piggy_token", "9", "Guardiola"),
+        ("payment_status_payoff_token", "10", "Liquidat"),
+    )
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(username="ov-dd-tpv-test", password="not-used")
+
+        for token, value in (
+            ("contract_termination_completed_token", "3"),
+            ("contract_terminated_status", "-1"),
+            ("bail_status_returned_token", "-1"),
+            ("invoice_type_invoice_token", "F"),
+            ("invoice_status_confirmed_token", "2"),
+            ("invoice_status_sent_token", "3"),
+            ("invoice_status_expired_token", "-1"),
+            ("invoice_status_paid_token", "0"),
+            ("invoice_status_pending_token", "1"),
+            ("invoice_status_cancelled_token", "-6"),
+            ("invoice_status_dropped_token", "-7"),
+            ("invoice_status_payoff_token", "-2"),
+            ("invoice_status_irrecoverable_token", "-5"),
+            ("invoice_status_part_irrecoverable_token", "-4"),
+            # Senyals dels pagaments (marcar-ne un de pagat)
+            ("direct_debit_token", "DIRECT_DEBIT"),
+            ("commitment_deposit_status_cancelled_token", "-1"),
+            ("payment_commitment_status_cancelled_token", "-1"),
+            ("payment_commitment_status_paid_token", "1"),
+        ):
+            ConfigProject.objects.update_or_create(token=token, defaults={"value": value})
+
+        cls.payment_statuses = {}
+        for config_token, token, name in cls.PAYMENT_STATUSES:
+            ConfigProject.objects.update_or_create(token=config_token, defaults={"value": token})
+            cls.payment_statuses[config_token], _ = PaymentStatus.objects.get_or_create(
+                token=token, defaults={"name": name}
+            )
+        cls.paid = cls.payment_statuses["payment_status_paid_token"]
+        cls.pending = cls.payment_statuses["payment_status_pending_token"]
+        cls.returned = cls.payment_statuses["payment_status_returned_token"]
+
+        cls.invoice_statuses = {}
+        for token, name in (("2", "Confirmada"), ("3", "Enviada"), ("-1", "Vençuda"), ("0", "Pagada")):
+            cls.invoice_statuses[token], _ = InvoiceStatus.objects.get_or_create(
+                token=token, defaults={"name": name}
+            )
+
+        cls.direct_debit = PaymentType.objects.create(token="DIRECT_DEBIT", name="Domiciliació")
+        cls.bank_transfer = PaymentType.objects.create(token="BANK_TRANSFER", name="Transferència")
+
+        cls.holder = Person.objects.create(token="12345678B", name="Test", surname="DdTpv")
+        cls.other_contract = Contract.objects.create(token="DD-TPV-OTHER", holder=cls.holder)
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+        self.contract = Contract.objects.create(
+            token="DD-TPV-1",
+            holder=self.holder,
+            payment=GeneralPayment.objects.create(type=self.direct_debit),
+        )
+        self._serial = 0
+
+    def _invoice(self, status="3", payment_type="DIRECT_DEBIT", total="20.00",
+                 payment_status=None, contract=None, is_active=True):
+        self._serial += 1
+        total = Decimal(total)
+        invoice = Invoice.objects.create(
+            token=f"DD-TPV-INV-{self._serial}",
+            serie_final=f"FC/202610/{self._serial:06d}",
+            contract=contract or self.contract,
+            type_final="F",
+            total_final=total,
+            left_to_pay=total,
+            status=self.invoice_statuses[status],
+            is_active=is_active,
+            payment_type_final=payment_type,
+            payment_type_token_final=payment_type,
+            payment_bank_final="ES9121000418450200051332",
+            issue_date=date(2026, 10, 1),
+            due_date=date(2026, 10, 31),
+        )
+        Payment.objects.create(
+            invoice=invoice,
+            amount=total,
+            status=payment_status or self.pending,
+            payment_type=payment_type,
+            payment_type_token=payment_type,
+            payment_bank="ES9121000418450200051332",
+        )
+        return invoice
+
+    def _in_remittance(self, invoice, sent):
+        remittance = PaymentRemittance.objects.create(
+            token=f"REM-{invoice.token}", sent_at=date(2026, 10, 15) if sent else None
+        )
+        remittance.payments.add(*invoice.payments.all())
+
+    def _cancel(self, **overrides):
+        payload = {"period": "2026-4T", "role": "TITULAR"}
+        payload.update(overrides)
+        return self.client.post(
+            reverse("cancel-direct-debit-ov", args=[self.contract.token]), payload, format="json"
+        )
+
+    # cancel-direct-debit
+
+    def test_cancel_moves_open_direct_debit_invoices(self):
+        pending = self._invoice()
+        returned = self._invoice(status="-1", payment_status=self.returned)
+        confirmed = self._invoice(status="2")
+        sent_remittance = self._invoice()
+        self._in_remittance(sent_remittance, sent=True)
+        untouched = [
+            self._invoice(payment_status=self.paid),
+            self._invoice(total="-5.00"),
+            self._invoice(status="0"),
+            self._invoice(payment_type="BANK_TRANSFER"),
+            self._invoice(is_active=False),
+            self._invoice(contract=self.other_contract),
+        ]
+        pending_remittance = self._invoice()
+        self._in_remittance(pending_remittance, sent=False)
+        untouched.append(pending_remittance)
+
+        response = self._cancel()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["message"], "Direct debit cancelled successfully.")
+        moved = [pending, returned, confirmed, sent_remittance]
+        self.assertCountEqual(response.data["updated_invoices"], [i.token for i in moved])
+        for invoice in moved:
+            invoice.refresh_from_db()
+            self.assertEqual(invoice.payment_type_token_final, "BANK_TRANSFER")
+            self.assertIsNone(invoice.payment_bank_final)
+            payment = invoice.payments.get()
+            self.assertEqual(payment.payment_type_token, "BANK_TRANSFER")
+            self.assertIsNone(payment.payment_bank)
+        for invoice in untouched:
+            invoice.refresh_from_db()
+            self.assertEqual(
+                invoice.payment_bank_final, "ES9121000418450200051332", invoice.token
+            )
+
+        self.contract.payment.refresh_from_db()
+        self.assertEqual(self.contract.payment.type, self.bank_transfer)
+        observation = ContractObservation.objects.get(contract=self.contract)
+        self.assertIn("(4)", observation.observation)
+        self.assertEqual(
+            LogInvoiceDataChange.objects.filter(object__in=moved).count(), len(moved)
+        )
+
+    def test_already_cancelled_contract_still_moves_open_invoices(self):
+        self.contract.payment.type = self.bank_transfer
+        self.contract.payment.save()
+        invoice = self._invoice()
+
+        response = self._cancel()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["message"], "Direct debit already cancelled.")
+        self.assertEqual(response.data["updated_invoices"], [invoice.token])
+        invoice.refresh_from_db()
+        self.assertEqual(invoice.payment_type_token_final, "BANK_TRANSFER")
+        self.assertEqual(ContractObservation.objects.filter(contract=self.contract).count(), 1)
+
+    def test_already_cancelled_without_open_invoices_writes_nothing(self):
+        self.contract.payment.type = self.bank_transfer
+        self.contract.payment.save()
+
+        response = self._cancel()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["updated_invoices"], [])
+        self.assertFalse(ContractObservation.objects.filter(contract=self.contract).exists())
+
+    def test_new_direct_debit_type_does_not_move_invoices(self):
+        self.contract.payment.type = self.bank_transfer
+        self.contract.payment.save()
+        invoice = self._invoice()
+
+        response = self._cancel(new_payment_type="DIRECT_DEBIT")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["updated_invoices"], [])
+        invoice.refresh_from_db()
+        self.assertEqual(invoice.payment_type_token_final, "DIRECT_DEBIT")
+
+    # /ov/invoice/paid/
+
+    def _paid(self, invoice):
+        return self.client.post(
+            reverse("invoice-paid-ov"),
+            {"contract_token": invoice.contract.token, "invoice_token": invoice.token},
+            format="json",
+        )
+
+    def test_paid_rejects_receipt_in_pending_remittance(self):
+        invoice = self._invoice()
+        self._in_remittance(invoice, sent=False)
+
+        response = self._paid(invoice)
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.data["reason"], "pending_remittance")
+        self.assertEqual(invoice.payments.get().status, self.pending)
+
+    def test_paid_marks_direct_debit_invoice_paid(self):
+        invoice = self._invoice(payment_status=self.returned)
+        self._in_remittance(invoice, sent=True)
+
+        response = self._paid(invoice)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.data["already_paid"])
+        payment = invoice.payments.get()
+        self.assertEqual(payment.status, self.paid)
+        self.assertEqual(payment.payment_type, "TPV ONLINE")
+
+    def test_paid_on_already_paid_invoice_returns_200_with_flag(self):
+        invoice = self._invoice(status="0", payment_status=self.paid)
+        # Ja cobrat: encara que el rebut sigui en una remesa pendent, no és cap conflicte
+        self._in_remittance(invoice, sent=False)
+
+        response = self._paid(invoice)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data["already_paid"])
+
+    def test_paid_ignores_inactive_receipt_in_pending_remittance(self):
+        invoice = self._invoice(status="0", payment_status=self.paid)
+        inactive = Payment.objects.create(
+            invoice=invoice, amount=Decimal("20.00"), status=self.pending, is_active=False
+        )
+        remittance = PaymentRemittance.objects.create(token="REM-INACTIVE")
+        remittance.payments.add(inactive)
+
+        response = self._paid(invoice)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data["already_paid"])
+        inactive.refresh_from_db()
+        self.assertEqual(inactive.status, self.pending)
+
+    # /ov/invoice/quick-pay/
+
+    def _quick_pay(self, invoice):
+        return self.client.post(
+            reverse("quick-pay-ov"),
+            {
+                "contract_number": invoice.contract.token,
+                "invoice_number": invoice.serie_final,
+                "amount": str(invoice.total_final),
+            },
+            format="json",
+        )
+
+    def test_quick_pay_allows_direct_debit_invoice(self):
+        invoice = self._invoice(payment_status=self.returned)
+
+        response = self._quick_pay(invoice)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data["payable"])
+
+    def test_quick_pay_rejects_receipt_in_pending_remittance(self):
+        invoice = self._invoice()
+        self._in_remittance(invoice, sent=False)
+
+        response = self._quick_pay(invoice)
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.data["reason"], "pending_remittance")
 
 
 class InvoiceReturnOVTests(TestCase):
