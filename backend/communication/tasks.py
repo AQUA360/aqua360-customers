@@ -249,7 +249,17 @@ def generate_files_task(communication_ids):
         }
         
     except Exception as e:
-        return {"status": "error", "message": str(e)} 
+        return {"status": "error", "message": str(e)}
+
+@shared_task(bind=True)
+def regenerate_communication_documents_task(self, communication_ids):
+    """Regenera la carta i les factures de les comunicacions; els antics queden com a històric."""
+    from communication.utils.regenerate_documents_service import regenerate_communication_documents
+
+    def on_progress(current, total):
+        self.update_state(state='PROGRESS', meta={'current': current, 'total': total})
+
+    return regenerate_communication_documents(communication_ids, on_progress=on_progress)
 
 @shared_task
 def check_send_date():

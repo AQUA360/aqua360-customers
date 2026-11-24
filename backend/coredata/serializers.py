@@ -1076,16 +1076,26 @@ class PersonAnomalySerializer(serializers.ModelSerializer):
     )
     user = UserMinimalSerializer(read_only=True)
     is_current = serializers.BooleanField(read_only=True)
+    in_open_process = serializers.SerializerMethodField()
 
     class Meta:
         model = PersonAnomaly
         fields = [
             'id', 'created_at', 'updated_at', 'person', 'anomaly_type', 'anomaly_type_id',
-            'start_date', 'end_date', 'observation', 'is_active', 'is_current', 'user',
+            'start_date', 'end_date', 'observation', 'is_active', 'is_current', 'user', 'in_open_process',
         ]
         read_only_fields = ['is_active']
 
+    def get_in_open_process(self, obj):
+        return anomaly_in_open_process(obj)
+
     def validate(self, attrs):
+        # Els tipus que obren un procés (insolvència) només es creen des del procés
+        if self.instance is None and attrs.get('anomaly_type') and attrs['anomaly_type'].opens_process:
+            raise serializers.ValidationError(
+                {'anomaly_type_id': 'Aquesta anomalia es crea iniciant-ne el procés des de la persona.'})
+        if self.instance is not None and anomaly_in_open_process(self.instance):
+            raise serializers.ValidationError('Aquesta anomalia és d\'un procés obert: es gestiona des del procés.')
         if self.instance is not None and 'person' in attrs and attrs['person'] != self.instance.person:
             raise serializers.ValidationError({'person': 'No es pot canviar la persona d\'una anomalia.'})
         start_date = attrs.get('start_date', getattr(self.instance, 'start_date', None))
@@ -1093,6 +1103,11 @@ class PersonAnomalySerializer(serializers.ModelSerializer):
         if start_date and end_date and end_date < start_date:
             raise serializers.ValidationError({'end_date': 'La data de fi no pot ser anterior a la d\'inici.'})
         return attrs
+
+
+def anomaly_in_open_process(anomaly):
+    """Si l'anomalia la manté un procés obert (p. ex. d'insolvència), que és qui la gestiona."""
+    return anomaly.insolvency_processes.filter(status='open').exists()
 
 
 def current_person_anomalies(person):
@@ -1168,6 +1183,7 @@ class PersonSerializer(serializers.ModelSerializer):
     contracts_tenant_count = serializers.SerializerMethodField()
     observations_count = serializers.SerializerMethodField()
     anomalies_count = serializers.SerializerMethodField()
+    insolvency_processes_count = serializers.SerializerMethodField()
     call_register_count = serializers.SerializerMethodField()
     communications_count = serializers.SerializerMethodField()
     
@@ -1232,6 +1248,9 @@ class PersonSerializer(serializers.ModelSerializer):
 
     def get_anomalies_count(self, instance):
         return instance.anomalies.filter(is_active=True).count()
+
+    def get_insolvency_processes_count(self, instance):
+        return instance.insolvency_processes.count()
 
     def get_current_anomalies(self, instance):
         return current_person_anomalies(instance)

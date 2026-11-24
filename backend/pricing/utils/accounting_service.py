@@ -1,6 +1,5 @@
 from collections import defaultdict, OrderedDict
 from datetime import datetime
-from io import BytesIO
 import json
 from decimal import Decimal
 
@@ -8,7 +7,6 @@ from django.db import transaction
 from django.db.models.functions import Coalesce
 from django.utils.translation import gettext as _
 from billing.models import Invoice, InvoiceLineItem, PaymentMovement
-from billing.utils.sgt_txt_service import normalize_text, remove_accents
 from contract.models import Contract, ContractUseType, PaymentType
 from coredata.models import Bank, ConfigProject
 from coredata.utils.other_utils import round_ceil
@@ -120,7 +118,10 @@ def get_accounting_lines(accounting_pricings, invoices, movements, endowment_inv
     #   grouped_lines sums by movement_date (and payment_type when
     #   separate_by_type or is_default). When separate_by_payment_origin,
     #   BANK_PAYMENT lines are also summed by movement origin and that
-    #   origin name is appended to the title. Otherwise one line per movement.
+    #   origin name is appended to the title. When separate_by_sign,
+    #   positive cobraments and negative returns stay on separate summed
+    #   lines (return title when negative) instead of netting. Otherwise
+    #   one line per movement.
     #   That payment account is declared as debt. The same total is also
     #   declared as have on the original invoice/clients account, using the
     #   payment line's name and the same split (one have line per payment
@@ -1158,12 +1159,25 @@ def _optional_sign(value):
 
 
 def _line_has_negative_amount(line):
-    if _as_float(line.get('total')) < 0 or _as_float(line.get('subtotal')) < 0:
+    """True when the line's net amounts are negative (return/credit).
+
+    Grouped declarations can mix positive and negative VAT rates (e.g. 21%
+    invoices with 10% credit notes). Treat that as a return only when the
+    net total/subtotal (or net IVA if both are zero) is negative — not when
+    a single rate bucket happens to be negative.
+    """
+    total = _as_float(line.get('total'))
+    subtotal = _as_float(line.get('subtotal'))
+    if total < 0 or subtotal < 0:
         return True
-    for amounts in (line.get('iva') or {}).values():
-        if _as_float(amounts.get('base')) < 0 or _as_float(amounts.get('tax')) < 0:
-            return True
-    return False
+    if total != 0 or subtotal != 0:
+        return False
+    iva = line.get('iva') or {}
+    if not iva:
+        return False
+    tax_net = sum(_as_float(amounts.get('tax')) for amounts in iva.values())
+    base_net = sum(_as_float(amounts.get('base')) for amounts in iva.values())
+    return tax_net < 0 or base_net < 0
 
 
 def _default_declare_as_for_line(line):
@@ -1871,6 +1885,10 @@ def _payment_spec(accounting_pricing):
             and bool(accounting_pricing.grouped_lines)
             and _BANK_PAYMENT_TOKEN in payment_type_tokens
         ),
+        'separate_by_sign': (
+            bool(getattr(accounting_pricing, 'separate_by_sign', False))
+            and bool(accounting_pricing.grouped_lines)
+        ),
         'category': _normalize_invoice_category(accounting_pricing.invoice_category),
         'name': _line_title(accounting_pricing),
         'return_name': _line_title(accounting_pricing, is_return=True),
@@ -1928,7 +1946,11 @@ def _payment_contract(payment):
         if invoice.contract_id and invoice.contract is not None:
             return invoice.contract
         elif invoice.contract_request_id and invoice.contract_request is not None:
-            return Contract.objects.get(contract_request__id=invoice.contract_request_id)
+            try:
+                contract = Contract.objects.get(contract_request__id=invoice.contract_request_id)
+            except Contract.DoesNotExist:
+                contract = invoice.contract_request
+            return contract
         elif invoice.contract_termination_id and invoice.contract_termination is not None and invoice.contract_termination.contract_id and invoice.contract_termination.contract is not None:
             return invoice.contract_termination.contract
     commitment = payment.commitment_deposit if payment.commitment_deposit_id else None
@@ -1955,6 +1977,10 @@ def _accounting_config_snapshot():
         return {
             'piggybank_as_negative': False,
             'include_piggy_status_payments': False,
+            'document_format': 'xml',
+            'iva_document_code': 'IR',
+            'iva_series_code': '02',
+            'iva_operation_code': 'SENSE',
             'incoming_declare_as': 'debt',
             'incoming_sign': 'positive',
             'incoming_counter_declare_as': 'have',
@@ -1967,6 +1993,10 @@ def _accounting_config_snapshot():
     return {
         'piggybank_as_negative': bool(config.piggybank_as_negative),
         'include_piggy_status_payments': bool(config.include_piggy_status_payments),
+        'document_format': (config.document_format or 'xml').lower(),
+        'iva_document_code': (config.iva_document_code or 'IR')[:2].ljust(2),
+        'iva_series_code': (config.iva_series_code or '02')[:2].ljust(2),
+        'iva_operation_code': (config.iva_operation_code or 'SENSE')[:15].ljust(15),
         'incoming_declare_as': config.incoming_declare_as or 'debt',
         'incoming_sign': config.incoming_sign or 'positive',
         'incoming_counter_declare_as': config.incoming_counter_declare_as or 'have',
@@ -2463,6 +2493,13 @@ def _payment_origin_detail(spec, row):
     return origin, _payment_origin_label(origin)
 
 
+def _payment_sign_group_key(amount, separate_by_sign):
+    """When separate_by_sign, bucket by signed amount polarity (None = net)."""
+    if not separate_by_sign:
+        return None
+    return 'negative' if _decimal_amount(amount) < 0 else 'positive'
+
+
 def _payment_register_key(
     payment_pricing_id,
     movement_date,
@@ -2471,6 +2508,7 @@ def _payment_register_key(
     origin_key,
     movement_declare_as,
     concept_rule_key=None,
+    sign_key=None,
 ):
     """Stable id shared by a payment line and its counterpart/counter lines."""
     return (
@@ -2482,6 +2520,7 @@ def _payment_register_key(
         origin_key,
         movement_declare_as,
         concept_rule_key,
+        sign_key,
     )
 
 
@@ -2646,6 +2685,7 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
                     'have',
                     movement_declare_as,
                     invoice_concept_rule_key,
+                    None,
                 )] += amount
             elif (
                 row.get('is_piggybank')
@@ -2664,6 +2704,7 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
                     spec['id'],
                     movement_declare_as,
                     None,
+                    None,
                 )] += amount
             continue
 
@@ -2673,6 +2714,7 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
         )
         type_key = row['payment_type_id'] if separate_by_type else None
         origin_key, origin_name = _payment_origin_detail(spec, row)
+        sign_key = _payment_sign_group_key(amount, spec.get('separate_by_sign'))
         group_key = (
             row['movement_date'],
             type_key,
@@ -2681,6 +2723,7 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
             origin_name,
             movement_declare_as,
             payment_concept_rule_key,
+            sign_key,
         )
         grouped_totals[spec['id']][group_key] += amount
         if invoice_id is not None:
@@ -2695,6 +2738,7 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
                 'have',
                 movement_declare_as,
                 invoice_concept_rule_key,
+                sign_key,
             )] += amount
         elif (
             row.get('is_piggybank')
@@ -2713,6 +2757,7 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
                 spec['id'],
                 movement_declare_as,
                 None,
+                sign_key,
             )] += amount
 
     for pricing_id, groups in grouped_totals.items():
@@ -2724,6 +2769,7 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
             origin_name,
             declare_as,
             concept_rule_key,
+            sign_key,
         ), total in groups.items():
             detail_name = _payment_detail_name(payment_type_name, origin_name)
             bucket_entry = {
@@ -2738,6 +2784,7 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
                     _origin_key,
                     declare_as,
                     concept_rule_key,
+                    sign_key,
                 ),
             }
             if declare_as in (_DECLARE_DEBT, _DECLARE_HAVE):
@@ -2760,6 +2807,7 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
         declare_as,
         movement_declare_as,
         concept_rule_key,
+        sign_key,
     ), total in debt_totals.items():
         spec = specs_by_id[payment_id]
         title_base = (
@@ -2782,6 +2830,7 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
                 _origin_key,
                 movement_declare_as,
                 concept_rule_key,
+                sign_key,
             ),
         }
         if concept_rule_key:
@@ -2809,6 +2858,7 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
         payment_id,
         movement_declare_as,
         concept_rule_key,
+        sign_key,
     ), total in counter_totals.items():
         spec = specs_by_id.get(payment_id) or {}
         title_base = (
@@ -2831,6 +2881,7 @@ def _accumulate_payment_rows(rows, specs_by_category, specs_by_id, invoice_specs
                 _origin_key,
                 movement_declare_as,
                 concept_rule_key,
+                sign_key,
             ),
         }
         if concept_rule_key:
@@ -3004,9 +3055,44 @@ def _get_payment_debt_line(
     return line
 
 
+def _line_debt_have(line):
+    """Resolve debt/have amounts from declare_as (same rules as XML export)."""
+    declare_as = line.get('declare_as')
+    total = line.get('total')
+    if declare_as == 'have':
+        return 0.00, total
+    if declare_as == 'debt' or line.get('is_invoice'):
+        return total, 0.00
+    return 0.00, total
+
+
+def _assign_register_number(line, register_numbers_by_key, next_register_number):
+    register_key = line.get('register_key')
+    if register_key is None:
+        register_key = ('line', id(line))
+    if register_key not in register_numbers_by_key:
+        register_numbers_by_key[register_key] = next_register_number
+        next_register_number += 1
+    return register_numbers_by_key[register_key], next_register_number
+
+
+def repeat_to_at_least_length(s, wanted):
+    if wanted >= 0:
+        return s * (wanted // len(s))
+    return ''
+
+
 def generate_general_accounting(request):
-    content_file = BytesIO()
-    max_characters = 2126
+    """
+    Build the general accounting export.
+
+    Returns (content_file, document_format) where document_format is 'xml' or 'csv'.
+    Returns (None, None) when there is nothing to declare.
+    """
+    # Lazy imports avoid circular dependency with export helpers.
+    from pricing.utils.accounting_csv_service import generate_accounting_csv
+    from pricing.utils.accounting_xml_service import generate_accounting_xml
+
     request_start = request.data.get('start_date')
     request_end = request.data.get('end_date') or request_start
     start_date = datetime.strptime(str(request_start)[:10], "%Y-%m-%d").date()
@@ -3015,32 +3101,28 @@ def generate_general_accounting(request):
         start_date, end_date = end_date, start_date
     # File header / register numbering use the period end (generation day).
     date = end_date
-    last_document = None
 
-    date_str = date.strftime("%Y%m%d")
-    doc_number = date.strftime("%y%m%d")
-    # Per-declaration register: YMMDD1, YMMDD2, ... (e.g. 610311, 610312).
-    next_register_number = int(f"{date.year % 10}{date.strftime('%m%d')}1")
-    register_numbers_by_key = {}
-    
+    accounting_config = _accounting_config_snapshot()
+    document_format = (accounting_config.get('document_format') or 'xml').lower()
+    if document_format not in ('xml', 'csv'):
+        document_format = 'xml'
+
     invoice_type_invoice_token = ConfigProject.objects.get(token='invoice_type_invoice_token').value
     invoice_status_pending_token = ConfigProject.objects.get(token='invoice_status_pending_token').value
     commitment_status_token = ConfigProject.objects.get(token='invoice_status_commitment_token').value
-    invoice_status_payoff_token = ConfigProject.objects.get(token='invoice_status_payoff_token').value
     accounting_pricings = AccountingPricing.objects.filter(is_active=True).order_by(
         'accounting_concept__category',
         'accounting_concept__name',
         '-is_default',
         'id',
     )
-    
+
     invoices = Invoice.objects.filter(
         issue_date__range=(start_date, end_date),
         type_final=invoice_type_invoice_token,
         is_active=True).exclude(
             status__token=invoice_status_pending_token
             ).distinct()
-    # print("total invoices: ", invoices.count())
     endowment_invoices = Invoice.objects.filter(
         endowment_date__range=(start_date, end_date),
         is_active=True,
@@ -3052,20 +3134,18 @@ def generate_general_accounting(request):
     movements = PaymentMovement.objects.filter(
         timestamp__date__range=(start_date, end_date),
     ).exclude(
-        previous_status__token = commitment_status_token
+        previous_status__token=commitment_status_token
         ).exclude(
-            payment_type__token = 'BALANCE'
+            payment_type__token='BALANCE'
             ).distinct()
-    print("total invoices: ", invoices.count())
-    print("total endowment invoices: ", endowment_invoices.count())
-    print("total irrecoverable invoices: ", irrecoverable_invoices.count())
-    print("total movements: ", movements.count())
-    if invoices.count() == 0 and endowment_invoices.count() == 0 and irrecoverable_invoices.count() == 0 and movements.count() == 0:
-        return None
-    
-    total_invoices = sum(invoice.total_final for invoice in invoices)
-    # print("total invoices: ", total_invoices)
-    
+    if (
+        invoices.count() == 0
+        and endowment_invoices.count() == 0
+        and irrecoverable_invoices.count() == 0
+        and movements.count() == 0
+    ):
+        return None, None
+
     lines = get_accounting_lines(
         accounting_pricings,
         invoices,
@@ -3073,290 +3153,10 @@ def generate_general_accounting(request):
         endowment_invoices,
         irrecoverable_invoices,
     )
-    
-    # print("total lines: ", len(lines))
-    # for line in lines:
-    #     print(line)
-    
-    # raise Exception("stop here")
-    
-    for line in lines:
 
-        """
-        REGISTRE AMB 2126 CHARS A CADA LINIA
-        """
-        # print("line")
-        # print(line)
-        iva_values = line.get('iva')
-        
-        empty_num_value = 0.00
-        iva_account_code = (
-            _pad_account_code(
-                line.get('iva_accounting').accounting_concept.token,
-                line.get('iva_accounting').token,
-            )
-            if line.get('iva_accounting')
-            else ''
-        )
-        if line.get('main_accounting'):
-            main_concept = (
-                _optional_text(line.get('main_concept_token_override'))
-                or line.get('main_accounting').accounting_concept.token
-            )
-            main_account_code = _pad_account_code(
-                main_concept,
-                line.get('main_accounting').token,
-            )
-        else:
-            main_account_code = ''
-        accounting_account = _pad_account_code(
-            line.get('accounting_concept'),
-            line.get('accounting_pricing'),
-        )
-        movement_date_str = (line.get('movement_date')).strftime("%Y%m%d") if 'movement_date' in line and line.get('movement_date') else date_str
-        len_center_code = 3
-        center_code = f"{repeat_to_at_least_length('0', len_center_code - (len(line.get('cost_center_code'))))}{line.get('cost_center_code')}" if line.get('cost_center_code') else None
-        
-        line_content = ""
-        line_content += repeat_to_at_least_length(' ', 6)
-        line_content += movement_date_str
-        line_content += date_str
-        # line_content += date_str * 2
-        
-        doc_num_total = 10
-        len_doc_number = len(str(doc_number))
-        line_content += repeat_to_at_least_length(' ', doc_num_total-len_doc_number)
-        line_content += str(doc_number)
-        
-        if len(line_content) != 32:
-            # print(line_content)
-            raise Exception(f"Line {line_content} has {len(line_content)} characters instead of 34")
-        
-        line_content += '70' # DEFAULT FOR THE MOMENT
-        
-        title_total = 30
-        title = normalize_text(line.get('accounting_pricing_name'), title_total)
-        line_content += title
-        line_content += repeat_to_at_least_length(' ', title_total-len(title))
-
-        # declare_as / amount sign already resolved in get_accounting_lines.
-        declare_as = line.get('declare_as')
-        if declare_as == 'have':
-            debt = 0.00
-            have = line.get('total')
-        elif declare_as == 'debt' or line.get('is_invoice'):
-            debt = line.get('total')
-            have = 0.00
-        else:
-            debt = 0.00
-            have = line.get('total')
-        
-        debt_str = f"{debt:.6f}"
-        have_str = f"{have:.6f}"
-        debt_len = 16 - len(debt_str)
-        have_len = 16 - len(have_str)
-        line_content += repeat_to_at_least_length(' ', debt_len)
-        line_content += debt_str
-        line_content += repeat_to_at_least_length(' ', have_len)
-        line_content += have_str
-        
-        if len(line_content) != 96:
-            # print(line_content)
-            raise Exception(f"Line {line_content} has {len(line_content)} characters instead of 98")
-        
-        accounting_account_len = 12 - len(accounting_account)
-        line_content += repeat_to_at_least_length(' ', accounting_account_len)
-        line_content += accounting_account
-        
-        line_content += '01'
-
-        register_key = line.get('register_key')
-        if register_key is None:
-            register_key = ('line', id(line))
-        if register_key not in register_numbers_by_key:
-            register_numbers_by_key[register_key] = next_register_number
-            last_document = next_register_number
-            next_register_number += 1
-        register_number = register_numbers_by_key[register_key]
-        register_number_str = str(register_number)
-        if len(register_number_str) > 6:
-            raise Exception(
-                f"Register number {register_number} exceeds 6 characters"
-            )
-        line_content += repeat_to_at_least_length(' ', 6 - len(register_number_str))
-        line_content += register_number_str
-        
-        if len(line_content) != 116:
-            # print(line_content)
-            raise Exception(f"Line {line_content} has {len(line_content)} characters instead of 116")
-        
-        
-        #CURRENTLY EMPTY
-        line_content += repeat_to_at_least_length(' ', 155)
-        
-        # has_iva = line.get('iva_accounting')
-        iva_base_total = _sum_iva_values(iva_values, 'base')
-        iva_tax_total = _sum_iva_values(iva_values, 'tax')
-        # Return invoices keep signed (negative) IVA bases; still emit IR02.
-        has_iva = (
-            iva_base_total != 0
-            and line.get('category') == 'invoice'
-            and line.get('subtotal') == 0
-        )
-        if has_iva:
-            line_content += 'IR'
-            # line_accounting_token_len = 2 - len(line.get('iva_accounting').token)
-            normalized_acc_name = normalize_text(line.get('main_accounting').name, 30)
-            line_accounting_name_len = 30 - len(normalized_acc_name)
-            # line_content += repeat_to_at_least_length('0', line_accounting_token_len) + line.iva_accounting.token
-            line_content += '02' # SERIE IVA
-            line_content += normalized_acc_name + repeat_to_at_least_length(' ', line_accounting_name_len)
-            line_content += 'SENSE' + repeat_to_at_least_length(' ', 15 - len('SENSE'))
-        else:
-            line_content += repeat_to_at_least_length(' ', 49)
-            
-        if len(line_content) != 320:
-            # print(line_content)
-            raise Exception(f"Line {line_content} has {len(line_content)} characters instead of 320")
-        
-        invoices_total = _as_float(iva_tax_total + iva_base_total) if has_iva else 0.00
-        invoices_total_str = f"{invoices_total:.6f}"
-        invoices_len = 16 - len(invoices_total_str)
-        line_content += repeat_to_at_least_length(' ', invoices_len)
-        line_content += invoices_total_str
-        
-        len_iva_value = 16
-        len_percentage = 5
-        for iva_value in iva_values:
-            # print(iva_value, iva_values[iva_value])
-            iva_entry = iva_values[iva_value]
-            iva_amount = float(iva_entry['base']) if has_iva else 0.00
-            iva = int(float(iva_value)) if iva_amount != 0 and has_iva else 0
-            iva_total = float(iva_entry['tax']) if iva != 0 and has_iva else 0.00
-            
-            iva_value_str = f"{iva_amount:.6f}"
-            iva_total_str = f"{iva_total:.6f}"
-            iva_extra_total_str = f"{empty_num_value:.6f}"
-            iva_str = f"{iva:.2f}"
-            iva_extra_str = f"{empty_num_value:.2f}"
-            
-            show_iva = (
-                iva_amount != 0
-                or (int(float(iva_value)) == 0 and iva_base_total != 0)
-            ) and has_iva
-            if show_iva:
-                line_content += '2' if int(float(iva_value)) == 0 else '1'
-            else:
-                line_content += ' '
-            line_content += repeat_to_at_least_length(' ', len_iva_value-len(iva_value_str))
-            line_content += iva_value_str
-            line_content += repeat_to_at_least_length(' ', len_percentage-len(iva_str))
-            line_content += iva_str
-            line_content += repeat_to_at_least_length(' ', len_percentage-len(iva_extra_str))
-            line_content += iva_extra_str
-            line_content += repeat_to_at_least_length(' ', len_iva_value-len(iva_total_str))
-            line_content += iva_total_str
-            line_content += repeat_to_at_least_length(' ', len_iva_value-len(iva_extra_total_str))
-            line_content += iva_extra_total_str
-        
-        
-        if len(line_content) != 572:
-            # print(line_content)
-            raise Exception(f"Line {line_content} has {len(line_content)} characters instead of 572")
-        
-        line_content += repeat_to_at_least_length(' ', 53)
-        for i in range(6):
-            empty_num_value_str = f"{empty_num_value:.6f}"
-            len_empty_num_value_str = 16 - len(empty_num_value_str)
-            line_content += repeat_to_at_least_length(' ', 8)
-            line_content += repeat_to_at_least_length(' ', len_empty_num_value_str)
-            line_content += empty_num_value_str
-        
-        if len(line_content) != 769:
-            #  print(line_content)
-            raise Exception(f"Line {line_content} has {len(line_content)} characters instead of 769")
-        
-        if has_iva:
-            len_main_account_code = 12 - len(main_account_code)
-            line_content += main_account_code + repeat_to_at_least_length(' ', len_main_account_code)
-            line_content += '002' #002 is EUR
-        else:
-            line_content += repeat_to_at_least_length(' ', 15)
-        
-        change_total = 1 #so far default value
-        change_total_str = f"{change_total:.6f}"
-        len_change_total_str = 12 - len(change_total_str)
-        line_content += repeat_to_at_least_length(' ', len_change_total_str)
-        line_content += change_total_str
-        if center_code:
-            len_iva_account_code = 6 - len(center_code)
-            line_content += repeat_to_at_least_length('0', len_iva_account_code) + center_code
-        else:
-            line_content += repeat_to_at_least_length(' ', 6)
-        
-        if len(line_content) != 802:
-            # print(line_content)
-            raise Exception(f"Line {line_content} has {len(line_content)} characters instead of 802")
-        
-        for j in range(8):
-            empty_num_value_str = f"{empty_num_value:.6f}"
-            len_empty_num_value_str = 16 - len(empty_num_value_str)
-            line_content += repeat_to_at_least_length(' ', len_empty_num_value_str)
-            line_content += empty_num_value_str
-        
-        if len(line_content) != 930:
-            # print(line_content)
-            raise Exception(f"Line {line_content} has {len(line_content)} characters instead of 930")
-        
-        line_content += repeat_to_at_least_length(' ', 33)
-        
-        change_total_str = f"{change_total:.6f}"
-        len_change_total_str = 12 - len(change_total_str)
-        line_content += repeat_to_at_least_length(' ', len_change_total_str)
-        line_content += change_total_str
-        
-        if len(line_content) != 975:
-            # print(line_content)
-            raise Exception(f"Line {line_content} has {len(line_content)} characters instead of 975")
-        
-        line_content += repeat_to_at_least_length(' ', 147)
-        
-        if len(line_content) != 1122:
-            # print(line_content)
-            raise Exception(f"Line {line_content} has {len(line_content)} characters instead of 1122")
-        
-        for k in range(12):
-            empty_num_value_str = f"{empty_num_value:.6f}"
-            len_empty_num_value_str = 16 - len(empty_num_value_str)
-            line_content += repeat_to_at_least_length(' ', len_empty_num_value_str)
-            line_content += empty_num_value_str
-        
-        line_content += repeat_to_at_least_length(' ', 105)
-        line_content += ' 0'*3
-        
-        if len(line_content) != 1425:
-            # print(line_content)
-            raise Exception(f"Line {line_content} has {len(line_content)} characters instead of 1425")
-        
-        ###################
-
-        line_content = remove_accents(line_content.upper())
-        remaining = max_characters - len(line_content)
-        line_content += repeat_to_at_least_length(' ', remaining)
-
-        content_file.write((line_content + "\n").encode("utf-8"))
-
-    for line in content_file.getvalue().splitlines():
-        if len(line) != max_characters:
-            raise Exception(f"Line {line} has {len(line)} characters instead of {max_characters}")
-
-    return content_file
-
-
-def repeat_to_at_least_length(s, wanted):
-    if wanted >= 0:
-        return s * (wanted // len(s))
-    return ''
+    if document_format == 'csv':
+        return generate_accounting_csv(lines, date, accounting_config), 'csv'
+    return generate_accounting_xml(lines, date, accounting_config), 'xml'
 
 
 def _merge_related_ids(incoming_ids, related_manager):
@@ -3396,9 +3196,12 @@ def bulk_save_accounting_pricing(data, user):
                 cost_center_id = item.get('cost_center', None)
                 group_values = item.get('group_values', True)
                 separate_by_type = item.get('separate_by_type', True)
+                separate_by_sign = bool(item.get('separate_by_sign', False))
                 separate_by_origin = bool(item.get('separate_by_origin', False))
                 if category != 'invoice' or not group_values:
                     separate_by_origin = False
+                if category != 'payment' or not group_values:
+                    separate_by_sign = False
                 
                 product_ids = item.get('products', [])
                 price_rate_ids = item.get('price_rates', [])
@@ -3549,6 +3352,8 @@ def bulk_save_accounting_pricing(data, user):
                         )
                         accounting_pricing_saved.payment_origin = payment_origin
                         accounting_pricing_saved.separate_by_payment_origin = separate_by_payment_origin
+                        accounting_pricing_saved.separate_by_sign = separate_by_sign
+                        accounting_pricing_saved.separate_by_type = separate_by_type
                         bank_ids = _merge_related_ids(bank_ids, accounting_pricing_saved.banks)
                         origin_ids = _merge_related_ids(origin_ids, accounting_pricing_saved.origins)
                         contract_type_ids = _merge_related_ids(contract_type_ids, accounting_pricing_saved.contract_types)
@@ -3594,6 +3399,7 @@ def bulk_save_accounting_pricing(data, user):
                             foreign_iban=foreign_iban,
                             grouped_lines=group_values,
                             separate_by_type=separate_by_type,
+                            separate_by_sign=separate_by_sign,
                             separate_by_origin=separate_by_origin,
                             payment_origin=payment_origin,
                             separate_by_payment_origin=separate_by_payment_origin,
@@ -3643,6 +3449,7 @@ def bulk_save_accounting_pricing(data, user):
                     accounting_pricing_saved.foreign_iban = foreign_iban
                     accounting_pricing_saved.grouped_lines = group_values
                     accounting_pricing_saved.separate_by_type = separate_by_type
+                    accounting_pricing_saved.separate_by_sign = separate_by_sign
                     accounting_pricing_saved.separate_by_origin = separate_by_origin
                     accounting_pricing_saved.payment_origin = payment_origin
                     accounting_pricing_saved.separate_by_payment_origin = separate_by_payment_origin

@@ -599,9 +599,16 @@ paths:
                         status:
                           token: "0"
                           name: Cobrada
+                        payment_type: CASH
                         pdf_available: true
                         is_holder: true
                         is_payer: true
+                        is_returned: false
+                        last_return:
+                          date: "2026-03-10"
+                          reason:
+                            code: AM04
+                            name: Fondos insuficientes
                   - contract_number: null
                     contract_status: null
                     supply_address: null
@@ -615,9 +622,12 @@ paths:
                         status:
                           token: "3"
                           name: Enviada
+                        payment_type: DIRECT_DEBIT
                         pdf_available: true
                         is_holder: true
                         is_payer: true
+                        is_returned: false
+                        last_return: null
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -638,6 +648,11 @@ paths:
         posterior a hoy.
 
         El importe devuelto en `invoice_amount` corresponde al pendiente de pago (`left_to_pay`).
+
+        `is_returned` y `last_return` indican si el banco ha devuelto el recibo
+        domiciliado de la factura. No existe un estado de factura «devuelta»:
+        tras la devolución, la factura queda `Confirmada` o `Vencida` (ver
+        `InvoiceIsReturned`).
 
         `404` si el `contract_token` no corresponde a ningún contrato.
       operationId: listInvoices
@@ -660,11 +675,18 @@ paths:
                   invoice_token: INV-001
                   invoice_date: "2026-01-15"
                   invoice_amount: 45.50
-                  invoice_status: Enviada
+                  invoice_status: Vencida
                   status:
-                    token: "3"
-                    name: Enviada
+                    token: "-1"
+                    name: Vencida
+                  payment_type: DIRECT_DEBIT
                   pdf_available: true
+                  is_returned: true
+                  last_return:
+                    date: "2026-02-10"
+                    reason:
+                      code: AM04
+                      name: Fondos insuficientes
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -790,7 +812,10 @@ paths:
                 status:
                   token: "3"
                   name: Enviada
+                payment_type: DIRECT_DEBIT
                 pdf_available: true
+                is_returned: false
+                last_return: null
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -846,7 +871,10 @@ paths:
                 total_amount: 48.19
                 subtotal_amount: 45.50
                 payment_method: Domiciliació Bancària - SEPA
+                payment_type: DIRECT_DEBIT
                 pdf_available: true
+                is_returned: false
+                last_return: null
                 billing_period:
                   year: 2026
                   month: 3
@@ -859,6 +887,10 @@ paths:
                   city: Barcelona
                   province: Barcelona
                   country: España
+                direct_debit_account:
+                  iban: "ES912100********00051332"
+                  nombre: Maria Garcia
+                  dni: "***4567**"
                 tariffs:
                   - name: Subministrament d'aigua
                     description: Canalización y consumo de agua
@@ -901,6 +933,12 @@ paths:
         por TPV online. Solo aplica a facturas de tipo factura (no presupuestos).
 
         Los pagos se actualizan con tipo de pago `TPV_ONLINE` y fecha de pago actual.
+        También se aceptan facturas domiciliadas con recibos pendientes o devueltos.
+
+        Si algún recibo no cobrado está en una remesa pendiente de enviar, responde
+        `409` (`reason: pending_remittance`) y no cambia nada: lo cobrará el banco.
+        Si la factura ya estaba pagada responde `200` igualmente, con
+        `already_paid: true`.
       operationId: markInvoicePaid
       security:
         - tokenAuth: []
@@ -925,6 +963,7 @@ paths:
                 message: Invoice marked as paid successfully
                 invoice_token: INV-001
                 new_status: Pagada
+                already_paid: false
         "400":
           description: Datos inválidos o factura no encontrada
           content:
@@ -935,6 +974,15 @@ paths:
                   - $ref: "#/components/schemas/ErrorMessage"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: Algún recibo no cobrado está en una remesa pendiente de enviar
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PendingRemittanceConflict"
+              example:
+                error: Invoice has a receipt in a pending remittance and will be collected by direct debit.
+                reason: pending_remittance
 
   /ov/invoice/quick-pay/:
     post:
@@ -957,7 +1005,8 @@ paths:
         irrecuperable o importe pendiente cero), se devuelve `409` con el estado
         actual. También se devuelve `409` si falta la configuración
         `invoice_status_paid_token` o no existe ningún `Payment` para confirmar
-        el cobro mediante `POST /ov/invoice/paid/`.
+        el cobro mediante `POST /ov/invoice/paid/`, y si algún recibo no cobrado
+        está en una remesa pendiente de enviar (`reason: pending_remittance`).
       operationId: quickPayInvoice
       security:
         - tokenAuth: []
@@ -1014,12 +1063,24 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/QuickPayNotPayableResponse"
-              example:
-                error: Invoice is not payable
-                status:
-                  token: "0"
-                  name: Pagada
-                left_to_pay: 101.73
+              examples:
+                notPayable:
+                  summary: Factura no pagable
+                  value:
+                    error: Invoice is not payable
+                    status:
+                      token: "0"
+                      name: Pagada
+                    left_to_pay: 101.73
+                pendingRemittance:
+                  summary: Recibo en una remesa pendiente de enviar
+                  value:
+                    error: Invoice has a receipt in a pending remittance and will be collected by direct debit.
+                    reason: pending_remittance
+                    status:
+                      token: "3"
+                      name: Enviada
+                    left_to_pay: 101.73
         "429":
           $ref: "#/components/responses/TooManyRequests"
 
@@ -2924,8 +2985,8 @@ paths:
         defecte `BANK_TRANSFER` no está en la base de datos.
 
         Operación **idempotente**: si el contrato ya tiene el tipo de pago
-        objetivo no se escribe nada (ni cambio de tipo, ni `ContractLog`, ni
-        `ContractObservation`) y se responde `200` con
+        objetivo no se cambia el contrato (ni cambio de tipo, ni `ContractLog`)
+        y se responde `200` con
         `message: "Direct debit already cancelled."`.
 
         Cuando sí hay cambio, se actualiza `contract.payment.type` y se
@@ -2933,6 +2994,16 @@ paths:
         `payment_type`, con el token anterior y el nuevo) y una
         `ContractObservation` con el `period` y el `role` solicitados, todo
         dentro de una transacción.
+
+        En los dos casos, las facturas emitidas del contrato que aún se iban a
+        cobrar por domiciliación (activas, confirmadas, enviadas o vencidas,
+        importe positivo, con algún recibo pendiente o devuelto y sin ningún
+        recibo en una remesa pendiente de enviar) pasan al nuevo tipo de pago
+        sin cuenta, sea cual sea su periodo. Los abonos no se tocan. El cambio
+        queda en el historial de cada factura y en una `ContractObservation`
+        con el número de facturas. Sus tokens se devuelven en
+        `updated_invoices`. Si el nuevo tipo es `DIRECT_DEBIT` no se cambia
+        ninguna factura.
       operationId: cancelDirectDebit
       security:
         - tokenAuth: []
@@ -2952,7 +3023,7 @@ paths:
         "200":
           description: |
             Cancelación aplicada (cambio de tipo de pago + auditoría) o bien
-            ya estaba cancelada (respuesta idempotente, sin escrituras).
+            ya estaba cancelada (respuesta idempotente, sin cambiar el contrato).
           content:
             application/json:
               schema:
@@ -2964,12 +3035,15 @@ paths:
                     contract_token: CTR-001
                     success: true
                     message: Direct debit cancelled successfully.
+                    updated_invoices:
+                      - INV-001
                 alreadyCancelled:
-                  summary: Ya estaba cancelada (idempotente, sin escrituras)
+                  summary: Ya estaba cancelada (idempotente, sin cambiar el contrato)
                   value:
                     contract_token: CTR-001
                     success: true
                     message: Direct debit already cancelled.
+                    updated_invoices: []
         "400":
           description: |
             Faltan campos (formato Django REST Framework), el contrato no
@@ -3980,6 +4054,15 @@ components:
             name:
               type: string
               nullable: true
+        payment_type:
+          type: string
+          nullable: true
+          description: |
+            Token de la forma de pago de la factura (`payment_type_token_final`),
+            el mismo que devuelve `/ov/dictionary/payment-types/`. Es `null` si el
+            token de la factura no corresponde a ninguna forma de pago del
+            diccionario.
+          example: DIRECT_DEBIT
         pdf_available:
           type: boolean
           description: Indica si el PDF está disponible según la configuración `ov_pdf_from`
@@ -3991,6 +4074,10 @@ components:
           description: |
             La persona es la pagadora guardada en la factura (o la titular, si
             la factura no tiene pagador)
+        is_returned:
+          $ref: "#/components/schemas/InvoiceIsReturned"
+        last_return:
+          $ref: "#/components/schemas/InvoiceLastReturn"
     InvoiceSummary:
       type: object
       properties:
@@ -4033,9 +4120,70 @@ components:
           example:
             token: "3"
             name: Enviada
+        payment_type:
+          type: string
+          nullable: true
+          description: |
+            Token de la forma de pago de la factura (`payment_type_token_final`),
+            el mismo que devuelve `/ov/dictionary/payment-types/` (por ejemplo
+            `DIRECT_DEBIT`, `CASH`, `BANK_TRANSFER`). Es `null` si el token de la
+            factura no corresponde a ninguna forma de pago del diccionario.
+          example: DIRECT_DEBIT
         pdf_available:
           type: boolean
           description: Indica si el PDF está disponible según la configuración `ov_pdf_from`
+        is_returned:
+          $ref: "#/components/schemas/InvoiceIsReturned"
+        last_return:
+          $ref: "#/components/schemas/InvoiceLastReturn"
+
+    InvoiceIsReturned:
+      type: boolean
+      description: |
+        `true` mientras algún recibo activo de la factura siga devuelto por el
+        banco (estado de recibo `payment_status_returned_token`). Vuelve a
+        `false` cuando el recibo deja de estar devuelto (por ejemplo, cuando
+        se vuelve a cobrar). Es el mismo
+        criterio por el que `POST /ov/invoice/return-request/` responde `409`.
+
+        La factura no tiene un estado «devuelta»: cuando el banco devuelve el
+        recibo domiciliado, la factura vuelve a `Confirmada` (token `2`) si aún
+        no ha vencido o a `Vencida` (token `-1`) si ya ha vencido, y pasa a
+        `Vencida` al llegar el vencimiento. La forma de pago no cambia, salvo
+        en las devoluciones por cuenta no válida, en las que la factura pasa a
+        pago bancario.
+      example: true
+    InvoiceLastReturn:
+      type: object
+      nullable: true
+      description: |
+        Última devolución bancaria de un recibo activo de la factura, aunque
+        después se haya vuelto a cobrar (en ese caso `is_returned` es `false`).
+        `null` si la factura no ha tenido ninguna devolución.
+      properties:
+        date:
+          type: string
+          format: date
+          nullable: true
+          description: Fecha de la devolución
+        reason:
+          type: object
+          nullable: true
+          description: |
+            Motivo de la devolución; `null` si no consta. `code` es el código
+            del motivo (en las devoluciones SEPA, el código ISO, p. ej. `AM04`).
+          properties:
+            code:
+              type: string
+              nullable: true
+            name:
+              type: string
+              nullable: true
+      example:
+        date: "2026-02-10"
+        reason:
+          code: AM04
+          name: Fondos insuficientes
 
     InvoicePaidRequest:
       type: object
@@ -4061,6 +4209,22 @@ components:
           type: string
           nullable: true
           description: Nombre del nuevo estado de la factura
+        already_paid:
+          type: boolean
+          description: La factura ya estaba pagada antes de la llamada (no se ha cambiado nada)
+
+    PendingRemittanceConflict:
+      type: object
+      required:
+        - error
+        - reason
+      properties:
+        error:
+          type: string
+        reason:
+          type: string
+          enum:
+            - pending_remittance
 
     QuickPayRequest:
       type: object
@@ -4152,6 +4316,11 @@ components:
           format: double
           nullable: true
           description: Importe pendiente de pago en el momento de la consulta
+        reason:
+          type: string
+          enum:
+            - pending_remittance
+          description: Solo si algún recibo está en una remesa pendiente de enviar
 
     ReturnRequest:
       type: object
@@ -5186,10 +5355,24 @@ components:
         payment_method:
           type: string
           nullable: true
-          description: Método de pago (`payment_type_final`)
+          description: Nombre del método de pago (`payment_type_final`)
+        payment_type:
+          type: string
+          nullable: true
+          description: |
+            Token de la forma de pago de la factura (`payment_type_token_final`),
+            el mismo que devuelve `/ov/dictionary/payment-types/` (por ejemplo
+            `DIRECT_DEBIT`, `CASH`, `BANK_TRANSFER`). Es `null` si el token de la
+            factura no corresponde a ninguna forma de pago del diccionario.
+            `payment_method` (nombre) se mantiene por compatibilidad.
+          example: DIRECT_DEBIT
         pdf_available:
           type: boolean
           description: Indica si el PDF está disponible según la configuración `ov_pdf_from`
+        is_returned:
+          $ref: "#/components/schemas/InvoiceIsReturned"
+        last_return:
+          $ref: "#/components/schemas/InvoiceLastReturn"
         billing_period:
           type: object
           description: Periodo de facturación de la factura
@@ -5233,6 +5416,39 @@ components:
               type: string
               nullable: true
               description: Dirección de la calle; solo se expone cuando `is_anonymized` es `false`
+        direct_debit_account:
+          type: object
+          nullable: true
+          description: |
+            Cuenta de cobro de **esa** factura (no la cuenta actual del contrato, que puede
+            haber cambiado después). Siempre presente; es `null` si la factura no está
+            domiciliada o no tiene IBAN.
+
+            El titular (`nombre`, `dni`) sale del pagador de la factura (`payer_final` /
+            `payer_token_final`) o, si no lo tiene (facturas migradas), de la cuenta bancaria
+            de persona con el mismo IBAN (sin espacios y en mayúsculas): primero la cuenta
+            actual del contrato si coincide, después la del titular del contrato o de la
+            persona de la factura y, si solo hay un NIF posible, ese. Si no se puede resolver
+            sin ambigüedad, `nombre` y `dni` son `null`.
+
+            El `dni` se **enmascara** (criterio AEPD: 4 cifras centrales visibles, misma
+            longitud; menos de 9 caracteres, todo asteriscos) cuando el NIF del titular de la
+            cuenta es distinto del de la persona de la factura (`customer_token_final`), es
+            decir, cuando paga un tercero. El nombre siempre se muestra.
+          properties:
+            iban:
+              type: string
+              description: IBAN enmascarado (8 primeros + asteriscos + 8 últimos)
+              example: "ES912100********00051332"
+            nombre:
+              type: string
+              nullable: true
+              description: Nombre del titular de la cuenta
+            dni:
+              type: string
+              nullable: true
+              description: NIF del titular de la cuenta; enmascarado si es un tercero
+              example: "***4567**"
         tariffs:
           type: array
           description: Tarifas aplicadas en la factura (líneas de factura)
@@ -5542,8 +5758,17 @@ components:
             `Direct debit cancelled successfully.` cuando se ha aplicado el
             cambio; `Direct debit already cancelled.` cuando el contrato ya
             tenía el tipo de pago objetivo (respuesta idempotente, sin
-            escrituras).
+            cambiar el contrato).
           example: Direct debit cancelled successfully.
+        updated_invoices:
+          type: array
+          items:
+            type: string
+          description: |
+            Tokens de las facturas domiciliadas pendientes o devueltas que han
+            pasado al nuevo tipo de pago (vacío si no había ninguna).
+          example:
+            - INV-001
 
     ContractRequestTypeItem:
       type: object

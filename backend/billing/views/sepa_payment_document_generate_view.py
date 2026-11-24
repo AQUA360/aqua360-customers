@@ -25,7 +25,7 @@ from billing.utils.sepa_file_service import (
     save_concept_fields, SEPA_CONCEPT_FIELDS,
 )
 from billing.utils.remittance_bank_check import get_company_banks_issues
-from coredata.models import Bank, ConfigProject
+from coredata.models import Bank, ConfigProject, Person
 from coredata.utils.iban_validator_utils import validate_iban
 from coredata.utils.validators_utils import validate_nif
 from documentmanager.utils.main_utils import upload_document
@@ -724,6 +724,7 @@ class SEPAPaymentDocumentGenerateViewSet(APIView):
             })
 
         bank_issues = get_company_banks_issues(company_banks.values()) if is_return else []
+        insolvent_holders, total_insolvent = get_insolvent_holders(payments)
 
         response_data = {
             "total_invoices": len(payments),
@@ -734,9 +735,45 @@ class SEPAPaymentDocumentGenerateViewSet(APIView):
             "banks": banks_summary,
             "routing_warnings": routing_warnings,
             "bank_issues": bank_issues,
+            # Avís (no exclou res): rebuts de persones amb l'anomalia «Insolvent» vigent
+            "insolvent_holders": insolvent_holders,
+            "total_insolvent": total_insolvent,
         }
 
         return JsonResponse(response_data)
+
+
+def get_insolvent_holders(payments):
+    """Persones insolvents dels rebuts no exclosos de la remesa i quants rebuts en tenen."""
+    from billing.utils.insolvency_service import current_insolvent_anomalies
+    if not hasattr(payments, 'filter'):
+        return [], 0
+    rows = payments.filter(is_excluded=False).values_list(
+        'id', 'invoice__person_id', 'invoice__contract__holder_id', 'contract__holder_id',
+        'commitment_deposit__contract__holder_id',
+    )
+    payment_persons = {row[0]: {person_id for person_id in row[1:] if person_id} for row in rows}
+    all_person_ids = set().union(*payment_persons.values()) if payment_persons else set()
+    if not all_person_ids:
+        return [], 0
+    insolvent_ids = set(
+        current_insolvent_anomalies().filter(person_id__in=all_person_ids).values_list('person_id', flat=True)
+    )
+    if not insolvent_ids:
+        return [], 0
+    counts = {}
+    total = 0
+    for person_ids in payment_persons.values():
+        hit = person_ids & insolvent_ids
+        if hit:
+            total += 1
+            for person_id in hit:
+                counts[person_id] = counts.get(person_id, 0) + 1
+    persons = Person.objects.filter(id__in=insolvent_ids).order_by('token')
+    return [
+        {"id": person.id, "token": person.token, "name": str(person).strip(), "payments": counts.get(person.id, 0)}
+        for person in persons
+    ], total
 
 
 

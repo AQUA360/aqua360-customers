@@ -3,7 +3,7 @@
 // - Mode normal: una etiqueta per anomalia (fitxa de la persona).
 // - Mode compacte: només una icona d'avís; el detall surt en passar-hi el ratolí o en clicar-la
 //   (regió del contracte, on l'espai és just).
-import { ref, onBeforeUnmount } from 'vue';
+import { ref, computed, onBeforeUnmount } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { formatDate } from '~/utils/date';
 
@@ -14,6 +14,10 @@ const props = defineProps({
 });
 
 const { t, te } = useI18n();
+
+// La insolvència es marca en vermell; la resta d'anomalies, en ambre
+const INSOLVENT_TOKEN = 'insolvent';
+const isInsolvent = computed(() => (props.anomalies || []).some((anomaly) => anomaly.token === INSOLVENT_TOKEN));
 
 const label = (anomaly) => {
   const key = `person_anomaly.types.${anomaly.token}`;
@@ -87,18 +91,20 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocumentClick));
   <span v-if="props.anomalies?.length && props.compact" ref="trigger" class="inline-flex items-center"
     @mouseenter="show" @mouseleave="hide">
     <button type="button" @click.stop="toggle" :aria-label="t('person_anomaly.current_anomalies')"
-      class="inline-flex items-center gap-0.5 text-amber-500 hover:text-amber-600">
+      class="inline-flex items-center gap-0.5"
+      :class="isInsolvent ? 'text-red-600 hover:text-red-700' : 'text-amber-500 hover:text-amber-600'">
       <Icon name="fa6-solid:triangle-exclamation" />
       <span v-if="props.anomalies.length > 1" class="text-[11px] font-semibold leading-none">
         {{ props.anomalies.length }}
       </span>
     </button>
     <Teleport to="body">
-      <div v-if="open" class="fixed z-[60] w-72 rounded-md border border-amber-300 bg-white shadow-lg p-3 text-sm overflow-y-auto"
+      <div v-if="open" class="fixed z-[60] w-72 rounded-md border bg-white shadow-lg p-3 text-sm overflow-y-auto"
         :style="{ top: `${position.top}px`, left: `${position.left}px`, maxHeight: `${position.maxHeight}px`,
           transform: position.openUp ? 'translateY(-100%)' : null }"
+        :class="isInsolvent ? 'border-red-300' : 'border-amber-300'"
         @click.stop @mouseenter="open = true" @mouseleave="hide">
-        <p class="font-semibold text-amber-800 mb-2 flex items-center gap-2">
+        <p class="font-semibold mb-2 flex items-center gap-2" :class="isInsolvent ? 'text-red-700' : 'text-amber-800'">
           <Icon name="fa6-solid:triangle-exclamation" />
           {{ t('person_anomaly.current_anomalies') }}
         </p>
@@ -122,8 +128,9 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocumentClick));
 
   <span v-else-if="props.anomalies?.length" class="inline-flex flex-wrap items-center gap-1">
     <span v-for="anomaly in props.anomalies" :key="anomaly.id" :title="title(anomaly)"
-      class="badge-amber inline-flex items-center gap-1 rounded whitespace-nowrap"
-      :class="props.small ? 'px-1.5 py-0 text-xs' : 'px-2 py-0.5 text-sm'">
+      class="inline-flex items-center gap-1 rounded whitespace-nowrap"
+      :class="[anomaly.token === INSOLVENT_TOKEN ? 'badge-red' : 'badge-amber',
+        props.small ? 'px-1.5 py-0 text-xs' : 'px-2 py-0.5 text-sm']">
       <Icon name="fa6-solid:triangle-exclamation" />
       {{ label(anomaly) }}
     </span>

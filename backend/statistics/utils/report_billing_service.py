@@ -39,6 +39,7 @@ from statistics.utils.dated_use_type import annotate_dated_use_type
 from statistics.utils.report_progress import report_progress
 from statistics.utils.aca_declaration_service import aca_declaration_selection
 import logging
+from coredata.utils.workbook_utils import workbook_to_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -466,18 +467,16 @@ def get_report_billing_summary(request, black_fill, white_bold_font, task=None):
             
         filename = f"billing_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
         
-        wb.save(filename)
+        xlsx_content = workbook_to_bytes(wb)
 
         # Send the file as a response
-        with open(filename, "rb") as f:
-            response = HttpResponse(f.read(), content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-            response["Content-Disposition"] = f"attachment; filename={filename}"
+        response = HttpResponse(xlsx_content, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        response["Content-Disposition"] = f"attachment; filename={filename}"
         
         
         document_id = save_report(content=wb, filename=filename, name=name, type_id=type_id, start_date=start_date, end_date=end_date)
         print("report saved")
         
-        os.remove(filename)
         return response, document_id, None
     except Exception as e:
         logger.exception("Error inesperat")
@@ -1245,17 +1244,15 @@ def generate_aca_summary_report(request, black_fill=None, white_bold_font=None, 
             
         filename = f"billing_aca_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
         
-        wb.save(filename)
+        xlsx_content = workbook_to_bytes(wb)
 
         # Send the file as a response
-        with open(filename, "rb") as f:
-            response = HttpResponse(f.read(), content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-            response["Content-Disposition"] = f"attachment; filename={filename}"
+        response = HttpResponse(xlsx_content, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        response["Content-Disposition"] = f"attachment; filename={filename}"
         
         print("saving report")
         document_id = save_report(content=wb, filename=filename, name=name, type_id=type_id, start_date=start_date, end_date=end_date)
         print("got document id", document_id)
-        os.remove(filename)
         return response, document_id, None
     except ACACompanyError as e:
         return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST), None, None
@@ -1921,17 +1918,15 @@ def generate_detailed_billing_summary(request, black_fill=None, white_bold_font=
         
         filename = f"billing_detailed_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
         
-        wb.save(filename)
+        xlsx_content = workbook_to_bytes(wb)
 
         # Send the file as a response
-        with open(filename, "rb") as f:
-            response = HttpResponse(f.read(), content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-            response["Content-Disposition"] = f"attachment; filename={filename}"
+        response = HttpResponse(xlsx_content, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        response["Content-Disposition"] = f"attachment; filename={filename}"
         
         
         document_id = save_report(content=wb, filename=filename, name=name, type_id=type_id, start_date=start_date, end_date=end_date)
         
-        os.remove(filename)
         return response, document_id, None
     except Exception as e:
         logger.exception("Error inesperat")
@@ -2127,18 +2122,16 @@ def generate_billing_summary_by_supply_type(request, black_fill=None, white_bold
         
         filename = f"billing_by_supply_type_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
         
-        wb.save(filename)
+        xlsx_content = workbook_to_bytes(wb)
 
         # Send the file as a response
-        with open(filename, "rb") as f:
-            response = HttpResponse(f.read(), content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-            response["Content-Disposition"] = f"attachment; filename={filename}"
+        response = HttpResponse(xlsx_content, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        response["Content-Disposition"] = f"attachment; filename={filename}"
         
         
         document_id = save_report(content=wb, filename=filename, name=name, type_id=type_id, start_date=start_date, end_date=end_date)
         print("report saved")
         
-        os.remove(filename)
         return response, document_id, None
     except Exception as e:
         logger.exception("Error inesperat")
@@ -2245,17 +2238,15 @@ def generate_billing_summary_by_rates(request, black_fill=None, white_bold_font=
                 adjust_column_widths(sheet)
 
         filename = f"billing_by_rates_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-        wb.save(filename)
+        xlsx_content = workbook_to_bytes(wb)
 
-        with open(filename, "rb") as f:
-            response = HttpResponse(f.read(), content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-            response["Content-Disposition"] = f"attachment; filename={filename}"
+        response = HttpResponse(xlsx_content, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        response["Content-Disposition"] = f"attachment; filename={filename}"
         
         
         document_id = save_report(content=wb, filename=filename, name=name, type_id=type_id, start_date=start_date, end_date=end_date)
         print("report saved")
         
-        os.remove(filename)
         return response, document_id, None
     except Exception as e:
         logger.exception("Error inesperat")
@@ -2488,17 +2479,15 @@ def generate_billing_taxes_summary(request, black_fill=None, white_bold_font=Non
         
         filename = f"billing_taxes_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
         
-        wb.save(filename)
+        xlsx_content = workbook_to_bytes(wb)
 
         # Send the file as a response
-        with open(filename, "rb") as f:
-            response = HttpResponse(f.read(), content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-            response["Content-Disposition"] = f"attachment; filename={filename}"
+        response = HttpResponse(xlsx_content, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        response["Content-Disposition"] = f"attachment; filename={filename}"
         
         
         document_id = save_report(content=wb, filename=filename, name=title_name, type_id=type_id, start_date=start_date, end_date=end_date)
         
-        os.remove(filename)
         return response, document_id, None
     except Exception as e:
         logger.exception("Error inesperat")
@@ -2888,18 +2877,16 @@ def generate_billing_taxes_detailed_summary(request, black_fill=None, white_bold
 
         filename = f"billing_taxes_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
         
-        wb.save(filename)
+        xlsx_content = workbook_to_bytes(wb)
 
         # Send the file as a response
-        with open(filename, "rb") as f:
-            response = HttpResponse(f.read(), content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-            response["Content-Disposition"] = f"attachment; filename={filename}"
+        response = HttpResponse(xlsx_content, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        response["Content-Disposition"] = f"attachment; filename={filename}"
         
         
         document_id = save_report(content=wb, filename=filename, name=title_name, type_id=type_id, start_date=start_date, end_date=end_date)
         print("report saved")
         
-        os.remove(filename)
         return response, document_id, None
     except Exception as e:
         logger.exception("Error inesperat")
@@ -3106,16 +3093,14 @@ def generate_billing_detailed_consumption_summary(request, black_fill=None, whit
         
         filename = f"billing_detailed_consumption_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
         
-        wb.save(filename)
+        xlsx_content = workbook_to_bytes(wb)
 
         # Send the file as a response
-        with open(filename, "rb") as f:
-            response = HttpResponse(f.read(), content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-            response["Content-Disposition"] = f"attachment; filename={filename}"
+        response = HttpResponse(xlsx_content, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        response["Content-Disposition"] = f"attachment; filename={filename}"
         
         document_id = save_report(content=wb, filename=filename, name=title_name, type_id=type_id, start_date=start_date, end_date=end_date)
         
-        os.remove(filename)
         return response, document_id, None
     except Exception as e:
         logger.exception("Error inesperat")
@@ -3272,16 +3257,14 @@ def generate_report_billing_total_by_person(request, black_fill=None, white_bold
         
         filename = f"billing_detailed_consumption_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
         
-        wb.save(filename)
+        xlsx_content = workbook_to_bytes(wb)
 
         # Send the file as a response
-        with open(filename, "rb") as f:
-            response = HttpResponse(f.read(), content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-            response["Content-Disposition"] = f"attachment; filename={filename}"
+        response = HttpResponse(xlsx_content, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        response["Content-Disposition"] = f"attachment; filename={filename}"
         
         document_id = save_report(content=wb, filename=filename, name=title_name, type_id=type_id, start_date=start_date, end_date=end_date)
         
-        os.remove(filename)
         return response, document_id, None
     except Exception as e:
         logger.exception("Error inesperat")
@@ -3438,18 +3421,17 @@ def generate_report_billing_347(request, black_fill=None, white_bold_font=None, 
             adjust_column_widths(sheet)
 
         filename = f"report_billing_347_{year}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-        wb.save(filename)
+        xlsx_content = workbook_to_bytes(wb)
 
 
         print("filename: ", filename)
 
         response = None
-        with open(filename, "rb") as f:
-            response = HttpResponse(
-                f.read(),
-                content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            )
-            response["Content-Disposition"] = f"attachment; filename={filename}"
+        response = HttpResponse(
+            xlsx_content,
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        response["Content-Disposition"] = f"attachment; filename={filename}"
 
         document_id = save_report(
             content=wb,
@@ -3460,7 +3442,6 @@ def generate_report_billing_347(request, black_fill=None, white_bold_font=None, 
             end_date=end_date,
         )
 
-        os.remove(filename)
         return response, document_id, filename
     except Exception as e:
         logger.exception("Error inesperat")
@@ -3943,13 +3924,12 @@ def generate_cobraments_report(request, black_fill=None, white_bold_font=None, t
     adjust_column_widths(ws)
     
     filename = f"informe_cobraments_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-    wb.save(filename)
+    xlsx_content = workbook_to_bytes(wb)
 
     # Convert Workbook to Response and Save as Document
-    with open(filename, "rb") as f:
-        content = f.read()
-        response = HttpResponse(content, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-        response["Content-Disposition"] = f"attachment; filename={filename}"
+    content = xlsx_content
+    response = HttpResponse(content, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    response["Content-Disposition"] = f"attachment; filename={filename}"
 
     document_id = save_report(
         content=wb,
@@ -3960,8 +3940,6 @@ def generate_cobraments_report(request, black_fill=None, white_bold_font=None, t
         end_date=end_date,
     )
     
-    if os.path.exists(filename):
-        os.remove(filename)
         
     return response, document_id, filename
 
@@ -4429,11 +4407,10 @@ def generate_recaptacio_conceptes_excel(request, black_fill=None, white_bold_fon
         adjust_column_widths(ws_company)
         
         filename = f"{_('collection_by_concepts')}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-        wb.save(filename)
+        xlsx_content = workbook_to_bytes(wb)
 
-        with open(filename, "rb") as f:
-            response = HttpResponse(f.read(), content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-            response["Content-Disposition"] = f"attachment; filename={filename}"
+        response = HttpResponse(xlsx_content, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        response["Content-Disposition"] = f"attachment; filename={filename}"
 
         document_id = save_report(
             content=wb,
@@ -4443,7 +4420,6 @@ def generate_recaptacio_conceptes_excel(request, black_fill=None, white_bold_fon
             start_date=start_date,
             end_date=end_date,
         )
-        os.remove(filename)
         return response, document_id, filename
 
     except Exception as e:
@@ -4710,11 +4686,10 @@ def generate_clavegueram_invoices_excel(request, black_fill=None, white_bold_fon
         adjust_column_widths(ws_detail)
 
         filename = f"informe_clavegueram_factures_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-        wb.save(filename)
+        xlsx_content = workbook_to_bytes(wb)
 
-        with open(filename, "rb") as f:
-            response = HttpResponse(f.read(), content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-            response["Content-Disposition"] = f"attachment; filename={filename}"
+        response = HttpResponse(xlsx_content, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        response["Content-Disposition"] = f"attachment; filename={filename}"
 
         document_id = save_report(
             content=wb,
@@ -4724,7 +4699,6 @@ def generate_clavegueram_invoices_excel(request, black_fill=None, white_bold_fon
             start_date=start_date,
             end_date=end_date,
         )
-        os.remove(filename)
         return response, document_id, filename
 
     except Exception as e:
@@ -4846,11 +4820,10 @@ def generate_no_register_aca_contracts_report(request, black_fill=None, white_bo
         adjust_column_widths(sheet)
 
         filename = f"informe_facturacio_sense_aca_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-        wb.save(filename)
+        xlsx_content = workbook_to_bytes(wb)
 
-        with open(filename, "rb") as f:
-            response = HttpResponse(f.read(), content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-            response["Content-Disposition"] = f"attachment; filename={filename}"
+        response = HttpResponse(xlsx_content, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        response["Content-Disposition"] = f"attachment; filename={filename}"
 
         document_id = save_report(
             content=wb,
@@ -4860,7 +4833,6 @@ def generate_no_register_aca_contracts_report(request, black_fill=None, white_bo
             start_date=start_date,
             end_date=end_date,
         )
-        os.remove(filename)
         return response, document_id, filename
 
     except Exception as e:

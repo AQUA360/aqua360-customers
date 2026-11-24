@@ -5181,3 +5181,11 @@ msgstr "Á conta {account} de {company} fáltalle: {fields}. Complételo nos dat
 #: billing/views/sepa_payment_document_generate_view.py
 msgid "The bank accounts selected for the remittance are not valid. Search again and check them."
 msgstr "As contas seleccionadas para a remesa non son válidas. Volva buscar e revíseas."
+
+#: claimrequest/views/claim_request_excel_generate_view.py
+msgid "Carrer"
+msgstr "Rúa"
+
+#: claimrequest/views/claim_request_excel_generate_view.py
+msgid "Pis-porta"
+msgstr "Andar-porta"

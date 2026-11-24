@@ -718,9 +718,9 @@ def send_electronic_mail(comm):
   # comunicació: el document es continua generant i arxivant al documentmanager.
   files = []
   if comm.always_attach:
-    files = comm.files.all().filter(file__is_active=True, attach_to_email=True)
+    files = comm.files.all().filter(is_active=True, file__is_active=True, attach_to_email=True)
   else:
-    files = comm.files.all().filter(file__is_active=True, is_letter=False, attach_to_email=True)
+    files = comm.files.all().filter(is_active=True, file__is_active=True, is_letter=False, attach_to_email=True)
 
   file_ids = [file.file.id for file in files]
   document_files = get_all_documents(file_ids)

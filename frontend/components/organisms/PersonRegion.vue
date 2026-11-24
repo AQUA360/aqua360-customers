@@ -27,6 +27,7 @@ import Pagination from '~/components/molecules/Pagination.vue';
 import PersonChangeHistory from '../molecules/PersonChangeHistory.vue';
 import PersonAnomalyList from '../molecules/PersonAnomalyList.vue';
 import AddPersonAnomaly from '../molecules/AddPersonAnomaly.vue';
+import PersonInsolvencyProcesses from '../molecules/PersonInsolvencyProcesses.vue';
 
 const { t } = useI18n();
 
@@ -144,6 +145,7 @@ const refreshAnomalies = async () => {
     if (data.value && props.id === personId) {
       data.value.current_anomalies = result.current_anomalies;
       data.value.anomalies_count = result.anomalies_count;
+      data.value.insolvency_processes_count = result.insolvency_processes_count;
     }
   } catch (err) {
     console.error(err);
@@ -350,6 +352,11 @@ const newCommunication = () => {
             <Icon name="fa6-solid:triangle-exclamation" class="display-inline mr-2" />
             {{ t('person_anomaly.add') }}
           </DropdownOption>
+          <DropdownOption v-if="permissions?.permissions?.view_billing"
+            @click="navigateTo({ path: '/contract/persons/insolvency/add', query: { person_id: props.id } })">
+            <Icon name="fa6-solid:scale-balanced" class="display-inline mr-2" />
+            {{ t('insolvency.start') }}
+          </DropdownOption>
           <DropdownOption @click="newCommunication">
             <Icon name="fa6-solid:envelope" class="display-inline mr-2" />
             {{ t('customer_service_block.new_comm') }}
@@ -386,6 +393,13 @@ const newCommunication = () => {
               :class="{ 'text-sky-600 border-sky-600': activeTab === 'anomalies', 'hover:text-gray-600 hover:border-gray-300': activeTab !== 'anomalies' }">
               <Icon name="fa6-solid:triangle-exclamation" class="display-inline mr-2" />{{ $t("person_anomaly.title") }} ({{
                 data.anomalies_count || 0 }})
+            </a>
+          </li>
+          <li v-if="data.insolvency_processes_count" class="me-2">
+            <a href="#tab_insolvency" @click.prevent="setActiveTab('insolvency')"
+              :class="{ 'text-sky-600 border-sky-600': activeTab === 'insolvency', 'hover:text-gray-600 hover:border-gray-300': activeTab !== 'insolvency' }">
+              <Icon name="fa6-solid:scale-balanced" class="display-inline mr-2" />{{ $t("insolvency.tab") }} ({{
+                data.insolvency_processes_count }})
             </a>
           </li>
           <li class="me-2">
@@ -541,6 +555,10 @@ const newCommunication = () => {
             </div>
             <PersonAnomalyList :person-id="props.id" :can-change="!!objectPermissions?.can_change"
               :reload="anomaliesReload" @changed="refreshAnomalies" />
+          </section>
+          <section v-if="activeTab === 'insolvency'" role="tabpanel" id="tab_insolvency"
+            class="bg-white antialiased py-3">
+            <PersonInsolvencyProcesses :person-id="props.id" @change="refreshAnomalies" />
           </section>
           <section v-if="activeTab === 'payment_methods'" role="tabpanel" id="tab_payment_methods"
             class="bg-white antialiased py-3">

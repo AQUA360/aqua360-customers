@@ -409,6 +409,12 @@ def _build_claim_request_filters(payload):
     elif not check_without_debt:
         contract_filters &= Q(debt_management__isnull=False)
 
+    # Titulars amb un procés d'insolvència obert: el deute no es reclama mentre dura el procés
+    from billing.utils.insolvency_service import open_insolvency_person_ids
+    insolvent_person_ids = open_insolvency_person_ids()
+    if insolvent_person_ids:
+        contract_filters &= ~Q(holder_id__in=insolvent_person_ids)
+
     contracts_ignored = payload.get('ignore_contracts')
     if contracts_ignored:
         contract_filters &= ~Q(id__in=contracts_ignored)

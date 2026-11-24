@@ -18,7 +18,7 @@ from communication.views.message_template_view import MessageTemplateViewSet
 from communication.views.message_origin_view import MessageOriginViewSet
 from communication.views.manage_communication_process_view import ManageCommunicationProcessViewSet
 from communication.views.manage_send_communications_view import ManageSendCommunicationsViewSet
-from communication.views.communication_generate_files_view import CommunicationGenerateFilesViewSet
+from communication.views.communication_generate_files_view import CommunicationGenerateFilesViewSet, CommunicationRegenerateDocumentsView
 from communication.views.sms_callback_view import SmsCallbackView
 
 router = routers.DefaultRouter()
@@ -46,6 +46,7 @@ urlpatterns = [
     path('communication-process/get-data', ManageCommunicationProcessViewSet.as_view(http_method_names=['post']), name='manage-claims'),
     path('communication-generate-files', CommunicationGenerateFilesViewSet.as_view(http_method_names=['post']), name='communication-generate-files'),
     path('communication-generate-files/status/<str:task_id>/', CommunicationGenerateFilesViewSet.as_view(http_method_names=['get']), name='communication-generate-files-status'),
+    path('communication-regenerate-documents/', CommunicationRegenerateDocumentsView.as_view(http_method_names=['post']), name='communication-regenerate-documents'),
     path('send-communications/', ManageSendCommunicationsViewSet.as_view(http_method_names=['post']), name='send-communications'),
     path('sms-callback/', SmsCallbackView.as_view(), name='sms-callback'),
     path('communication-process/<int:id>/send-messages/', ManageSendCommunicationsViewSet.as_view(http_method_names=['get']), name='send-messages'),

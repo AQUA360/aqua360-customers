@@ -40,7 +40,7 @@ class PersonAnomalyTestCase(TestCase):
     def _create(self, user=None, **data):
         payload = {
             'person': self.person.id,
-            'anomaly_type_id': self.insolvent.id,
+            'anomaly_type_id': self.wrong_iban.id,
             'start_date': self.today.isoformat(),
         }
         payload.update(data)
@@ -67,7 +67,7 @@ class PersonAnomalyTestCase(TestCase):
         self.assertTrue(response.data['is_current'])
         log = PersonLog.objects.get(person=self.person, field_name='anomaly')
         self.assertIsNone(log.old_value)
-        self.assertIn('Insolvent', log.new_value)
+        self.assertIn('IBAN incorrecte', log.new_value)
 
     def test_create_requires_change_permission(self):
         self.assertEqual(self._create(user=self.viewer).status_code, 403)
@@ -97,6 +97,11 @@ class PersonAnomalyTestCase(TestCase):
         force_authenticate(request, user=no_perms)
         response = PersonAnomalyTypeViewSet.as_view({'get': 'list'})(request)
         self.assertEqual(response.status_code, 403)
+
+    def test_process_types_cannot_be_created_directly(self):
+        response = self._create(anomaly_type_id=self.insolvent.id)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('anomaly_type_id', response.data)
 
     def test_end_date_before_start_date_is_rejected(self):
         response = self._create(end_date=(self.today - timedelta(days=1)).isoformat())

@@ -1,5 +1,3 @@
-import uuid
-
 from django.db import transaction
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
@@ -9,27 +7,10 @@ from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.response import Response
 
 from coredata.filters.person_anomaly_filter import PersonAnomalyFilter
-from coredata.models import PersonAnomaly, PersonAnomalyType, PersonLog
+from coredata.models import PersonAnomaly, PersonAnomalyType
 from coredata.permissions import PersonPermission, PersonReadPermission
-from coredata.serializers import PersonAnomalySerializer, PersonAnomalyTypeSerializer
-
-
-def _describe(anomaly):
-    end = f" - {anomaly.end_date.isoformat()}" if anomaly.end_date else ''
-    observation = f": {anomaly.observation}" if anomaly.observation else ''
-    return f"{anomaly.anomaly_type.name} ({anomaly.start_date.isoformat()}{end}){observation}"
-
-
-def _log(anomaly, user, old_value, new_value):
-    """Deixa l'alta, la modificació o la baixa de l'anomalia a l'historial de canvis de la persona."""
-    PersonLog.objects.create(
-        person=anomaly.person,
-        field_name='anomaly',
-        old_value=old_value,
-        new_value=new_value,
-        operation_token=str(uuid.uuid4()),
-        user=user,
-    )
+from coredata.serializers import PersonAnomalySerializer, PersonAnomalyTypeSerializer, anomaly_in_open_process
+from coredata.utils.person_anomaly_log import describe_anomaly as _describe, log_anomaly_change as _log
 
 
 class CanChangePerson(BasePermission):
@@ -85,6 +66,9 @@ class PersonAnomalyViewSet(viewsets.ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         anomaly = self.get_object()
+        if anomaly_in_open_process(anomaly):
+            return Response({'error': 'Aquesta anomalia és d\'un procés obert: es gestiona des del procés.'},
+                            status=status.HTTP_400_BAD_REQUEST)
         with transaction.atomic():
             anomaly.is_active = False
             anomaly.save(update_fields=['is_active', 'updated_at'])
