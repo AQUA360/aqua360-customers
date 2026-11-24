@@ -599,6 +599,7 @@ paths:
                         status:
                           token: "0"
                           name: Cobrada
+                        payment_type: CASH
                         pdf_available: true
                         is_holder: true
                         is_payer: true
@@ -621,6 +622,7 @@ paths:
                         status:
                           token: "3"
                           name: Enviada
+                        payment_type: DIRECT_DEBIT
                         pdf_available: true
                         is_holder: true
                         is_payer: true
@@ -677,6 +679,7 @@ paths:
                   status:
                     token: "-1"
                     name: Vencida
+                  payment_type: DIRECT_DEBIT
                   pdf_available: true
                   is_returned: true
                   last_return:
@@ -809,6 +812,7 @@ paths:
                 status:
                   token: "3"
                   name: Enviada
+                payment_type: DIRECT_DEBIT
                 pdf_available: true
                 is_returned: false
                 last_return: null
@@ -867,6 +871,7 @@ paths:
                 total_amount: 48.19
                 subtotal_amount: 45.50
                 payment_method: Domiciliació Bancària - SEPA
+                payment_type: DIRECT_DEBIT
                 pdf_available: true
                 is_returned: false
                 last_return: null
@@ -882,6 +887,10 @@ paths:
                   city: Barcelona
                   province: Barcelona
                   country: España
+                direct_debit_account:
+                  iban: "ES912100********00051332"
+                  nombre: Maria Garcia
+                  dni: "***4567**"
                 tariffs:
                   - name: Subministrament d'aigua
                     description: Canalización y consumo de agua
@@ -4003,6 +4012,15 @@ components:
             name:
               type: string
               nullable: true
+        payment_type:
+          type: string
+          nullable: true
+          description: |
+            Token de la forma de pago de la factura (`payment_type_token_final`),
+            el mismo que devuelve `/ov/dictionary/payment-types/`. Es `null` si el
+            token de la factura no corresponde a ninguna forma de pago del
+            diccionario.
+          example: DIRECT_DEBIT
         pdf_available:
           type: boolean
           description: Indica si el PDF está disponible según la configuración `ov_pdf_from`
@@ -4060,6 +4078,15 @@ components:
           example:
             token: "3"
             name: Enviada
+        payment_type:
+          type: string
+          nullable: true
+          description: |
+            Token de la forma de pago de la factura (`payment_type_token_final`),
+            el mismo que devuelve `/ov/dictionary/payment-types/` (por ejemplo
+            `DIRECT_DEBIT`, `CASH`, `BANK_TRANSFER`). Es `null` si el token de la
+            factura no corresponde a ninguna forma de pago del diccionario.
+          example: DIRECT_DEBIT
         pdf_available:
           type: boolean
           description: Indica si el PDF está disponible según la configuración `ov_pdf_from`
@@ -5265,7 +5292,17 @@ components:
         payment_method:
           type: string
           nullable: true
-          description: Método de pago (`payment_type_final`)
+          description: Nombre del método de pago (`payment_type_final`)
+        payment_type:
+          type: string
+          nullable: true
+          description: |
+            Token de la forma de pago de la factura (`payment_type_token_final`),
+            el mismo que devuelve `/ov/dictionary/payment-types/` (por ejemplo
+            `DIRECT_DEBIT`, `CASH`, `BANK_TRANSFER`). Es `null` si el token de la
+            factura no corresponde a ninguna forma de pago del diccionario.
+            `payment_method` (nombre) se mantiene por compatibilidad.
+          example: DIRECT_DEBIT
         pdf_available:
           type: boolean
           description: Indica si el PDF está disponible según la configuración `ov_pdf_from`
@@ -5316,6 +5353,39 @@ components:
               type: string
               nullable: true
               description: Dirección de la calle; solo se expone cuando `is_anonymized` es `false`
+        direct_debit_account:
+          type: object
+          nullable: true
+          description: |
+            Cuenta de cobro de **esa** factura (no la cuenta actual del contrato, que puede
+            haber cambiado después). Siempre presente; es `null` si la factura no está
+            domiciliada o no tiene IBAN.
+
+            El titular (`nombre`, `dni`) sale del pagador de la factura (`payer_final` /
+            `payer_token_final`) o, si no lo tiene (facturas migradas), de la cuenta bancaria
+            de persona con el mismo IBAN (sin espacios y en mayúsculas): primero la cuenta
+            actual del contrato si coincide, después la del titular del contrato o de la
+            persona de la factura y, si solo hay un NIF posible, ese. Si no se puede resolver
+            sin ambigüedad, `nombre` y `dni` son `null`.
+
+            El `dni` se **enmascara** (criterio AEPD: 4 cifras centrales visibles, misma
+            longitud; menos de 9 caracteres, todo asteriscos) cuando el NIF del titular de la
+            cuenta es distinto del de la persona de la factura (`customer_token_final`), es
+            decir, cuando paga un tercero. El nombre siempre se muestra.
+          properties:
+            iban:
+              type: string
+              description: IBAN enmascarado (8 primeros + asteriscos + 8 últimos)
+              example: "ES912100********00051332"
+            nombre:
+              type: string
+              nullable: true
+              description: Nombre del titular de la cuenta
+            dni:
+              type: string
+              nullable: true
+              description: NIF del titular de la cuenta; enmascarado si es un tercero
+              example: "***4567**"
         tariffs:
           type: array
           description: Tarifas aplicadas en la factura (líneas de factura)

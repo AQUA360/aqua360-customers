@@ -25,8 +25,9 @@ export default defineNuxtPlugin(nuxtApp => {
 
   const create = async (data) => await $apiManager.fetch(`${apiHost}${entity}`, 'POST', data);
 
-  const close = async (id, endDate = null) =>
-    await $apiManager.fetch(`${apiHost}${entity}${id}/close/`, 'POST', endDate ? { end_date: endDate } : {});
+  // data: { end_date, restore_payment }
+  const close = async (id, data = {}) =>
+    await $apiManager.fetch(`${apiHost}${entity}${id}/close/`, 'POST', data);
 
   const uploadDocument = async (id, file) => {
     const formData = new FormData();

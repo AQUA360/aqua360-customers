@@ -14,9 +14,10 @@ from billing.utils.insolvency_service import (
     is_person_insolvent,
 )
 from billing.utils.payment_service import disconnect_payment_signals, reconnect_payment_signals
+from billing.serializers.insolvency_process_serializer import InsolvencyProcessSerializer
 from billing.views.insolvency_process_view import InsolvencyProcessViewSet
 from billing.views.sepa_payment_document_generate_view import get_insolvent_holders
-from contract.models import Contract, ContractDataChange, ContractLog, PaymentType
+from contract.models import Contract, ContractDataChange, ContractDebtManagement, ContractLog, PaymentType
 from coredata.models import ConfigProject, Person, PersonAnomaly, PersonBank
 
 
@@ -60,19 +61,22 @@ class InsolvencyProcessTestCase(TestCase):
         data.update(kwargs)
         return create_insolvency_process(**data)
 
-    def test_create_activates_insolvent_anomaly_and_links_invoices(self):
-        process = self._create(invoice_ids=[self.after.id])
+    def test_create_activates_insolvent_anomaly_and_links_all_invoices_since_date(self):
+        process = self._create()
         self.assertTrue(is_person_insolvent(self.person))
         self.assertEqual(process.anomaly.anomaly_type.token, 'insolvent')
         self.assertEqual(process.anomaly.start_date, date(2026, 2, 1))
+        # Ni l'anterior a la data, ni l'anul·lada, ni la d'una altra persona
         self.assertEqual(list(process.invoices.values_list('id', flat=True)), [self.after.id])
 
-    def test_rejects_invoices_before_date_cancelled_or_from_other_person(self):
-        for invoice in (self.before, self.after_cancelled, self.other_invoice):
-            with self.assertRaises(InsolvencyProcessError):
-                self._create(invoice_ids=[invoice.id])
-        self.assertFalse(InsolvencyProcess.objects.exists())
-        self.assertFalse(is_person_insolvent(self.person))
+    def test_invoices_issued_while_open_enter_the_process(self):
+        process = self._create()
+        later = Invoice.objects.create(token='F-LATER', person=self.person, contract=self.contract,
+                                       issue_date=date(2026, 5, 1))
+        data = InsolvencyProcessSerializer(process).data
+        self.assertEqual([invoice['id'] for invoice in data['invoices']], [self.after.id, later.id])
+        close_insolvency_process(process, self.user, date(2026, 6, 1))
+        self.assertEqual(set(process.invoices.values_list('id', flat=True)), {self.after.id, later.id})
 
     def test_only_one_open_process_per_person(self):
         self._create()
@@ -114,6 +118,86 @@ class InsolvencyProcessTestCase(TestCase):
         with self.assertRaises(InsolvencyProcessError):
             close_insolvency_process(process, self.user)
 
+    def test_debt_management_insolvent_while_open_and_restored_on_close(self):
+        insolvent = ContractDebtManagement.objects.create(token='insolvent', name='Insolvent')
+        previous = ContractDebtManagement.objects.create(token='employee', name='Empleats')
+        Contract.objects.filter(pk=self.contract.pk).update(debt_management=previous)
+        manual = Contract.objects.create(token='C-MANUAL-2633', holder=self.person, is_active=True)
+        process = self._create()
+        self.contract.refresh_from_db()
+        manual.refresh_from_db()
+        self.assertEqual((self.contract.debt_management, manual.debt_management), (insolvent, insolvent))
+        self.assertTrue(ContractLog.objects.filter(contract=self.contract, field_name='debt_management').exists())
+        self.other_contract.refresh_from_db()
+        self.assertIsNone(self.other_contract.debt_management)
+        # Si algú l'ha canviat a mà durant el procés, en tancar no es toca
+        Contract.objects.filter(pk=manual.pk).update(debt_management=previous)
+        close_insolvency_process(process, self.user, date(2026, 6, 1))
+        self.contract.refresh_from_db()
+        manual.refresh_from_db()
+        self.assertEqual((self.contract.debt_management, manual.debt_management), (previous, previous))
+        self.assertTrue(process.contracts.get(contract=self.contract).debt_management_restored)
+        self.assertFalse(process.contracts.get(contract=manual).debt_management_restored)
+
+    def test_close_restores_previous_payment_type_on_request(self):
+        process = self._create(payment_changes=[{'contract_id': self.contract.id, 'payment_type_id': self.transfer.id}])
+        close_insolvency_process(process, self.user, date(2026, 6, 1), restore_payment=True)
+        self.contract.refresh_from_db()
+        self.assertEqual(self.contract.payment.type, self.direct_debit)
+        self.assertEqual(self.contract.payment.IBAN_id, self.payment.IBAN_id)
+        self.assertTrue(process.contracts.get().payment_restored)
+
+    def test_close_keeps_payment_type_by_default_or_if_changed_since(self):
+        process = self._create(payment_changes=[{'contract_id': self.contract.id, 'payment_type_id': self.transfer.id}])
+        close_insolvency_process(process, self.user, date(2026, 6, 1))
+        self.contract.refresh_from_db()
+        self.assertEqual(self.contract.payment.type, self.transfer)
+        other = self._create(start_date=date(2026, 7, 1),
+                             payment_changes=[{'contract_id': self.contract.id, 'payment_type_id': self.direct_debit.id}])
+        changed = GeneralPayment.objects.create(token='GP-MANUAL', type=self.transfer)
+        Contract.objects.filter(pk=self.contract.pk).update(payment=changed)
+        close_insolvency_process(other, self.user, date(2026, 8, 1), restore_payment=True)
+        self.contract.refresh_from_db()
+        self.assertEqual(self.contract.payment, changed)
+
+    def test_close_before_anomaly_start_writes_nothing(self):
+        process = self._create()
+        with self.assertRaises(InsolvencyProcessError):
+            close_insolvency_process(process, self.user, date(2026, 1, 1))
+        process.refresh_from_db()
+        self.assertEqual(process.status, InsolvencyProcess.STATUS_OPEN)
+
+    def test_claim_requests_leave_out_holders_with_open_process(self):
+        from claimrequest.tasks import _build_claim_request_filters
+        for token in ('claim_request_status_accepted_token', 'claim_request_status_pending_token'):
+            ConfigProject.objects.get_or_create(token=token, defaults={'value': token})
+        contracts = Contract.objects.filter(id__in=[self.contract.id, self.other_contract.id])
+        process = self._create()
+        contract_filters = _build_claim_request_filters({})[-1]
+        self.assertEqual(list(contracts.filter(contract_filters).values_list('id', flat=True)), [self.other_contract.id])
+        close_insolvency_process(process, self.user, date(2026, 6, 1))
+        contract_filters = _build_claim_request_filters({})[-1]
+        self.assertEqual(set(contracts.filter(contract_filters).values_list('id', flat=True)),
+                         {self.contract.id, self.other_contract.id})
+
+    def test_indefinite_supply_cut_blocked_while_open(self):
+        from service.models import SupplyCut, SupplyCutCause, SupplyPoint
+        from service.utils.supply_cut_service import SupplyCutActivationError, validate_activation
+        point = SupplyPoint.objects.create(token='SP-2633')
+        Contract.objects.filter(pk=self.contract.pk).update(supply_point_default=point)
+        cut = SupplyCut.objects.create(token='CUT-2633', cause=SupplyCutCause.objects.create(token='debt'))
+        cut.supply_points.add(point)
+        temporary = SupplyCut.objects.create(
+            token='CUT-TMP-2633', cause=SupplyCutCause.objects.create(token='works', is_temporary=True))
+        temporary.supply_points.add(point)
+        process = self._create()
+        with self.assertRaises(SupplyCutActivationError) as raised:
+            validate_activation(cut)
+        self.assertEqual(raised.exception.detail['code'], 'insolvency_blocked')
+        validate_activation(temporary)
+        close_insolvency_process(process, self.user, date(2026, 6, 1))
+        validate_activation(cut)
+
     def test_insolvent_holder_contracts(self):
         self._create()
         contracts = insolvent_holder_contracts(Contract.objects.filter(id__in=[self.contract.id, self.other_contract.id]))
@@ -150,9 +234,11 @@ class InsolvencyProcessApiTestCase(TestCase):
         })
         self.assertEqual(response.status_code, 201, response.data)
         self.assertEqual(response.data['status'], 'open')
-        response = self._post(self.user, {'post': 'close'}, {}, pk=response.data['id'])
+        response = self._post(self.user, {'post': 'close'}, {'end_date': '2026-06-01', 'restore_payment': True},
+                              pk=response.data['id'])
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.data['status'], 'closed')
+        self.assertEqual(str(response.data['end_date']), '2026-06-01')
 
     def test_invalid_data_returns_400(self):
         response = self._post(self.user, {'post': 'create'}, {'person_id': self.person.id, 'kind': 'x', 'start_date': '2026-02-01'})

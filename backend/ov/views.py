@@ -832,7 +832,9 @@ class InvoiceDetailByTokenOVView(RetrieveAPIView):
         queryset = annotate_ov_returns(
             exclude_future_invoices(
                 Invoice.objects.exclude(status__token="1")
-                .select_related("contract", "status")
+                .select_related(
+                    "contract__holder", "contract__payment__IBAN__person", "status"
+                )
                 .prefetch_related("readings__previous_reading")
             )
         )
