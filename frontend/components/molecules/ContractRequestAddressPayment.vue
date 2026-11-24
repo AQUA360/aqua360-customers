@@ -203,7 +203,8 @@ const openInputSepa = () => {
   showRegion.value = true;
 };
 
-// Document SEPA (no domiciliat) per enviar per correu
+// Document SEPA generat des de la sol·licitud: «no domiciliat» per descarregar amb els altres
+// mètodes de pagament, i mandat de domiciliació per enviar per correu (encara sense pagament desat).
 const sendingSepaDocument = ref(false);
 const showSendSepaModal = ref(false);
 const noSepaDocumentId = ref(null);
@@ -232,6 +233,8 @@ const generateDocumentNoSepa = async ({ sendByEmail = false } = {}) => {
         person_id: personId,
         bank_id: bankId,
         person_bank_id: bankId,
+        direct_debit: isDirectDebitSelected.value,
+        mandate_id: isDirectDebitSelected.value ? (mandateId.value || null) : null,
       },
       { is_request: props.sepaValue !== 'contract' },
     );
@@ -1214,6 +1217,15 @@ const handleSubRegionEvent = (show) => {
                     {{ t('common.default_payment_needed_for_sepa') }}
                   </div>
                 </div>
+                <button @click="generateDocumentNoSepa({ sendByEmail: true })" :disabled="sendingSepaDocument"
+                  type="button" class="button-default-xs mt-2">
+                  <Icon :name="sendingSepaDocument ? 'fa6-solid:spinner' : 'fa6-solid:envelope'"
+                    :class="{ 'animate-spin': sendingSepaDocument }" class="text-slate-500 mr-1" />
+                  {{ t('contract_block.sepa_send_email') }}
+                </button>
+                <SendSepaEmailModal :show="showSendSepaModal" :sepa-document-id="noSepaDocumentId" :contract="request"
+                  :is-request="sepaValue !== 'contract'" :person="selectedBankDebitPerson || holder"
+                  @close="showSendSepaModal = false" />
 
               </fieldset>
             </div>
@@ -1245,21 +1257,11 @@ const handleSubRegionEvent = (show) => {
           </div>
 
           <div v-if="!isDirectDebitSelected">
-            
-
-            <button @click="generateDocumentNoSepa()" :disabled="generatingSepaDocument || sendingSepaDocument" name="" class="button-default-xs mt-4">
+            <button @click="generateDocumentNoSepa()" :disabled="generatingSepaDocument" name="" class="button-default-xs mt-4">
               <Icon v-if="generatingSepaDocument" name="fa6-solid:spinner" class="animate-spin text-slate-500 mr-1" />
               <Icon v-else name="fa-solid:plus" class="text-slate-500 mr-1" />
               {{ t('contract_block.generate_no_sepa_document')}}
             </button>
-            <button @click="generateDocumentNoSepa({ sendByEmail: true })" :disabled="generatingSepaDocument || sendingSepaDocument"
-              type="button" class="button-default-xs mt-4 ml-2">
-              <Icon :name="sendingSepaDocument ? 'fa6-solid:spinner' : 'fa6-solid:envelope'"
-                :class="{ 'animate-spin': sendingSepaDocument }" class="text-slate-500 mr-1" />
-              {{ t('contract_block.sepa_send_email') }}
-            </button>
-            <SendSepaEmailModal :show="showSendSepaModal" :sepa-document-id="noSepaDocumentId" :contract="request"
-              :is-request="sepaValue !== 'contract'" :person="holder" @close="showSendSepaModal = false" />
           </div>
 
         </div>

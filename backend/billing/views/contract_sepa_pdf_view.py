@@ -153,6 +153,9 @@ class ContractSepaPDFView(APIView):
     """
     Generate a SEPA mandate PDF for a contract.
 
+    By default the document is marked as "no direct debit"; with ``direct_debit``
+    in the body it is a regular mandate (reference: ``mandate_id`` or the token).
+
     If the contract has a GeneralPayment, the document is stored on it and its
     URL is returned. If the contract has no payment configured, the contract
     holder is used as the person and the generated PDF is returned directly
@@ -169,6 +172,14 @@ class ContractSepaPDFView(APIView):
         else:
             contract = get_object_or_404(Contract, id=contract_id)
         general_payment = contract.payment
+        # Per defecte és el document «no domiciliat»; amb direct_debit és el mandat de
+        # domiciliació (p. ex. l'alta, abans que el pagament de la sol·licitud estigui desat).
+        direct_debit = str(request.data.get("direct_debit", "")).lower() == "true"
+        mandate_reference = None
+        if direct_debit:
+            mandate_reference = request.data.get("mandate_id") or (
+                general_payment.mandate_id if general_payment else None
+            )
 
         default_person_bank = general_payment.IBAN if general_payment and general_payment.IBAN else None
         person_bank = _resolve_person_bank(request.data, default_person_bank)
@@ -213,7 +224,8 @@ class ContractSepaPDFView(APIView):
                 "contact_phone": contact_phone,
                 "contact_email": contact_email,
                 "contract": contract,
-                "no_sepa": True,
+                "no_sepa": not direct_debit,
+                "mandate_reference": mandate_reference,
                 "data_protection_law_text": company.get("data_protection_law_text") if company else None,
             },
         )
