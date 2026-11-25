@@ -1,4 +1,5 @@
 # Create your views here.
+from django.utils.translation import gettext
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
 
@@ -376,7 +377,7 @@ class OVLogsAPIView(APIView):
                 })
             except Exception as e:
                 logger.exception("Error inesperat")
-                return Response({"detail": "Ha ocorregut un error inesperat."}, status=500)
+                return Response({"detail": gettext("An unexpected error has occurred.")}, status=500)
 
         # Handle list request
         start_date = request.query_params.get('start_date')

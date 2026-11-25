@@ -6,6 +6,7 @@ Per a cada contracte calcula, tal com estava a la data de tall:
   cobrament. L'estat d'un pagament a la data es reconstrueix amb l'historial de
   PaymentMovement (l'estat actual del pagament no serveix per a dates passades).
 """
+from django.utils.translation import gettext
 import datetime
 import logging
 from decimal import Decimal
@@ -228,4 +229,4 @@ def generate_wallet_debt_balance_at_date_report(request, black_fill=None, white_
         return None, document_id, filename
     except Exception:
         logger.exception("Error inesperat generant l'informe de deute i saldo a data")
-        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None

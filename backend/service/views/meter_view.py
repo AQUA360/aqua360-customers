@@ -1,3 +1,4 @@
+from django.utils.translation import gettext
 from rest_framework.decorators import action
 from rest_framework import viewsets, status
 from rest_framework.response import Response
@@ -221,7 +222,7 @@ class MeterViewSet(viewsets.ModelViewSet):
                 logger.exception("Error inesperat")
                 print(e)
                 return Response(
-                    {"error": "Ha ocorregut un error inesperat."}, 
+                    {"error": gettext("An unexpected error has occurred.")}, 
                     status=status.HTTP_400_BAD_REQUEST
                 )
         except Meter.DoesNotExist:

@@ -1,3 +1,4 @@
+from django.utils.translation import gettext
 from datetime import date
 import datetime
 import calendar
@@ -1097,7 +1098,7 @@ class BillingBadgesView(views.APIView):
     except Exception as e:
       logger.exception("Error inesperat")
       print(f"Error en obtenir les rutes de facturació: {str(e)}")
-      return Response({'error': "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+      return Response({'error': gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
 def add_badges(response, billing, key):
   token_found = False
@@ -1191,4 +1192,4 @@ class StartBillingView(views.APIView):
     except Exception as e:
       logger.exception("Error inesperat")
       print(f"Error en obtenir les rutes de facturació: {str(e)}")
-      return Response({'error': "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+      return Response({'error': gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

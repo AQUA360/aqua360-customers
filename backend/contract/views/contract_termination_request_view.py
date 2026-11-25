@@ -1,3 +1,4 @@
+from django.utils.translation import gettext
 from django.conf import settings
 from rest_framework import viewsets
 from rest_framework.decorators import action
@@ -83,7 +84,7 @@ class ContractTerminationRequestViewSet(viewsets.ModelViewSet):
             cancel_contract_termination(instance, request.user)
         except Exception as e:
             logger.exception("Error inesperat")
-            return JsonResponse({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_400_BAD_REQUEST)
+            return JsonResponse({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_400_BAD_REQUEST)
         serialized_instance = ContractTerminationRequestSerializer(instance)
         return Response(serialized_instance.data, status=status.HTTP_200_OK)
     

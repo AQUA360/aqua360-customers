@@ -1,4 +1,5 @@
 # FOR ACCOUNTING REPORTS EXPORTATION
+from django.utils.translation import gettext
 import datetime
 from collections import defaultdict
 from django.utils.dateparse import parse_date
@@ -2422,7 +2423,7 @@ def generate_order_time_summary(request, black_fill=None, white_bold_font=None, 
         return response, document_id, None
     except Exception as e:
         logger.exception("Error inesperat")
-        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
 def get_order_address(order):
     order_address = ""
@@ -2476,7 +2477,7 @@ def generate_bails_report(request, black_fill=None, white_bold_font=None, task=N
             
         except Exception as e:
             logger.exception("Error inesperat")
-            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+            return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
         
         wb = openpyxl.Workbook()
         sheet = wb.active
@@ -2641,7 +2642,7 @@ def generate_bails_report(request, black_fill=None, white_bold_font=None, task=N
         return response, document_id, None
     except Exception as e:
         logger.exception("Error inesperat")
-        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
     
     
 def generate_sii_report(request, black_fill=None, white_bold_font=None, task=None):
@@ -2813,7 +2814,7 @@ def generate_sii_report(request, black_fill=None, white_bold_font=None, task=Non
     except Exception as e:
         logger.exception("Error inesperat")
         print("error: ", e)
-        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
 
     

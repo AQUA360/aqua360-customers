@@ -1,3 +1,4 @@
+from django.utils.translation import gettext
 from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
 from rest_framework import status
 from rest_framework.response import Response
@@ -76,7 +77,7 @@ class CommunicationGenerateFilesViewSet(APIView):
             
         except Exception as e:
             logger.exception("Error inesperat")
-            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_400_BAD_REQUEST)
 
     def get(self, request, task_id, *args, **kwargs):
         try:
@@ -116,7 +117,7 @@ class CommunicationGenerateFilesViewSet(APIView):
             
         except Exception as e:
             logger.exception("Error inesperat")
-            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_400_BAD_REQUEST)
 
 class CommunicationRegenerateDocumentsView(APIView):
     """Regenera la carta i les factures d'unes comunicacions.

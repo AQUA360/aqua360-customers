@@ -1,3 +1,4 @@
+from django.utils.translation import gettext
 from rest_framework import status
 from rest_framework.authentication import TokenAuthentication
 from rest_framework.permissions import IsAuthenticated
@@ -51,7 +52,7 @@ class GiswaterContractsView(APIView):
                 error_message=str(exc),
                 object_id=str(request.user.pk),
             )
-            return Response({"detail": "Ha ocorregut un error inesperat."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": gettext("An unexpected error has occurred.")}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class GiswaterContractReadingsView(APIView):
@@ -102,4 +103,4 @@ class GiswaterContractReadingsView(APIView):
                 object_type="contract_readings",
                 object_id=contract_token,
             )
-            return Response({"detail": "Ha ocorregut un error inesperat."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": gettext("An unexpected error has occurred.")}, status=status.HTTP_400_BAD_REQUEST)

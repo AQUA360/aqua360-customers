@@ -1,4 +1,5 @@
 # FOR WALLET REPORTS EXPORTATION
+from django.utils.translation import gettext
 import datetime
 import os
 from django.db.models import Q, OuterRef, Subquery, Min, Max
@@ -217,7 +218,7 @@ def generate_wallet_summary(request, black_fill=None, white_bold_font=None, task
         return response, document_id, filename
     except Exception as e:
         logger.exception("Error inesperat")
-        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
 def generate_wallet_bank_list(request, black_fill=None, white_bold_font=None, task=None):
     try:
@@ -427,7 +428,7 @@ def generate_wallet_bank_list(request, black_fill=None, white_bold_font=None, ta
         return response, document_id, filename
     except Exception as e:
         logger.exception("Error inesperat")
-        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
 
 def generate_wallet_bank_summary(request, black_fill=None, white_bold_font=None, task=None):
@@ -580,7 +581,7 @@ def generate_wallet_bank_summary(request, black_fill=None, white_bold_font=None,
         return response, document_id, filename
     except Exception as e:
         logger.exception("Error inesperat")
-        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
 _PAYMENT_CONTRACT_SELECT_RELATED = ('invoice__contract', 'commitment_deposit')
 _PAYMENT_CONTRACT_PREFETCH_RELATED = ('commitment_deposit__invoices__contract',)
@@ -787,7 +788,7 @@ def generate_wallet_bank_detailed_summary(request, black_fill=None, white_bold_f
         return response, document_id, filename
     except Exception as e:
         logger.exception("Error inesperat")
-        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
 def generate_wallet_cash_detailed_summary(request, black_fill=None, white_bold_font=None, task=None):
     try:
@@ -908,7 +909,7 @@ def generate_wallet_cash_detailed_summary(request, black_fill=None, white_bold_f
         return response, document_id, filename
     except Exception as e:
         logger.exception("Error inesperat")
-        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
 def _build_unpaid_excel(payments, start_date, end_date, filename, name, type_id, black_fill, white_bold_font, returned_status_token, task=None):
     wb = openpyxl.Workbook()
@@ -1344,7 +1345,7 @@ def generate_wallet_unpaid_detailed_summary(request, black_fill=None, white_bold
         return _build_unpaid_excel(payments, start_date, end_date, filename, name, type_id, black_fill, white_bold_font, returned_status_token, task=task)
     except Exception as e:
         logger.exception("Error inesperat")
-        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
 
 def generate_wallet_all_unpaid_summary(request, black_fill=None, white_bold_font=None, task=None):
@@ -1443,7 +1444,7 @@ def generate_wallet_all_unpaid_summary(request, black_fill=None, white_bold_font
         return _build_unpaid_excel(payments, start_date, end_date, filename, name, type_id, black_fill, white_bold_font, returned_status_token, task=task)
     except Exception as e:
         logger.exception("Error inesperat")
-        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
     
 def generate_pending_invoices_person_summary(request, black_fill=None, white_bold_font=None):
     try:
@@ -1498,7 +1499,7 @@ def generate_pending_invoices_person_summary(request, black_fill=None, white_bol
         return response, document_id, None
     except Exception as e:
         logger.exception("Error inesperat")
-        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
     
     
 
@@ -1703,7 +1704,7 @@ def generate_total_customers_debt_summary(request, black_fill=None, white_bold_f
         return response, document_id, None
     except Exception as e:
         logger.exception("Error inesperat")
-        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
     
     
 
@@ -1786,7 +1787,7 @@ def generate_sgt_txt_report(request, black_fill=None, white_bold_font=None, task
         return response, document_id, None
     except Exception as e:
         logger.exception("Error inesperat")
-        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
     
 
 def generate_pending_invoices_values_report(request, black_fill=None, white_bold_font=None, task=None):
