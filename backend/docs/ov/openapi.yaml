@@ -1,3 +1,6 @@
+# Versió en castellà de la documentació OpenAPI de l'Oficina Virtual.
+# La versió en català és openapi.ca.yaml. Qualsevol canvi a l'API s'ha de fer a les
+# dues versions (ho comprova test_openapi_consistency.py). Vegeu README.md.
 openapi: 3.0.3
 info:
   title: Programa de Abonados — API Oficina Virtual (OV)
@@ -827,7 +830,7 @@ paths:
       summary: Descarga en lote de facturas (ZIP)
       description: |
         Descarga en un único ZIP los PDFs de las facturas indicadas. El
-        `contract_token` va en la query y la lista de fitxes en el cuerpo
+        `contract_token` va en la query y la lista de tokens de factura en el cuerpo
         JSON (`invoice_tokens`).
 
         Reutiliza el PDF almacenado y finalizado en `invoice_file` cuando está
@@ -837,11 +840,11 @@ paths:
         fallback mantiene los bytes del PDF sin registrar un nuevo documento
         desde esta descarga por lote.
 
-        Seguridad IDOR: todas las fitxes solicitadas deben pertenecer al
+        Seguridad IDOR: todas las facturas solicitadas deben pertenecer al
         contrato indicado y ser definitivas (`type_final`), el mismo filtro
-        que la descarga individual; cualquier fitxa desconocida o de otro
+        que la descarga individual; cualquier factura desconocida o de otro
         contrato responde `400` con el detalle por token (mensaje genérico,
-        no revela si la fitxa existe en otro contrato).
+        no revela si la factura existe en otro contrato).
 
         Cada PDF se nombra `factura_<serie_final>.pdf` (o
         `factura_<invoice_token>.pdf` si no tiene número), con las barras del
@@ -873,11 +876,11 @@ paths:
         "400":
           description: |
             Falta `contract_token`, el cuerpo no es válido, la lista está
-            vacía o alguna fitxa no pertenece al contrato.
+            vacía o alguna factura no pertenece al contrato.
           content:
             application/json:
               schema:
-                oneOf:
+                anyOf:
                   - $ref: "#/components/schemas/ValidationErrors"
                   - $ref: "#/components/schemas/ErrorMessage"
               examples:
@@ -891,10 +894,10 @@ paths:
                     invoice_tokens:
                       - Esta lista no puede estar vacía.
                 unknownTokens:
-                  summary: Fitxa ajena al contrato o desconocida
+                  summary: Factura ajena al contrato o desconocida
                   value:
                     invoice_tokens:
-                      - Invoice not found for this contract: "FAKE-TOKEN"
+                      - "Invoice not found for this contract: FAKE-TOKEN"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
@@ -1095,7 +1098,7 @@ paths:
           content:
             application/json:
               schema:
-                oneOf:
+                anyOf:
                   - $ref: "#/components/schemas/ValidationErrors"
                   - $ref: "#/components/schemas/ErrorMessage"
         "401":
@@ -2461,7 +2464,7 @@ paths:
           content:
             application/json:
               schema:
-                oneOf:
+                anyOf:
                   - $ref: "#/components/schemas/ValidationErrors"
                   - $ref: "#/components/schemas/ErrorMessage"
               examples:
@@ -2704,8 +2707,8 @@ paths:
         - La solicitud se crea con el estado por defecto (borrador). El tipo de
           baja (el "Motivo" de la plataforma de gestión) es el indicado en
           `reason_token`, sin restricción por tipo (también admite los de
-          cambio de nombre); si se omite, se usa el tipo por defecto
-          (petición del cliente). La fecha de solicitud es la de recepción.
+          cambio de nombre); es obligatorio (el endpoint no aplica ningún tipo por
+          defecto si falta). La fecha de solicitud es la de recepción.
         - **No** se recogen lecturas, fotos, estimaciones, fechas ni datos de
           contacto: la lectura de corte la registra el personal de campo.
           Cualquier campo adicional del cuerpo se ignora.
@@ -3025,7 +3028,7 @@ paths:
           content:
             application/json:
               schema:
-                oneOf:
+                anyOf:
                   - $ref: "#/components/schemas/ValidationErrors"
                   - $ref: "#/components/schemas/ErrorMessage"
               examples:
@@ -3177,7 +3180,7 @@ paths:
           content:
             application/json:
               schema:
-                oneOf:
+                anyOf:
                   - $ref: "#/components/schemas/ValidationErrors"
                   - $ref: "#/components/schemas/ErrorMessage"
               examples:
@@ -3668,7 +3671,7 @@ components:
             date_from:
               - La fecha de inicio no puede ser posterior a la final
             reading_ids:
-              - ID de lectura desconocido: 999
+              - "ID de lectura desconocido: 999"
 
     NotFound:
       description: Recurso no encontrado
@@ -4041,7 +4044,7 @@ components:
         invoice_tokens:
           type: array
           minItems: 1
-          description: Fitxes de las facturas a incluir en el ZIP (se desduplican; todas deben pertenecer al contrato y ser definitivas)
+          description: Tokens de las facturas a incluir en el ZIP (se desduplican; todas deben pertenecer al contrato y ser definitivas)
           items:
             type: string
           example:
