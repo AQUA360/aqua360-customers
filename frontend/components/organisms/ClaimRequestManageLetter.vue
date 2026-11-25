@@ -168,7 +168,7 @@ onMounted(() => {
 
         <div class="flex items-center justify-between gap-2 text-slate-400">
           {{ t('customer_service_block.sent_comms') }}:
-          <span class="font-semibold text-sky-500">
+          <span class="font-semibold text-slate-500">
             {{ step.communication_process.total_sent_communications }}
           </span>
         </div>
