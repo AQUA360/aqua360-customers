@@ -695,7 +695,8 @@ const newCommunication = () => {
 
           <section v-if="activeTab === 'communication' && permissions?.permissions?.view_customer_service"
             role="tabpanel" id="tab_communication" class="bg-white antialiased p-3">
-            <CommunicationMiniDetail :person_ids="[props.id]" @show-detail="showDetail" :max_height="'60vh'" />
+            <CommunicationMiniDetail :person_ids="[props.id]" @show-detail="showDetail" :max_height="'60vh'"
+              :isSubRegion="isSubRegion" />
           </section>
 
           <section v-if="data.deliquency" v-show="activeTab === 'deliquency'" role="tabpanel" id="tab_deliquency"
