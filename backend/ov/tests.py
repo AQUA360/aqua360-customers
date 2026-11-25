@@ -100,6 +100,7 @@ from ov.throttles import (
     ContractProcedureThrottle,
     ContractTerminationProcedureThrottle,
     PaymentReceiptThrottle,
+    PersonContractsThrottle,
     PersonDataThrottle,
     PersonInvoicesThrottle,
     QuickPayThrottle,
@@ -111,6 +112,7 @@ from ov.views import (
     ContractTerminationProcedureOVView,
     InvoiceReturnRequestOVView,
     PaymentReceiptOVView,
+    PersonContractsOVView,
     PersonDataOVView,
     PersonInvoicesOVView,
     QuickPayOVView,
@@ -8169,6 +8171,297 @@ class PersonInvoicesOVTests(TestCase):
         self.assertEqual(reverse(self.URL_NAME), "/ov/person-invoices/")
         self.assertIs(
             resolve(reverse(self.URL_NAME)).func.view_class, PersonInvoicesOVView
+        )
+
+
+class PersonContractsOVTests(TestCase):
+    """`GET /ov/person-contracts/?dni=` — contractes actuals i antics d'una
+    persona amb el seu paper (titular/pagadora) i si hi està vinculada avui."""
+
+    URL_NAME = "person-contracts-ov"
+    DNI = "11111111H"
+    OTHER_DNI = "22222222J"
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(
+            username="ov-person-contracts-test", password="not-used"
+        )
+        cls.user.groups.add(Group.objects.get_or_create(name="ov")[0])
+        cls.internal_user = User.objects.create_user(
+            username="ov-person-contracts-internal", password="not-used"
+        )
+        for token, value in (
+            ("contract_termination_completed_token", "3"),
+            ("contract_terminated_status", "-1"),
+            # Un contracte de baixa amb compte busca fiances per retornar.
+            ("bail_status_unreturned_token", "UNRETURNED"),
+            ("invoice_status_paid_token", "0"),
+            ("invoice_status_cancelled_token", "-1"),
+        ):
+            if not ConfigProject.objects.filter(token=token).exists():
+                ConfigProject.objects.create(token=token, value=value)
+        ConfigProject.objects.update_or_create(
+            token="contract_active_token", defaults={"value": "1"}
+        )
+        cls.active_status = ContractStatus.objects.create(token="1", name="Alta")
+        cls.dropped_status = ContractStatus.objects.create(token="-1", name="Baixa")
+        invoice_status = InvoiceStatus.objects.create(token="3", name="Enviada")
+        preinvoice_status = InvoiceStatus.objects.create(token="1", name="Prefactura")
+
+        cls.person = Person.objects.create(token=cls.DNI, name="Persona")
+        cls.other = Person.objects.create(token=cls.OTHER_DNI, name="Altra")
+        payment_type = PaymentType.objects.create(token="DIRECT_DEBIT")
+        person_account = GeneralPayment.objects.create(
+            type=payment_type,
+            IBAN=PersonBank.objects.create(
+                person=cls.person, dni=cls.DNI, iban="ES1111111111111111111111"
+            ),
+        )
+        other_account = GeneralPayment.objects.create(
+            type=payment_type,
+            IBAN=PersonBank.objects.create(
+                person=cls.other, dni=cls.OTHER_DNI, iban="ES2222222222222222222222"
+            ),
+        )
+
+        street_type = StreetType.objects.create(abbreviation="C", name="Carrer")
+        city = City.objects.create(token="CITY-PCON", name="Ciutat")
+        street = Street.objects.create(name="Major", type=street_type, city=city)
+        number = StreetNumber.objects.create(street=street, number=10)
+        country = Country.objects.create(name="Espanya", iso_code="ES")
+        address = Address.objects.create(
+            token="ADDRESS-PCON",
+            street=street,
+            street_number=number,
+            city=city,
+            country=country,
+        )
+        cls.supply_point = SupplyPoint.objects.create(
+            token="SP-PCON", address=address
+        )
+
+        def contract(token, status, holder, payment=None, **extra):
+            return Contract.objects.create(
+                token=token, status=status, holder=holder, payment=payment, **extra
+            )
+
+        def invoice(token, contract, customer, payer=None, **extra):
+            return Invoice.objects.create(
+                token=token,
+                contract=contract,
+                status=extra.pop("status", invoice_status),
+                issue_date=extra.pop("issue_date", date(2025, 1, 15)),
+                customer_token_final=customer,
+                payer_token_final=payer,
+                total_final=Decimal("10.00"),
+                left_to_pay=Decimal("0.00"),
+                **extra,
+            )
+
+        # Titular avui, sense compte i sense factures: titular i pagadora.
+        cls.holder_now = contract(
+            "PCON-01",
+            cls.active_status,
+            cls.person,
+            supply_point_default=cls.supply_point,
+        )
+        # Titular avui amb el compte d'una altra persona: només titular.
+        contract("PCON-02", cls.active_status, cls.person, other_account)
+        # Titular del compte d'un contracte d'una altra persona: pagadora.
+        contract("PCON-03", cls.active_status, cls.other, person_account)
+        # Titular avui d'un contracte de baixa: no hi està vinculada avui.
+        contract("PCON-04", cls.dropped_status, cls.person, person_account)
+        # Titular antiga per factures (canvi de titular): titular i pagadora.
+        old_holder = contract("PCON-05", cls.active_status, cls.other)
+        invoice("PCON-INV-05", old_holder, cls.DNI)
+        # Pagadora antiga per factures d'un contracte de baixa.
+        old_payer = contract("PCON-06", cls.dropped_status, cls.other)
+        invoice("PCON-INV-06", old_payer, cls.OTHER_DNI, cls.DNI)
+        # Factura amb pagador buit: la titular és la pagadora.
+        empty_payer = contract("PCON-07", cls.dropped_status, cls.other)
+        invoice("PCON-INV-07", empty_payer, cls.DNI, "")
+        # No hi han de sortir: d'una altra persona, prefactura i factura futura.
+        unrelated = contract("PCON-90", cls.active_status, cls.other)
+        invoice("PCON-INV-90", unrelated, cls.OTHER_DNI)
+        preinvoice = contract("PCON-91", cls.active_status, cls.other)
+        invoice("PCON-INV-91", preinvoice, cls.DNI, status=preinvoice_status)
+        future = contract("PCON-92", cls.active_status, cls.other)
+        invoice(
+            "PCON-INV-92",
+            future,
+            cls.DNI,
+            issue_date=timezone.localdate() + timedelta(days=5),
+        )
+
+    EXPECTED = {
+        "PCON-01": (["holder", "payer"], True),
+        "PCON-02": (["holder"], True),
+        "PCON-03": (["payer"], True),
+        "PCON-04": (["holder", "payer"], False),
+        "PCON-05": (["holder", "payer"], False),
+        "PCON-06": (["payer"], False),
+        "PCON-07": (["holder", "payer"], False),
+    }
+
+    def setUp(self):
+        cache.clear()
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def _get(self, **params):
+        return self.client.get(reverse(self.URL_NAME), params)
+
+    @staticmethod
+    def _by_token(response):
+        return {item["contract_token"]: item for item in response.data["results"]}
+
+    def test_returns_current_and_past_contracts_with_roles(self):
+        response = self._get(dni=self.DNI)
+
+        self.assertEqual(response.status_code, 200)
+        items = self._by_token(response)
+        self.assertEqual(set(items), set(self.EXPECTED))
+        for token, (roles, related_now) in self.EXPECTED.items():
+            with self.subTest(token=token):
+                self.assertEqual(items[token]["roles"], roles)
+                self.assertIs(items[token]["related_now"], related_now)
+
+    def test_contracts_related_now_come_first(self):
+        response = self._get(dni=self.DNI)
+
+        tokens = [item["contract_token"] for item in response.data["results"]]
+        self.assertEqual(
+            tokens,
+            ["PCON-01", "PCON-02", "PCON-03", "PCON-04", "PCON-05", "PCON-06", "PCON-07"],
+        )
+
+    def test_item_contains_contract_data(self):
+        item = self._by_token(self._get(dni=self.DNI))["PCON-01"]
+
+        self.assertEqual(item["contract_status"], {"token": "1", "name": "Alta"})
+        self.assertEqual(item["supply_point"], "SP-PCON")
+        self.assertIsNotNone(item["address"])
+        self.assertIn("Major", item["address"])
+        self.assertNotIn("start_date", item)
+
+    def test_contract_without_supply_point_has_null_fields(self):
+        item = self._by_token(self._get(dni=self.DNI))["PCON-02"]
+
+        self.assertIsNone(item["supply_point"])
+        self.assertIsNone(item["address"])
+
+    def test_filter_role_holder(self):
+        response = self._get(dni=self.DNI, role="holder")
+
+        self.assertEqual(
+            set(self._by_token(response)),
+            {"PCON-01", "PCON-02", "PCON-04", "PCON-05", "PCON-07"},
+        )
+
+    def test_filter_role_payer(self):
+        response = self._get(dni=self.DNI, role="payer")
+
+        self.assertEqual(
+            set(self._by_token(response)),
+            {"PCON-01", "PCON-03", "PCON-04", "PCON-05", "PCON-06", "PCON-07"},
+        )
+
+    def test_filter_related_now(self):
+        current = self._get(dni=self.DNI, related_now="true")
+        past = self._get(dni=self.DNI, related_now="false")
+
+        self.assertEqual(set(self._by_token(current)), {"PCON-01", "PCON-02", "PCON-03"})
+        self.assertEqual(
+            set(self._by_token(past)), {"PCON-04", "PCON-05", "PCON-06", "PCON-07"}
+        )
+
+    def test_without_active_status_config_nothing_is_related_now(self):
+        ConfigProject.objects.filter(token="contract_active_token").delete()
+
+        response = self._get(dni=self.DNI)
+
+        self.assertEqual(len(response.data["results"]), len(self.EXPECTED))
+        self.assertFalse(
+            any(item["related_now"] for item in response.data["results"])
+        )
+
+    def test_invalid_filters_return_400(self):
+        self.assertEqual(self._get(dni=self.DNI, role="owner").status_code, 400)
+        self.assertEqual(self._get(dni=self.DNI, related_now="yes").status_code, 400)
+
+    def test_pagination(self):
+        response = self._get(dni=self.DNI, limit=3, page=3)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["count"], 7)
+        self.assertEqual(response.data["total_pages"], 3)
+        self.assertEqual(response.data["limit"], 3)
+        self.assertEqual(
+            [item["contract_token"] for item in response.data["results"]],
+            ["PCON-07"],
+        )
+
+    def test_invalid_page_returns_400(self):
+        self.assertEqual(self._get(dni=self.DNI, page=99).status_code, 400)
+
+    def test_dni_with_different_format_is_normalized(self):
+        response = self._get(dni=" 11.111.111-h ")
+
+        self.assertEqual(set(self._by_token(response)), set(self.EXPECTED))
+
+    def test_unknown_dni_returns_empty_results(self):
+        response = self._get(dni="99999999R")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["count"], 0)
+        self.assertEqual(response.data["results"], [])
+
+    def test_missing_dni_returns_400(self):
+        self.assertEqual(self._get().status_code, 400)
+        self.assertEqual(self._get(dni=" - ").status_code, 400)
+
+    def test_query_count_does_not_grow_with_contracts(self):
+        with CaptureQueriesContext(connection) as before:
+            self._get(dni=self.DNI)
+        for index in range(5):
+            Contract.objects.create(
+                token=f"PCON-EXTRA-{index}",
+                status=self.active_status,
+                holder=self.person,
+                supply_point_default=self.supply_point,
+            )
+        cache.clear()
+        with CaptureQueriesContext(connection) as after:
+            response = self._get(dni=self.DNI)
+
+        self.assertEqual(response.data["count"], len(self.EXPECTED) + 5)
+        self.assertEqual(len(after), len(before))
+
+    def test_requires_authentication(self):
+        response = APIClient().get(reverse(self.URL_NAME), {"dni": self.DNI})
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_internal_user_outside_ov_group_is_forbidden(self):
+        client = APIClient()
+        client.force_authenticate(self.internal_user)
+
+        response = client.get(reverse(self.URL_NAME), {"dni": self.DNI})
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_endpoint_uses_dedicated_throttle(self):
+        self.assertEqual(
+            PersonContractsOVView.throttle_classes, [PersonContractsThrottle]
+        )
+        self.assertEqual(PersonContractsThrottle.scope, "ov_person_contracts_dni")
+        self.assertEqual(PersonContractsThrottle.rate, "35/min")
+
+    def test_route(self):
+        self.assertEqual(reverse(self.URL_NAME), "/ov/person-contracts/")
+        self.assertIs(
+            resolve(reverse(self.URL_NAME)).func.view_class, PersonContractsOVView
         )
 
 

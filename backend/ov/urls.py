@@ -32,6 +32,7 @@ from .views import (
     ContractTerminationProcedureOVView,
     ContractChangeProcedureOVView,
     ContactDataOVView,
+    PersonContractsOVView,
     PersonDataOVView,
     PersonInvoicesOVView,
     BatchInvoiceDownloadView,
@@ -74,6 +75,12 @@ urlpatterns = [
         "person-invoices/",
         PersonInvoicesOVView.as_view(),
         name="person-invoices-ov",
+    ),  # Get method
+    # /ov/person-contracts/?dni=<DNI>[&role=holder|payer][&related_now=true|false][&page=<n>][&limit=<n>]
+    path(
+        "person-contracts/",
+        PersonContractsOVView.as_view(),
+        name="person-contracts-ov",
     ),  # Get method
     # /ov/invoices/?contract_token=<token>
     path("invoices/", BillingContractInvoicesOVView.as_view(), name="invoices-ov"),

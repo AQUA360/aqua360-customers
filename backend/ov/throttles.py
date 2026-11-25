@@ -154,3 +154,15 @@ class PersonInvoicesThrottle(DniEnumerationThrottle):
 
     scope = "ov_person_invoices_dni"
     rate = "35/min"
+
+
+class PersonContractsThrottle(DniEnumerationThrottle):
+    """
+    Rate limit for `GET /ov/person-contracts/?dni=`, which returns the current
+    and past contracts of an arbitrary DNI with its role in each one. Same
+    enumeration risk as `/ov/person-invoices/`, so it has its own scope (it
+    does not consume the other OV budgets) and the same 35/min rate.
+    """
+
+    scope = "ov_person_contracts_dni"
+    rate = "35/min"
