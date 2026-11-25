@@ -10,7 +10,8 @@ export default defineNuxtPlugin(nuxtApp => {
   const getData = async (
     searchQuery = '', filters = [], page = 1, sort = null,
     desc = false, exploitation_id = null, type_ids = [],
-    use_type_ids = [], material_ids = [], valve_type_ids = [], search_by_address = '') => {
+    use_type_ids = [], material_ids = [], valve_type_ids = [], search_by_address = '',
+    installation_type_ids = [], supply_points = []) => {
       
     let apiUrl = apiHost + entity + '?search=' + encodeURIComponent(searchQuery) + `&page=${page}`;
 
@@ -54,6 +55,14 @@ export default defineNuxtPlugin(nuxtApp => {
       apiUrl += `&search_by_address=${encodeURIComponent(search_by_address)}`;
     }
 
+    if (installation_type_ids.length > 0) {
+      apiUrl += `&installation_type=${installation_type_ids.join(',')}`;
+    }
+
+    if (supply_points.length > 0) {
+      apiUrl += `&supply_points=${supply_points.join(',')}`;
+    }
+
     let exploitation_local_id = localStorage.getItem('exploitation');
     if (exploitation_local_id) {
       apiUrl += `&exploitation=${exploitation_local_id}`; 
@@ -78,7 +87,7 @@ export default defineNuxtPlugin(nuxtApp => {
     searchQuery = '', filters = [], sort = null,
     desc = false, exploitation_id = null, type_ids = [],
     use_type_ids = [], material_ids = [], valve_type_ids = [], search_by_address = '',
-    columns = []) => {
+    columns = [], installation_type_ids = [], supply_points = []) => {
     const exploitation_local_id = localStorage.getItem('exploitation');
     return $apiManager.exportTable(entity, {
       searchQuery, filters, sort, desc,
@@ -88,6 +97,8 @@ export default defineNuxtPlugin(nuxtApp => {
         use_type: use_type_ids,
         material: material_ids,
         valve_type: valve_type_ids,
+        installation_type: installation_type_ids,
+        supply_points,
         search_by_address,
         exploitation: exploitation_local_id || null,
       }

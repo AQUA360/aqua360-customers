@@ -11,7 +11,7 @@ from django.db.models.functions import Concat
 from django.conf import settings
 
 from auth.permissions import PermissionManager
-from service.filters.connection_filter import ConnectionFilter
+from service.filters.connection_filter import ConnectionFilter, annotate_supply_points_count
 from coredata.models import PostalCode
 from service.models import ConnectionObservation, Connection, ConnectionStatus, ClusterNozzleStatus, ConnectionInstallationType, ClusterNozzleType, ClusterStatus, Cluster, ClusterNozzle, ConnectionDocumentationType, ConnectionDocumentationFile
 from service.serializers.connection_serializer import ConnectionSaveSerializer, ConnectionSerializer, ConnectionListSerializer
@@ -27,7 +27,8 @@ class ConnectionViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, DjangoModelPermissions]
     filter_backends = [DjangoFilterBackend, OrderingFilter]
     filterset_class = ConnectionFilter
-    ordering_fields = ['token', 'installation_at','dma_name','exploitation_name','use_type_name','diameter_name','status_name']
+    ordering_fields = ['token', 'installation_at','dma_name','exploitation_name','use_type_name','diameter_name','status_name',
+                       'installation_type_name', 'supply_points_count']
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -38,10 +39,13 @@ class ConnectionViewSet(viewsets.ModelViewSet):
             exploitation_token=F('exploitation__token'), 
             dma_name=F('dma__name'),
             diameter_name=F('diameter__name'),
-            use_type_name=F('use_type__name')
+            use_type_name=F('use_type__name'),
+            installation_type_name=F('installation_type__name'),
         ).prefetch_related(
             Prefetch('observations', queryset=ConnectionObservation.objects.order_by('-created_at'))
         )
+        if self.action == 'list':
+            queryset = annotate_supply_points_count(queryset)
         return queryset
     
     def get_serializer_class(self):
