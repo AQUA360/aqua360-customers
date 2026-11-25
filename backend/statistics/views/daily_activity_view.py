@@ -12,7 +12,7 @@ validats dins del payload.
 
 from django.contrib.auth.models import User
 from rest_framework import status, views
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.response import Response
 
 from auth.permissions import PermissionManager
@@ -39,6 +39,16 @@ def _can_view_other_users(user):
 
 
 NO_PERMISSION_ERROR = "No tens permís per consultar l'activitat d'altres usuaris."
+
+
+class CanViewOtherUsersActivity(BasePermission):
+    """Només qui pot consultar l'activitat d'altres usuaris (flag `view_user`)."""
+
+    message = NO_PERMISSION_ERROR
+
+    def has_permission(self, request, view):
+        return bool(request.user and request.user.is_authenticated and _can_view_other_users(request.user))
+
 INVALID_USERS_ERROR = "Els usuaris demanats no són vàlids."
 EXCLUDED_USERS_ERROR = "L'activitat d'aquest usuari no es pot consultar."
 
@@ -180,5 +190,36 @@ class ReportDailyActivitySummary(views.APIView):
             task = run_report_task.delay('daily_activity_summary_report', data)
             return Response({'task_id': task.id, 'status': 'pending'}, status=status.HTTP_202_ACCEPTED)
         except Exception as error:
+            logger.exception("Error inesperat")
+            return Response({'error': "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class ReportUserCityManagement(views.APIView):
+    """`POST /statistics/billing/user-city-management` → task_id de l'Excel de gestions
+    per usuari i municipi, amb el mateix rang de dates que la pantalla del resum.
+
+    L'informe inclou tots els usuaris: només el pot demanar qui pot consultar
+    l'activitat d'altres usuaris (el mateix criteri que "Tots els usuaris").
+    """
+
+    permission_classes = [IsAuthenticated, CanViewOtherUsersActivity]
+
+    def post(self, request):
+        data = request.data or {}
+        date_from, date_to = parse_activity_dates(
+            data.get('date_from') or data.get('date'),
+            data.get('date_to') or data.get('date'),
+        )
+        payload = {
+            'start_date': date_from.isoformat(),
+            'end_date': date_to.isoformat(),
+            'date_range': [date_from.isoformat(), date_to.isoformat()],
+            'name': data.get('name') or "Gestions per usuari i municipi",
+        }
+
+        try:
+            task = run_report_task.delay('user_city_management_report', payload)
+            return Response({'task_id': task.id, 'status': 'pending'}, status=status.HTTP_202_ACCEPTED)
+        except Exception:
             logger.exception("Error inesperat")
             return Response({'error': "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

@@ -3577,6 +3577,9 @@ export default {
     smart_metering_timestamp: 'Timestamp'
   },
   daily_activity_block:   {
+    user_city_management_report: 'Management by user and municipality',
+    user_city_management_help: 'Excel with the management actions of all users per municipality (holder changes, new contracts, bank account changes, collections by payment type, invoice changes) for the selected period.',
+    user_city_management_empty: 'No file was generated: there are no management actions in this period or the report could not be generated.',
     title: 'Daily activity summary',
     description: 'Everything a user has done in a day: recorded collections, new work orders, contract managements, communications, readings and status changes.',
     report_name: 'Daily activity summary',

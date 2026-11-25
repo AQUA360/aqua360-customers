@@ -3693,6 +3693,9 @@ export default {
     smart_metering_timestamp: 'Marca de temps'
   },
   daily_activity_block:   {
+    user_city_management_report: 'Gestions per usuari i municipi',
+    user_city_management_help: 'Excel amb les gestions de tots els usuaris per municipi (canvis de titular, altes, canvis de compte, cobraments per forma de pagament, modificacions de factures) del període triat.',
+    user_city_management_empty: 'No s\'ha generat cap fitxer: no hi ha gestions en aquest període o no s\'ha pogut generar l\'informe.',
     title: 'Resum d\'activitat diària',
     description: 'Tot el que un usuari ha fet en un dia: cobraments registrats, ordres de treball noves, gestions de contracte, comunicacions, lectures i canvis d\'estat.',
     report_name: 'Resum d\'activitat diària',
