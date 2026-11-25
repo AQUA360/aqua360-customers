@@ -371,6 +371,9 @@ def generate_claim_document_pdf_task(communication_ids, process_id, progress_rec
         process = CommunicationProcess.objects.get(id=process_id)
         
         claim_request = ClaimRequest.objects.get(id=claim_id) if claim_id else ClaimRequest.objects.get(current_step__communication_process=process, current_step__is_completed=False)
+        if not claim_request.current_step.document_type_id:
+            # Pas sense document (p. ex. només genera ordre): no s'hi adjunta res
+            attached_documents = set()
         
         # Count total contracts to process
         total_contracts = sum(comm.contracts.count() for comm in communications)

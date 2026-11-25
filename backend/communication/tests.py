@@ -704,8 +704,8 @@ class ClaimDocumentsWithGroupedPaymentsTests(TestCase):
     def setUp(self):
         from billing.models import Invoice, JoinedPayment, Payment
         from claimrequest.models import (
-            ClaimRequest, ClaimRequestPayment, ClaimRequestStep, ClaimRequestStepTemplate,
-            ClaimRequestTemplate,
+            ClaimDocumentType, ClaimRequest, ClaimRequestPayment, ClaimRequestStep,
+            ClaimRequestStepTemplate, ClaimRequestTemplate,
         )
         from documentmanager.models import Document
 
@@ -720,6 +720,7 @@ class ClaimDocumentsWithGroupedPaymentsTests(TestCase):
         self.claim = ClaimRequest.objects.create()
         step = ClaimRequestStep.objects.create(
             claim_request=self.claim, step_template=step_template, communication_process=self.process,
+            document_type=ClaimDocumentType.objects.create(name='Avís'),
         )
         self.claim.current_step = step
         self.claim.save()
@@ -797,6 +798,13 @@ class ClaimDocumentsWithGroupedPaymentsTests(TestCase):
         files, payment_pdf = self.run_task('invoices', group_payments=False)
         payment_pdf.assert_not_called()
         self.assertEqual(files, [d.id for d in self.invoice_docs] + [self.claim_doc.id])
+
+    def test_step_without_document_attaches_nothing(self):
+        self.claim.current_step.document_type = None
+        self.claim.current_step.save()
+        files, payment_pdf = self.run_task(None, group_payments=False)
+        payment_pdf.assert_not_called()
+        self.assertEqual(files, [self.claim_doc.id])
 
     def test_only_payment_slips(self):
         files, payment_pdf = self.run_task(' Payment_Slips ', group_payments=False)
