@@ -1,3 +1,6 @@
+# Versió en castellà de la documentació OpenAPI de l'Oficina Virtual.
+# La versió en català és openapi.ca.yaml. Qualsevol canvi a l'API s'ha de fer a les
+# dues versions (ho comprova test_openapi_consistency.py). Vegeu README.md.
 openapi: 3.0.3
 info:
   title: Programa de Abonados — API Oficina Virtual (OV)
@@ -827,7 +830,7 @@ paths:
       summary: Descarga en lote de facturas (ZIP)
       description: |
         Descarga en un único ZIP los PDFs de las facturas indicadas. El
-        `contract_token` va en la query y la lista de fitxes en el cuerpo
+        `contract_token` va en la query y la lista de tokens de factura en el cuerpo
         JSON (`invoice_tokens`).
 
         Reutiliza el PDF almacenado y finalizado en `invoice_file` cuando está
@@ -837,11 +840,11 @@ paths:
         fallback mantiene los bytes del PDF sin registrar un nuevo documento
         desde esta descarga por lote.
 
-        Seguridad IDOR: todas las fitxes solicitadas deben pertenecer al
+        Seguridad IDOR: todas las facturas solicitadas deben pertenecer al
         contrato indicado y ser definitivas (`type_final`), el mismo filtro
-        que la descarga individual; cualquier fitxa desconocida o de otro
+        que la descarga individual; cualquier factura desconocida o de otro
         contrato responde `400` con el detalle por token (mensaje genérico,
-        no revela si la fitxa existe en otro contrato).
+        no revela si la factura existe en otro contrato).
 
         Cada PDF se nombra `factura_<serie_final>.pdf` (o
         `factura_<invoice_token>.pdf` si no tiene número), con las barras del
@@ -873,7 +876,7 @@ paths:
         "400":
           description: |
             Falta `contract_token`, el cuerpo no es válido, la lista está
-            vacía o alguna fitxa no pertenece al contrato.
+            vacía o alguna factura no pertenece al contrato.
           content:
             application/json:
               schema:
@@ -891,7 +894,7 @@ paths:
                     invoice_tokens:
                       - Esta lista no puede estar vacía.
                 unknownTokens:
-                  summary: Fitxa ajena al contrato o desconocida
+                  summary: Factura ajena al contrato o desconocida
                   value:
                     invoice_tokens:
                       - Invoice not found for this contract: "FAKE-TOKEN"
@@ -4041,7 +4044,7 @@ components:
         invoice_tokens:
           type: array
           minItems: 1
-          description: Fitxes de las facturas a incluir en el ZIP (se desduplican; todas deben pertenecer al contrato y ser definitivas)
+          description: Tokens de las facturas a incluir en el ZIP (se desduplican; todas deben pertenecer al contrato y ser definitivas)
           items:
             type: string
           example:
