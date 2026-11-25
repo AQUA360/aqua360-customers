@@ -1,4 +1,5 @@
 import datetime
+import logging
 import os
 import re
 import uuid
@@ -23,6 +24,8 @@ from datetime import datetime
 
 from service.models import Meter, MeterStatus, SupplyPointStatus
 from service.utils.supply_point_service import supply_point_change_meter
+
+logger = logging.getLogger(__name__)
 
 def _create_fictitious_meter(no_meter_status):
     from coredata.utils.name_utils import generate_token
@@ -836,29 +839,46 @@ def contract_bank_change(file, is_saving, user=None):
         }
 
 def _update_contract_payment(contract, new_person_bank, direct_debit, direct_debit_token, user=None):
-    try:
-        ContractDataChange.objects.create(
-            contract=contract,
-            previous_payment=contract.payment.IBAN if contract.payment and contract.payment.IBAN else None,
-            current_payment=new_person_bank,
-            new_payment_type=direct_debit,
-            previous_payment_type=contract.payment.type if contract.payment and contract.payment.type else None,
-            user=user,
-        )
-    except Exception as e:
-        pass
+    # Valors abans del canvi, per deixar-ne constància a l'historial del contracte
+    previous_payment = contract.payment.IBAN if contract.payment and contract.payment.IBAN else None
+    previous_payment_type = contract.payment.type if contract.payment and contract.payment.type else None
+    created_payment = None
+
     if contract.payment:
         if contract.payment.type.token != direct_debit_token:
             contract.payment.type = direct_debit
         contract.payment.IBAN = new_person_bank
         contract.payment.save()
     else:
-        contract.payment = GeneralPayment.objects.create(
+        created_payment = GeneralPayment.objects.create(
             token=f"{contract.token}_{new_person_bank.token}",
             type=direct_debit,
             IBAN=new_person_bank,
         )
+        contract.payment = created_payment
         contract.save()
+
+    new_payment_type = contract.payment.type
+    if previous_payment == new_person_bank and previous_payment_type == new_payment_type:
+        return
+
+    # El registre no ha d'aturar el canvi de compte, però si falla ha de quedar al log
+    try:
+        now = timezone.now()
+        ContractDataChange.objects.create(
+            token=f"CDC_{contract.token}_{ContractDataChange.objects.filter(contract=contract).count() + 1}",
+            requested_at=now,
+            approved_at=now,
+            contract=contract,
+            previous_payment=previous_payment,
+            new_payment=new_person_bank,
+            previous_payment_type=previous_payment_type,
+            new_payment_type=new_payment_type,
+            new_general_payment=created_payment,
+            user=user,
+        )
+    except Exception:
+        logger.exception("No s'ha pogut registrar el canvi de compte del contracte %s", contract.pk)
 
 def _get_new_person_bank(person, bank_account, bank, country, swift_code):
     person_banks_queryset = PersonBank.objects.filter(person=person)
