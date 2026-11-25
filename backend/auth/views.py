@@ -14,7 +14,7 @@ from django.utils.translation import gettext_lazy as _
 from django.contrib.auth.models import Group, User, Permission
 
 from auth.filters import UserFilter, GroupFilter
-from auth.roles import CANONICAL_SUPERUSER_USERNAME, get_user_role, is_canonical_superuser
+from auth.roles import CANONICAL_SUPERUSER_USERNAME, get_user_role, is_canonical_superuser, is_customers_account
 from auth.serializers import GroupSerializer, UserSerializer, PermissionSerializer
 from auth.permissions import PermissionManager
 from coredata.authentication import issue_token_key
@@ -33,10 +33,14 @@ def check_user_management_permission(request, action, resource):
         raise PermissionDenied(f"Only a superuser can modify {resource}.")
 
 
-def check_superuser_target(user, target):
-    """Només el superusuari canònic pot modificar o eliminar un altre superusuari."""
-    if target.is_superuser and not is_canonical_superuser(user):
-        raise PermissionDenied("You are not allowed to modify a superuser")
+def check_superuser_target(user, target, allow_self=False):
+    """Un superusuari (o un is_superuser residual) només el pot modificar o eliminar el
+    compte `customers`; amb allow_self, un superusuari addicional pot editar el seu compte."""
+    if not target.is_superuser or is_customers_account(user):
+        return
+    if allow_self and target.pk == user.pk and is_canonical_superuser(user):
+        return
+    raise PermissionDenied("You are not allowed to modify a superuser")
 
 
 class LoginIPThrottle(ScopedRateThrottle):
@@ -105,7 +109,7 @@ class UserViewSet(viewsets.ModelViewSet):
 
     def update(self, request, *args, **kwargs):
         # Abans de validar les dades: si no pot tocar el superusuari, 403 (no errors de contrasenya)
-        check_superuser_target(request.user, self.get_object())
+        check_superuser_target(request.user, self.get_object(), allow_self=True)
         return super().update(request, *args, **kwargs)
 
     def perform_destroy(self, instance):

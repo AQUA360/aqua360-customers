@@ -3594,9 +3594,9 @@ export default {
     role: 'Rol',
     role_none: 'Segons el grup',
     role_none_permissions: 'Sense rol elevat: els permisos venen només dels grups assignats',
-    only_customers_superuser: 'Només el compte customers pot ser superusuari',
+    only_customers_superuser: 'Només el compte customers pot donar o treure el rol de superusuari',
     admin_permissions: 'Com un superusuari, però sense permisos sobre usuaris, grups ni permisos. No cal que estigui en cap grup',
-    superuser_permissions: 'Tots els permisos, inclosa la gestió d\'usuaris i grups. Només el compte customers'
+    superuser_permissions: 'Tots els permisos, inclosa la gestió d\'usuaris i grups. Només per al compte customers i els comptes que permeti la configuració de la instal·lació. Només customers pot donar o treure aquest rol, modificar altres superusuaris, el catàleg de permisos i la configuració del projecte'
   },
   settings_block:   {
     general: 'General',

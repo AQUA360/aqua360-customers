@@ -3594,9 +3594,9 @@ export default {
     role: 'Rol',
     role_none: 'Según el grupo',
     role_none_permissions: 'Sin rol elevado: los permisos vienen solo de los grupos asignados',
-    only_customers_superuser: 'Solo la cuenta customers puede ser superusuario',
+    only_customers_superuser: 'Solo la cuenta customers puede dar o quitar el rol de superusuario',
     admin_permissions: 'Como un superusuario, pero sin permisos sobre usuarios, grupos ni permisos. No hace falta que esté en ningún grupo',
-    superuser_permissions: 'Todos los permisos, incluida la gestión de usuarios y grupos. Solo la cuenta customers'
+    superuser_permissions: 'Todos los permisos, incluida la gestión de usuarios y grupos. Solo para la cuenta customers y las cuentas que permita la configuración de la instalación. Solo customers puede dar o quitar este rol, modificar otros superusuarios, el catálogo de permisos y la configuración del proyecto'
   },
   settings_block:   {
     general: 'General',
