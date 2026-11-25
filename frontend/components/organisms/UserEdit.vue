@@ -214,6 +214,8 @@ watch(userRole, (newValue) => {
 });
 
 watch(username, (newValue) => {
+  // En carregar la fitxa (o tornar al nom original) es conserva el rol que ja tenia
+  if (props.id && newValue === originalUsername.value) return;
   if (newValue !== CANONICAL_SUPERUSER_USERNAME && userRole.value === 'superuser' && !canSelectSuperuser.value) {
     userRole.value = 'admin';
   }

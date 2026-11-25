@@ -179,6 +179,16 @@ class UserSerializer(serializers.HyperlinkedModelSerializer):
             raise PermissionDenied(
                 f"Cannot rename a user to '{CANONICAL_SUPERUSER_USERNAME}'"
             )
+        # Un canvi de nom que fes perdre el rol de superusuari és una revocació: només `customers`
+        if (
+            target_username != instance.username
+            and get_user_role(instance) == ROLE_SUPERUSER
+            and not can_be_superuser(target_username)
+            and not is_customers_account(user_request)
+        ):
+            raise PermissionDenied(
+                f"Only the '{CANONICAL_SUPERUSER_USERNAME}' account can grant or revoke superuser rights"
+            )
         # Validar el rol abans de mutar (contrasenya, etc.) per no deixar canvis parcials
         if role is not None:
             # Donar o treure drets de superusuari: només el compte `customers`

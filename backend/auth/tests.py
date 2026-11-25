@@ -626,6 +626,23 @@ class ExtraSuperuserTest(TestCase):
         self.extra.refresh_from_db()
         self.assertTrue(self.extra.is_superuser)
 
+    def test_extra_superuser_cannot_revoke_own_superuser_by_renaming(self):
+        self.client.force_authenticate(self.extra)
+        response = self.client.patch(f"/auth/user/{self.extra.id}/", {"username": "renamed"}, format="json")
+        self.assertEqual(response.status_code, 403)
+        self.extra.refresh_from_db()
+        self.assertEqual(self.extra.username, "extra")
+        self.assertTrue(self.extra.is_superuser)
+
+    def test_extra_superuser_cannot_delete_own_account(self):
+        self.client.force_authenticate(self.extra)
+        self.assertEqual(self.client.delete(f"/auth/user/{self.extra.id}/").status_code, 403)
+        self.assertTrue(User.objects.filter(id=self.extra.id).exists())
+
+    def test_customers_can_delete_extra_superuser(self):
+        self.client.force_authenticate(self.customers)
+        self.assertEqual(self.client.delete(f"/auth/user/{self.extra.id}/").status_code, 204)
+
     def test_extra_superuser_can_edit_own_data(self):
         self.client.force_authenticate(self.extra)
         response = self.client.patch(f"/auth/user/{self.extra.id}/", {"first_name": "Jo"}, format="json")

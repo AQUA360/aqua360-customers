@@ -33,12 +33,12 @@ def check_user_management_permission(request, action, resource):
         raise PermissionDenied(f"Only a superuser can modify {resource}.")
 
 
-def check_superuser_target(user, target):
+def check_superuser_target(user, target, allow_self=False):
     """Un superusuari (o un is_superuser residual) només el pot modificar o eliminar el
-    compte `customers`; els superusuaris addicionals només es poden editar a ells mateixos."""
+    compte `customers`; amb allow_self, un superusuari addicional pot editar el seu compte."""
     if not target.is_superuser or is_customers_account(user):
         return
-    if target.pk == user.pk and is_canonical_superuser(user):
+    if allow_self and target.pk == user.pk and is_canonical_superuser(user):
         return
     raise PermissionDenied("You are not allowed to modify a superuser")
 
@@ -109,7 +109,7 @@ class UserViewSet(viewsets.ModelViewSet):
 
     def update(self, request, *args, **kwargs):
         # Abans de validar les dades: si no pot tocar el superusuari, 403 (no errors de contrasenya)
-        check_superuser_target(request.user, self.get_object())
+        check_superuser_target(request.user, self.get_object(), allow_self=True)
         return super().update(request, *args, **kwargs)
 
     def perform_destroy(self, instance):
