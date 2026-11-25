@@ -440,7 +440,7 @@ watch(() => props.id, async () => {
         </section>
         <section v-if="activeTab === 'orders'" role="tabpanel" id="tab_orders" class="bg-white antialiased">
           <OrderMiniDetail :contract_request_id="props.id" @show-detail="showDetail"
-            :isSubRegionOpen="isSubRegionOpen" />
+            :isSubRegion="isSubRegion" />
         </section>
         <section v-if="activeTab === 'documents'" role="tabpanel" id="tab_documents"
             class="bg-white antialiased py-3">

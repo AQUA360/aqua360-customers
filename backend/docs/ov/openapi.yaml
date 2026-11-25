@@ -12,7 +12,7 @@ info:
     | `/auth/login/` | POST | Obtención del token (usuario del grupo `ov`) |
     | `/ov/contract-detail/` | GET | Detalle del contrato |
     | `/ov/billing-data/` | GET / POST | Consulta y actualización de datos de facturación |
-    | `/ov/billing-data/update-iban/` | POST | Actualización del IBAN |
+    | `/ov/billing-data/update-iban/` | POST | Actualización del IBAN y paso del contrato a domiciliación |
     | `/ov/contact-data/` | GET | Consulta de la configuración del perfil (datos de facturación + dirección del titular) |
     | `/ov/person-data/` | GET | Datos de contacto de la persona por DNI (teléfonos, correos y direcciones, incluidas las inactivas) |
     | `/ov/person-invoices/` | GET | Facturas de una persona por DNI como titular o pagadora, agrupadas por contrato (incluye contratos de baja y facturas sin contrato) |
@@ -316,12 +316,31 @@ paths:
     post:
       tags:
         - Datos de facturación
-      summary: Actualizar IBAN
+      summary: Actualizar IBAN y domiciliar el contrato
       description: |
-        Actualiza la cuenta bancaria (IBAN) asociada al método de pago del contrato.
+        Actualiza la cuenta bancaria (IBAN) del método de pago del contrato y
+        lo pasa a domiciliación bancaria (la forma de pago configurada como
+        domiciliación en el PA, `payment_type` del diccionario
+        `/ov/dictionary/payment-types/`).
 
         El `nif` enviado debe coincidir con el NIF del titular del contrato (`holder.token`).
         El IBAN se normaliza eliminando espacios y convirtiéndolo a mayúsculas.
+
+        - Si el contrato pagaba de otra forma (efectivo, transferencia...), pasa
+          a domiciliación. Las facturas ya emitidas mantienen su forma de pago;
+          la domiciliación se aplica a partir de las próximas facturas.
+        - Si el IBAN cambia, se genera una nueva referencia de mandato y el
+          mandato SEPA firmado del IBAN anterior deja de estar vigente
+          (`has_sepa_document` pasa a `false`): hay que subir el nuevo mandato
+          firmado con `POST /ov/procedures/{contract_token}/upload-sepa-signed/`.
+        - Si el IBAN es el mismo y el contrato ya está domiciliado, no se cambia
+          nada (la llamada se puede repetir).
+        - El cambio solo afecta al contrato indicado, aunque el titular tenga
+          otros contratos con la misma cuenta.
+
+        Respuestas de error: `400` si faltan campos o el `nif` no coincide con
+        el titular; `404` si el contrato no existe; `500` si el PA no tiene
+        configurada la forma de pago de domiciliación.
       operationId: updateIban
       security:
         - tokenAuth: []
