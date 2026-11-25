@@ -1,3 +1,4 @@
+from django.utils.translation import gettext
 import datetime
 import math
 import os
@@ -480,7 +481,7 @@ def get_report_billing_summary(request, black_fill, white_bold_font, task=None):
         return response, document_id, None
     except Exception as e:
         logger.exception("Error inesperat")
-        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
 def _social_adjustment_ids():
     """
@@ -849,7 +850,7 @@ def generate_billing_summary_by_rate_report(request, black_fill, white_bold_font
         return None, document_id, filename
     except Exception as e:
         logger.exception("Error inesperat")
-        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
 def generate_aca_summary_report(request, black_fill=None, white_bold_font=None, task=None):
     try:
@@ -1258,7 +1259,7 @@ def generate_aca_summary_report(request, black_fill=None, white_bold_font=None, 
         return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST), None, None
     except Exception as e:
         logger.exception("Error inesperat")
-        error_response = Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        error_response = Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         return error_response, None, None
 
 def _add_invoices_to_sheet(sheet, row, invoices, aca_lines, part_fixa_token, forced_aca = None, is_industrial = False, written_invoice_ids=None, volumes_by_invoice=None, include_invoices_without_lines=False):
@@ -1772,7 +1773,7 @@ def generate_aca_summary_report_second_ver(request, black_fill=None, white_bold_
         return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST), None, None
     except Exception as e:
         logger.exception("Error inesperat")
-        error_response = Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        error_response = Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         return error_response, None, None
 
 
@@ -1930,7 +1931,7 @@ def generate_detailed_billing_summary(request, black_fill=None, white_bold_font=
         return response, document_id, None
     except Exception as e:
         logger.exception("Error inesperat")
-        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
 def generate_billing_summary_by_supply_type(request, black_fill=None, white_bold_font=None, task=None):
     try:
@@ -2135,7 +2136,7 @@ def generate_billing_summary_by_supply_type(request, black_fill=None, white_bold
         return response, document_id, None
     except Exception as e:
         logger.exception("Error inesperat")
-        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
 def generate_billing_summary_by_rates(request, black_fill=None, white_bold_font=None, task=None):
     try:
@@ -2250,7 +2251,7 @@ def generate_billing_summary_by_rates(request, black_fill=None, white_bold_font=
         return response, document_id, None
     except Exception as e:
         logger.exception("Error inesperat")
-        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
 def generate_billing_taxes_summary(request, black_fill=None, white_bold_font=None, task=None):
     try:
@@ -2492,7 +2493,7 @@ def generate_billing_taxes_summary(request, black_fill=None, white_bold_font=Non
     except Exception as e:
         logger.exception("Error inesperat")
         print("ERROR: ", e)
-        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
 #NAVISION MURCIA
 def generate_billing_taxes_detailed_summary(request, black_fill=None, white_bold_font=None, task=None):
@@ -2891,7 +2892,7 @@ def generate_billing_taxes_detailed_summary(request, black_fill=None, white_bold
     except Exception as e:
         logger.exception("Error inesperat")
         print("ERROR: ", e)
-        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
 
 def generate_billing_detailed_consumption_summary(request, black_fill=None, white_bold_font=None, task=None):
@@ -3105,7 +3106,7 @@ def generate_billing_detailed_consumption_summary(request, black_fill=None, whit
     except Exception as e:
         logger.exception("Error inesperat")
         print("ERROR: ", e)
-        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
 def generate_report_billing_total_by_person(request, black_fill=None, white_bold_font=None, task=None):
     
@@ -3268,7 +3269,7 @@ def generate_report_billing_total_by_person(request, black_fill=None, white_bold
         return response, document_id, None
     except Exception as e:
         logger.exception("Error inesperat")
-        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
 def generate_report_billing_347(request, black_fill=None, white_bold_font=None, task=None):
     try:
@@ -3446,7 +3447,7 @@ def generate_report_billing_347(request, black_fill=None, white_bold_font=None, 
     except Exception as e:
         logger.exception("Error inesperat")
         print("error: ", e)
-        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
 def generate_cobraments_report(request, black_fill=None, white_bold_font=None, task=None):
     """
@@ -4427,7 +4428,7 @@ def generate_recaptacio_conceptes_excel(request, black_fill=None, white_bold_fon
         import traceback
         print("Error in generate_recaptacio_conceptes_excel: ", e)
         traceback.print_exc()
-        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
 
 
@@ -4706,7 +4707,7 @@ def generate_clavegueram_invoices_excel(request, black_fill=None, white_bold_fon
         import traceback
         print("Error in generate_clavegueram_invoices_excel: ", e)
         traceback.print_exc()
-        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
 def generate_no_register_aca_contracts_report(request, black_fill=None, white_bold_font=None, task=None):
     try:
@@ -4840,7 +4841,7 @@ def generate_no_register_aca_contracts_report(request, black_fill=None, white_bo
         import traceback
         print("Error in generate_no_register_aca_contracts_report: ", e)
         traceback.print_exc()
-        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
 # Permet personalitzar els reports per client: si existeix report_billing_service_personalized,
 # s'usen les seves funcions en lloc de les d'aquest mòdul.

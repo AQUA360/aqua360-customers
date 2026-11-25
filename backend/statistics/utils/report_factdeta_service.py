@@ -1,3 +1,4 @@
+from django.utils.translation import gettext
 import datetime
 import logging
 import zipfile
@@ -127,4 +128,4 @@ def generate_factdeta_report(request, black_fill=None, white_bold_font=None, tas
         return response, document_id, None
     except Exception:
         logger.exception("Error inesperat")
-        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None

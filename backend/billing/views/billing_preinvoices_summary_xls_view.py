@@ -1,4 +1,5 @@
 # contract/views/contract_request_finalize_view.py
+from django.utils.translation import gettext
 import datetime
 from django.http import HttpResponse
 from rest_framework import status, views
@@ -130,4 +131,4 @@ class BillingPreInvoicesSummaryXLSViewSet(views.APIView):
         
         except Exception as e:
             logger.exception("Error inesperat")
-            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

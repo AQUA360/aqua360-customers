@@ -1,4 +1,5 @@
 # contract/views/contract_request_view.py
+from django.utils.translation import gettext
 from rest_framework.decorators import action
 from django.conf import settings
 from rest_framework import viewsets, status
@@ -305,4 +306,4 @@ class ContractRequestCreateContractView(APIView):
             return Response({"error": "ContractRequest not found"}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             logger.exception("Error inesperat")
-            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

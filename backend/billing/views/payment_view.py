@@ -1,3 +1,4 @@
+from django.utils.translation import gettext
 from django.conf import settings
 from django.db import transaction
 from django.db.models import OuterRef, Q, Subquery
@@ -835,7 +836,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
         except Exception as e:
             logger.exception("Error inesperat")
             traceback.print_exc()
-            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def get_permissions(self):
         if self.action == 'permissions':

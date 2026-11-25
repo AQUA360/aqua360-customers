@@ -1,5 +1,6 @@
 # contract/views/contract_request_finalize_view.py
 
+from django.utils.translation import gettext
 from rest_framework import status, views
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
@@ -45,4 +46,4 @@ class InvoiceContractGenerateView(views.APIView):
         
         except Exception as e:
             logger.exception("Error inesperat")
-            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
