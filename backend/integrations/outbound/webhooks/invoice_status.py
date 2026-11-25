@@ -8,7 +8,9 @@ tasca periòdica compara l'estat actual de totes les factures amb la foto del
 darrer estat avisat (WebhookInvoiceState) i avisa dels canvis, agrupats en
 paquets (WEBHOOKS_BILLING_CHUNK_SIZE) com billing.issued.
 
-- La primera execució (foto buida) fa la foto sense avisar.
+- La primera execució (foto buida) fa la foto sense avisar. La foto porta una fila
+  marca (BASELINE_MARKER_ID) perquè una instal·lació sense factures no torni a
+  començar de zero en crear-ne la primera.
 - Si una factura canvia dues vegades entre dues execucions, només s'avisa de
   l'estat final.
 - Retornada: un rebut actiu de la factura passa a l'estat de rebut retornat. La
@@ -40,6 +42,8 @@ INVOICE_CANCELLED = "invoice.cancelled"
 
 # Clau del bloqueig de PostgreSQL que garanteix una sola comparació alhora
 SCAN_LOCK_KEY = 289100001
+# Fila de la foto que indica que ja s'ha fet (els id de factura comencen per 1)
+BASELINE_MARKER_ID = 0
 
 CONFIG_TOKENS = (
     "invoice_status_paid_token",
@@ -91,7 +95,9 @@ def seed_state(returned_token=None):
             f"ON CONFLICT (invoice_id) DO NOTHING",
             params,
         )
-        return cursor.rowcount
+        seeded = cursor.rowcount
+    WebhookInvoiceState.objects.get_or_create(invoice_id=BASELINE_MARKER_ID)
+    return seeded
 
 
 def reset_state():
@@ -197,7 +203,10 @@ def _invoices_queryset(invoice_ids, config):
     return annotate_ov_returns(queryset, config["payment_status_returned_token"])
 
 
-def invoice_status_data(invoice, event_type, previous_status, direct_debit_token):
+def invoice_status_data(invoice, event_type, previous_status, status, direct_debit_token):
+    """Dades d'una factura de l'avís. `status` és l'estat llegit en comparar (el que
+    ha decidit el tipus d'avís), no el de la factura carregada després: si ha tornat
+    a canviar entremig, la següent passada n'avisarà."""
     from billing.utils.invoice_service import get_totals
     from ov.invoice_returns import ov_return_info
 
@@ -224,7 +233,7 @@ def invoice_status_data(invoice, event_type, previous_status, direct_debit_token
         "contract": _contract_ref(invoice.contract),
         "holder": {"id": holder_id} if holder_id else None,
         "previous_status": _token_name(previous_status),
-        "status": _token_name(invoice.status),
+        "status": _token_name(status),
         "direct_debit": bool(direct_debit_token) and invoice.payment_type_token_final == direct_debit_token,
         "amounts": {"total": _amount(total), "paid": _amount(paid), "pending": _amount(pending), "currency": "EUR"},
         "payment_date": _date(invoice.webhook_payment_date) if event_type == INVOICE_PAID else None,
@@ -232,35 +241,51 @@ def invoice_status_data(invoice, event_type, previous_status, direct_debit_token
     }
 
 
+def _build_items(invoice_ids, event_type, rows_by_id, config, statuses):
+    with transaction.atomic():
+        return [
+            invoice_status_data(
+                invoice,
+                event_type,
+                statuses.get(rows_by_id[invoice.id]["previous_status_id"]),
+                statuses.get(rows_by_id[invoice.id]["status_id"]),
+                config["direct_debit_token"],
+            )
+            for invoice in _invoices_queryset(invoice_ids, config)
+        ]
+
+
 def _emit_chunks(event_type, rows, config, statuses):
+    """Torna (factures que no s'han pogut avisar, avisos creats). Si un paquet no es
+    pot construir, es prova factura per factura: una factura amb dades errònies no
+    atura les altres, i només aquella es torna a provar a la passada següent."""
     size = max(1, settings.WEBHOOKS_BILLING_CHUNK_SIZE)
     parts = (len(rows) + size - 1) // size
-    done, events = [], 0
+    rows_by_id = {row["invoice_id"]: row for row in rows}
+    failed, events = set(), 0
     for index in range(parts):
-        chunk = rows[index * size:(index + 1) * size]
-        previous = {row["invoice_id"]: row["previous_status_id"] for row in chunk}
+        chunk_ids = [row["invoice_id"] for row in rows[index * size:(index + 1) * size]]
         try:
-            with transaction.atomic():
-                invoices = list(_invoices_queryset(list(previous), config))
-                data = {
-                    "part": index + 1,
-                    "parts": parts,
-                    "invoices": [
-                        invoice_status_data(
-                            invoice, event_type, statuses.get(previous[invoice.id]), config["direct_debit_token"]
-                        )
-                        for invoice in invoices
-                    ],
-                }
+            items = _build_items(chunk_ids, event_type, rows_by_id, config, statuses)
         except Exception:
-            logger.exception("No s'han pogut construir les dades d'un avís d'estat de factura")
+            logger.exception("No s'han pogut construir les dades d'un avís d'estat de factura: es prova una a una")
+            items = []
+            for invoice_id in chunk_ids:
+                try:
+                    items.extend(_build_items([invoice_id], event_type, rows_by_id, config, statuses))
+                except Exception:
+                    logger.exception("No s'han pogut construir les dades d'una factura d'un avís d'estat")
+                    failed.add(invoice_id)
+        sent_ids = [invoice_id for invoice_id in chunk_ids if invoice_id not in failed]
+        if not items:
             continue
-        first, last = chunk[0]["invoice_id"], chunk[-1]["invoice_id"]
-        event = emit(event_type, "invoices", f"{first}-{last}", lambda data=data: data, schedule=False)
-        if event is not None:
-            done.extend(chunk)
+        data = {"part": index + 1, "parts": parts, "invoices": items}
+        event = emit(event_type, "invoices", f"{sent_ids[0]}-{sent_ids[-1]}", lambda data=data: data, schedule=False)
+        if event is None:
+            failed.update(sent_ids)
+        else:
             events += 1
-    return done, events
+    return failed, events
 
 
 def scan():
@@ -300,10 +325,9 @@ def scan():
             type_rows = [row for row in type_rows if row["invoice_id"] in notifiable]
             if not type_rows:
                 continue
-            done, created = _emit_chunks(event_type, type_rows, config, statuses)
+            type_failed, created = _emit_chunks(event_type, type_rows, config, statuses)
             events += created
-            done_ids = {row["invoice_id"] for row in done}
-            failed.update(row["invoice_id"] for row in type_rows if row["invoice_id"] not in done_ids)
+            failed.update(type_failed)
 
         WebhookInvoiceState.objects.bulk_create(
             [

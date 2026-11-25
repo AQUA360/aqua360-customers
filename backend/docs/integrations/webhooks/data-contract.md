@@ -64,7 +64,7 @@ Cada registre porta l'id intern (estable) i el codi. Les factures porten també 
 
 L'estat d'una factura canvia des de molts llocs (rebuts, remeses, devolucions, venciments, cobraments massius, anul·lacions). Per no perdre'n cap, una tasca compara cada `WEBHOOKS_INVOICE_SCAN_MINUTES` (5 minuts) l'estat de totes les factures amb el darrer estat avisat i avisa dels canvis. Per tant:
 
-- L'avís pot arribar **fins a 5 minuts** després del canvi (més el temps d'enviament).
+- L'avís sol arribar **fins a 5 minuts** després del canvi (més el temps d'enviament). Pot trigar més si en una passada canvien més de `WEBHOOKS_INVOICE_SCAN_LIMIT` (5.000) factures, perquè la resta van a la passada següent, o si les dades d'una factura no es poden construir, que es torna a provar a cada passada.
 - Si una factura canvia dues vegades dins l'interval, **només s'avisa de l'estat final**; si torna a l'estat d'abans, no s'avisa.
 - Si un rebut passa a retornat i alhora canvia l'estat de la factura, mana `invoice.returned`.
 - Només s'avisa de factures actives, amb número i que no són pressupostos.
@@ -103,8 +103,8 @@ Cada factura de `invoices[]`:
 | Ordre | Per a què |
 |---|---|
 | `send_test_webhook` | Envia un `webhook.test` i mostra la resposta del receptor |
-| `resend_webhooks [--status failed|disabled] [--type …] [--since AAAA-MM-DD]` | Torna a enviar avisos fallits o desats sense URL |
-| `webhooks_invoice_baseline` | Refà la foto de l'estat de les factures sense avisar (després d'un temps desactivat) |
+| `resend_webhooks [--status failed\|disabled] [--type …] [--since AAAA-MM-DD]` | Torna a enviar avisos fallits o desats sense URL |
+| `webhooks_invoice_baseline` | Refà la foto de l'estat de les factures sense avisar. Després d'un temps amb els webhooks desactivats, executeu-la **abans** de tornar-los a activar; si no, s'avisarà de tots els canvis acumulats |
 
 ## Tests
 

@@ -581,8 +581,9 @@ class InvoiceStatusScanTest(TestCase):
 
         self._invoice("FC/1", status=self.paid)
         result = self._scan()
-        self.assertEqual(result["status"], "seeded")
-        self.assertEqual(WebhookInvoiceState.objects.count(), 1)
+        self.assertEqual(result, {"status": "seeded", "invoices": 1})
+        # La factura i la marca de foto feta
+        self.assertEqual(WebhookInvoiceState.objects.count(), 2)
         self.assertFalse(WebhookEvent.objects.exists())
         self.assertEqual(self._scan(), {"status": "success", "changes": 0, "events": 0})
         schedule.assert_not_called()
@@ -747,6 +748,61 @@ class InvoiceStatusScanTest(TestCase):
         notified = [item["id"] for event in self._events() for item in event.payload["data"]["invoices"]]
         self.assertEqual(notified, [invoice.id for invoice in invoices])
 
+    def test_empty_photo_then_first_invoice_is_notified(self, _schedule):
+        self.assertEqual(self._scan(), {"status": "seeded", "invoices": 0})
+
+        invoice, _ = self._invoice("FC/80", status=self.paid)
+        self._scan()
+
+        self.assertEqual(self._events("invoice.paid")[0].payload["data"]["invoices"][0]["id"], invoice.id)
+
+    def test_status_is_the_one_that_decided_the_event(self, _schedule):
+        from integrations.outbound.webhooks import invoice_status
+
+        invoice, _ = self._invoice("FC/81")
+        self._scan()
+        Invoice.objects.filter(pk=invoice.pk).update(status=self.paid)
+
+        original = invoice_status._invoices_queryset
+
+        def changed_meanwhile(invoice_ids, config):
+            # Una altra transacció l'anul·la entre la comparació i la construcció
+            Invoice.objects.filter(pk=invoice.pk).update(status=self.cancelled)
+            return original(invoice_ids, config)
+
+        with mock.patch.object(invoice_status, "_invoices_queryset", side_effect=changed_meanwhile):
+            self._scan()
+        item = self._events("invoice.paid")[0].payload["data"]["invoices"][0]
+        self.assertEqual(item["status"]["token"], "I_PAID")
+        # La següent passada avisa de l'anul·lació
+        self._scan()
+        self.assertEqual(len(self._events("invoice.cancelled")), 1)
+
+    def test_one_bad_invoice_does_not_block_its_chunk(self, _schedule):
+        from integrations.outbound.webhooks import invoice_status
+
+        good, _ = self._invoice("FC/82")
+        bad, _ = self._invoice("FC/83")
+        self._scan()
+        Invoice.objects.filter(pk__in=[good.pk, bad.pk]).update(status=self.paid)
+
+        original = invoice_status.invoice_status_data
+
+        def fails_for_bad(invoice, *args):
+            if invoice.id == bad.id:
+                raise ValueError("dades errònies")
+            return original(invoice, *args)
+
+        with mock.patch.object(invoice_status, "invoice_status_data", side_effect=fails_for_bad):
+            result = self._scan()
+        self.assertEqual((result["events"], result["retry"]), (1, 1))
+        self.assertEqual(
+            [item["id"] for item in self._events("invoice.paid")[0].payload["data"]["invoices"]], [good.id]
+        )
+
+        self._scan()
+        self.assertEqual(self._events("invoice.paid")[1].payload["data"]["invoices"][0]["id"], bad.id)
+
     def test_chunk_that_cannot_be_built_is_retried(self, _schedule):
         invoice, _ = self._invoice("FC/40")
         self._scan()
@@ -837,6 +893,27 @@ class ContractRequestCancelledTest(TestCase):
         request_obj.status = self.cancel
         request_obj.save()
         self.assertEqual(WebhookEvent.objects.filter(event_type="contract_request.cancelled").count(), 2)
+
+    def test_partial_save_without_status_does_not_emit(self, _schedule):
+        request_obj = ContractRequest.objects.create(token="CR-13", status=self.draft)
+        request_obj.status = self.cancel
+        request_obj.save(update_fields=["updated_at"])
+        self.assertFalse(WebhookEvent.objects.exists())
+
+        request_obj.save(update_fields=["status"])
+        self.assertEqual(WebhookEvent.objects.filter(event_type="contract_request.cancelled").count(), 1)
+
+    def test_config_error_does_not_break_the_save(self, _schedule):
+        from django.db import DatabaseError
+
+        request_obj = ContractRequest.objects.create(token="CR-14", status=self.draft)
+        request_obj.status = self.cancel
+        with mock.patch(
+            "integrations.outbound.webhooks.signals.emit_contract_request_cancelled", side_effect=DatabaseError("db")
+        ):
+            request_obj.save()
+        request_obj.refresh_from_db()
+        self.assertEqual(request_obj.status, self.cancel)
 
     @override_settings(WEBHOOKS_ENABLED=False)
     def test_disabled_does_nothing(self, _schedule):

@@ -64,7 +64,7 @@ Cada registro lleva el id interno (estable) y el código. Las facturas llevan ta
 
 El estado de una factura cambia desde muchos sitios (recibos, remesas, devoluciones, vencimientos, cobros masivos, anulaciones). Para no perder ninguno, una tarea compara cada `WEBHOOKS_INVOICE_SCAN_MINUTES` (5 minutos) el estado de todas las facturas con el último estado avisado y avisa de los cambios. Por tanto:
 
-- El aviso puede llegar **hasta 5 minutos** después del cambio (más el tiempo de envío).
+- El aviso suele llegar **hasta 5 minutos** después del cambio (más el tiempo de envío). Puede tardar más si en una pasada cambian más de `WEBHOOKS_INVOICE_SCAN_LIMIT` (5.000) facturas, porque el resto van a la pasada siguiente, o si los datos de una factura no se pueden construir, que se reintenta en cada pasada.
 - Si una factura cambia dos veces dentro del intervalo, **solo se avisa del estado final**; si vuelve al estado anterior, no se avisa.
 - Si un recibo pasa a devuelto y a la vez cambia el estado de la factura, manda `invoice.returned`.
 - Solo se avisa de facturas activas, con número y que no son presupuestos.
@@ -103,8 +103,8 @@ Cada factura de `invoices[]`:
 | Orden | Para qué |
 |---|---|
 | `send_test_webhook` | Envía un `webhook.test` y muestra la respuesta del receptor |
-| `resend_webhooks [--status failed|disabled] [--type …] [--since AAAA-MM-DD]` | Reenvía avisos fallidos o guardados sin URL |
-| `webhooks_invoice_baseline` | Rehace la foto del estado de las facturas sin avisar (tras un tiempo desactivado) |
+| `resend_webhooks [--status failed\|disabled] [--type …] [--since AAAA-MM-DD]` | Reenvía avisos fallidos o guardados sin URL |
+| `webhooks_invoice_baseline` | Rehace la foto del estado de las facturas sin avisar. Tras un tiempo con los webhooks desactivados, ejecútela **antes** de volver a activarlos; si no, se avisará de todos los cambios acumulados |
 
 ## Tests
 
