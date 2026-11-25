@@ -655,8 +655,9 @@ paths:
 
         Cada contrato aparece una sola vez. `roles` indica si la persona es o
         ha sido titular (`holder`) y/o pagadora (`payer`) del contrato. Hoy es
-        pagadora la titular de la cuenta de domiciliación y, si el contrato
-        no tiene cuenta, la titular.
+        pagadora la titular de la cuenta de domiciliación (según el DNI de la
+        cuenta) y, si el contrato no tiene cuenta o la cuenta no tiene DNI, la
+        titular.
 
         `related_now` es `true` si hoy la persona es la titular o la titular
         de la cuenta de domiciliación y el contrato está de alta; es `false`

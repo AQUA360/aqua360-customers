@@ -8270,6 +8270,23 @@ class PersonContractsOVTests(TestCase):
         contract("PCON-02", cls.active_status, cls.person, other_account)
         # Titular del compte d'un contracte d'una altra persona: pagadora.
         contract("PCON-03", cls.active_status, cls.other, person_account)
+        # Compte lligat a la fitxa de la persona però amb el DNI d'una altra:
+        # el compte és de l'altra persona i aquí no hi surt.
+        foreign_dni_account = GeneralPayment.objects.create(
+            type=payment_type,
+            IBAN=PersonBank.objects.create(
+                person=cls.person, dni=cls.OTHER_DNI, iban="ES3333333333333333333333"
+            ),
+        )
+        contract("PCON-93", cls.active_status, cls.other, foreign_dni_account)
+        # Titular avui amb un compte sense DNI: com en facturar, és pagadora.
+        no_dni_account = GeneralPayment.objects.create(
+            type=payment_type,
+            IBAN=PersonBank.objects.create(
+                person=cls.other, dni="", iban="ES4444444444444444444444"
+            ),
+        )
+        contract("PCON-08", cls.active_status, cls.person, no_dni_account)
         # Titular avui d'un contracte de baixa: no hi està vinculada avui.
         contract("PCON-04", cls.dropped_status, cls.person, person_account)
         # Titular antiga per factures (canvi de titular): titular i pagadora.
@@ -8302,6 +8319,7 @@ class PersonContractsOVTests(TestCase):
         "PCON-05": (["holder", "payer"], False),
         "PCON-06": (["payer"], False),
         "PCON-07": (["holder", "payer"], False),
+        "PCON-08": (["holder", "payer"], True),
     }
 
     def setUp(self):
@@ -8333,7 +8351,16 @@ class PersonContractsOVTests(TestCase):
         tokens = [item["contract_token"] for item in response.data["results"]]
         self.assertEqual(
             tokens,
-            ["PCON-01", "PCON-02", "PCON-03", "PCON-04", "PCON-05", "PCON-06", "PCON-07"],
+            [
+                "PCON-01",
+                "PCON-02",
+                "PCON-03",
+                "PCON-08",
+                "PCON-04",
+                "PCON-05",
+                "PCON-06",
+                "PCON-07",
+            ],
         )
 
     def test_item_contains_contract_data(self):
@@ -8356,7 +8383,7 @@ class PersonContractsOVTests(TestCase):
 
         self.assertEqual(
             set(self._by_token(response)),
-            {"PCON-01", "PCON-02", "PCON-04", "PCON-05", "PCON-07"},
+            {"PCON-01", "PCON-02", "PCON-04", "PCON-05", "PCON-07", "PCON-08"},
         )
 
     def test_filter_role_payer(self):
@@ -8364,14 +8391,24 @@ class PersonContractsOVTests(TestCase):
 
         self.assertEqual(
             set(self._by_token(response)),
-            {"PCON-01", "PCON-03", "PCON-04", "PCON-05", "PCON-06", "PCON-07"},
+            {
+                "PCON-01",
+                "PCON-03",
+                "PCON-04",
+                "PCON-05",
+                "PCON-06",
+                "PCON-07",
+                "PCON-08",
+            },
         )
 
     def test_filter_related_now(self):
         current = self._get(dni=self.DNI, related_now="true")
         past = self._get(dni=self.DNI, related_now="false")
 
-        self.assertEqual(set(self._by_token(current)), {"PCON-01", "PCON-02", "PCON-03"})
+        self.assertEqual(
+            set(self._by_token(current)), {"PCON-01", "PCON-02", "PCON-03", "PCON-08"}
+        )
         self.assertEqual(
             set(self._by_token(past)), {"PCON-04", "PCON-05", "PCON-06", "PCON-07"}
         )
@@ -8394,12 +8431,12 @@ class PersonContractsOVTests(TestCase):
         response = self._get(dni=self.DNI, limit=3, page=3)
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data["count"], 7)
+        self.assertEqual(response.data["count"], 8)
         self.assertEqual(response.data["total_pages"], 3)
         self.assertEqual(response.data["limit"], 3)
         self.assertEqual(
             [item["contract_token"] for item in response.data["results"]],
-            ["PCON-07"],
+            ["PCON-06", "PCON-07"],
         )
 
     def test_invalid_page_returns_400(self):

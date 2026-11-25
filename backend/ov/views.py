@@ -2323,8 +2323,9 @@ class PersonContractsOVView(APIView):
       `/ov/person-invoices/` (sense prefactures ni factures amb data futura).
 
     `roles` diu si hi és (o hi ha estat) titular (`holder`) i/o pagadora
-    (`payer`). Avui és pagadora la titular del compte de domiciliació i, si el
-    contracte no té compte, la titular. `related_now` és cert si avui és la
+    (`payer`). Avui és pagadora la titular del compte de domiciliació (pel DNI
+    del compte) i, si el contracte no té compte o el compte no té DNI, la
+    titular, com en facturar. `related_now` és cert si avui és la
     titular o la titular del compte i el contracte és d'alta (estat de
     `contract_active_token`); un contracte de baixa sempre surt a fals.
 
@@ -2380,7 +2381,9 @@ class PersonContractsOVView(APIView):
     @staticmethod
     def _contracts(dni):
         # Persones i comptes del DNI com a subconsultes: no fan cap consulta
-        # a part, van dins la dels contractes.
+        # a part, van dins la dels contractes. El compte és de qui diu el seu
+        # DNI (`PersonBank.dni`), no de la fitxa a què està lligat: és el
+        # pagador que posa la facturació (`invoice_service`).
         persons = (
             Person.objects.annotate(normalized_token=_normalized_dni_expression("token"))
             .filter(normalized_token=dni)
@@ -2388,7 +2391,7 @@ class PersonContractsOVView(APIView):
         )
         accounts = (
             PersonBank.objects.annotate(normalized_dni=_normalized_dni_expression("dni"))
-            .filter(Q(normalized_dni=dni) | Q(person__in=persons))
+            .filter(normalized_dni=dni)
             .values("id")
         )
 
@@ -2409,7 +2412,14 @@ class PersonContractsOVView(APIView):
 
         holder_now = Q(holder__in=persons)
         account_now = Q(payment__IBAN__in=accounts)
-        payer_now = account_now | (holder_now & Q(payment__IBAN__isnull=True))
+        # Com en facturar: sense compte o amb un compte sense DNI, la
+        # pagadora és la titular.
+        account_without_dni = (
+            Q(payment__IBAN__isnull=True)
+            | Q(payment__IBAN__dni__isnull=True)
+            | Q(payment__IBAN__dni="")
+        )
+        payer_now = account_now | (holder_now & account_without_dni)
         active_token = (
             ConfigProject.objects.filter(token="contract_active_token")
             .values_list("value", flat=True)
