@@ -33,10 +33,16 @@ from billing.utils.connection_request_invoice import format_location, get_addres
 
 from billing.utils.adjustment_service import calc_consumption_responsible, get_contract_min_persons
 from .invoice_line_item_service import create_from_lineitemtype, create_from_lineitemtype_connection, constrain_total_value, get_last_reading
+from billing.utils.reading_filters import PENDING_READING_FILTER
+from billing.utils.termination_close_reading_service import ensure_termination_close_readings
 from faker import Faker
 fake = Faker()
 
 logger = logging.getLogger(__name__)
+
+
+class TerminationCloseReadingMissingError(Exception):
+    """La baixa no té cap lectura pendent de facturar: només en té de ja facturades."""
 
 origin_reading = None
 invoice_type_invoice = None
@@ -2497,10 +2503,13 @@ def invoice_contract_termination_generate(
         contract = contract_termination.contract
         if contract.supply_point_default and contract.supply_point_default.connection and contract.supply_point_default.connection.exploitation:
             exploitation = contract.supply_point_default.connection.exploitation
+        # Canvi de titular: la lectura de tall entrada a l'alta és també la de tancament.
+        ensure_termination_close_readings(contract_termination)
         readings = contract_termination.readings.filter(is_active=True, is_control=False)
         meter = contract.supply_point_default.meter if contract.supply_point_default and contract.supply_point_default.meter else None
         if not readings or len(readings) == 0:
             readings = []
+            billed_supply_points = []
             for supply_point in contract.supply_points.all():
                 reading_query = Reading.objects.filter(
                     # batch__isnull=False, 
@@ -2516,10 +2525,19 @@ def invoice_contract_termination_generate(
                     reading_query = reading_query.filter(reading_date__gte=contract.registration_date)
                 elif contract.created_at:
                     reading_query = reading_query.filter(reading_date__gte=contract.created_at.date())
-                
-                reading = reading_query.order_by('-reading_date').first()
+
+                # Una lectura que ja té factura definitiva no es torna a facturar a la baixa:
+                # es cobraria dues vegades el mateix període.
+                reading = reading_query.filter(PENDING_READING_FILTER).order_by('-reading_date').first()
                 if reading:
                     readings.append(reading)
+                elif reading_query.exists():
+                    billed_supply_points.append(supply_point)
+            if billed_supply_points:
+                raise TerminationCloseReadingMissingError(
+                    f"Termination {contract_termination.id} has no closing reading pending to bill "
+                    f"(supply points {[sp.id for sp in billed_supply_points]})"
+                )
     except ContractTerminationRequest.DoesNotExist:
         raise Exception("Contract termination request not found")
 
