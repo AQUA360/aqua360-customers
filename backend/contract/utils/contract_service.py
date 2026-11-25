@@ -302,6 +302,13 @@ def _contract_create_locked(user, contract_request):
                 duplicate_initial_reading.delete()
         termination_readings.update(contract=contract, batch=None)
 
+    # Canvi de titular: la lectura de tall entrada a l'alta és també la lectura de
+    # tancament del contracte de sortida, vinculada a la seva baixa. Sense això la
+    # factura de baixa no té lectura de tancament.
+    from billing.utils.termination_close_reading_service import ensure_termination_close_readings
+    for termination_request in contract_request.contract_termination_requests.exclude(contract_id=contract.id):
+        ensure_termination_close_readings(termination_request)
+
     # Les Order (ordres de treball) creades mentre encara era una ContractRequest només
     # quedaven vinculades a aquesta. Ara que el Contract definitiu ja existeix, les hi vinculem.
     Order.objects.filter(contract_request=contract_request, contract__isnull=True).update(contract=contract)

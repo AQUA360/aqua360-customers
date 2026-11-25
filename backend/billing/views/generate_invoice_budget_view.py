@@ -26,6 +26,7 @@ from billing.utils.invoice_service import (
     invoice_connection_generate,
     invoice_contract_generate,
     generate_empty_invoice,
+    TerminationCloseReadingMissingError,
 )
 
 logger = logging.getLogger(__name__)
@@ -196,8 +197,17 @@ class GenerateInvoiceBudgetView(APIView):
                     ContractTerminationRequest.objects.filter(id=contract_termination_request.id).update(ignore_invoice=False)
                 Invoice.objects.filter(contract_termination=contract_termination_request, type__token=budget_type_token).delete()
                 #invoice = invoice_contract_termination_generate(None, object_id, payment_type, payment_bank, is_budget, electronic_data)
-                invoice = invoice_contract_termination_generate(None, contract_termination_request.id, payment_type, payment_bank, is_budget, electronic_data, billing_entity=linked_contract_request, is_initiation=(linked_contract_request is not None), bill_termination_requester=bill_termination_requester, company_bank=company_bank)
-        
+                try:
+                    invoice = invoice_contract_termination_generate(None, contract_termination_request.id, payment_type, payment_bank, is_budget, electronic_data, billing_entity=linked_contract_request, is_initiation=(linked_contract_request is not None), bill_termination_requester=bill_termination_requester, company_bank=company_bank)
+                except TerminationCloseReadingMissingError:
+                    logger.warning("Termination %s budget without closing reading", contract_termination_request.id, exc_info=True)
+                    # No es perd el pressupost anterior ni el canvi d'ignore_invoice.
+                    transaction.set_rollback(True)
+                    return Response({'error': (
+                        "La baixa no té lectura de tancament: les lectures del contracte ja estan facturades. "
+                        "Introduïu la lectura de tancament a la baixa."
+                    )}, status=status.HTTP_400_BAD_REQUEST)
+
         elif entity == "connection_request":
             connection_request = ConnectionRequest.objects.get(id=object_id)
             
