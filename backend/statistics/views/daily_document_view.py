@@ -1,3 +1,4 @@
+from django.utils.translation import gettext
 from rest_framework.decorators import action
 from rest_framework import viewsets, status
 from rest_framework.response import Response
@@ -104,7 +105,7 @@ class DailyDocumentViewSet(viewsets.ModelViewSet):
             )
         except Exception as e:
             logger.exception("Error inesperat")
-            return Response({'error': "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({'error': gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     @action(detail=True, methods=['get'], url_path='regenerate')
     def regenerate_daily_document(self, request, pk=None):
@@ -121,7 +122,7 @@ class DailyDocumentViewSet(viewsets.ModelViewSet):
             return Response({'task_id': task.id}, status=status.HTTP_200_OK)
         except Exception as e:
             logger.exception("Error inesperat")
-            return Response({'error': "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({'error': gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=True, methods=['post'], url_path='submit')
     def submit(self, request, pk=None):
@@ -149,6 +150,6 @@ class DailyDocumentViewSet(viewsets.ModelViewSet):
         except Exception:
             logger.exception("Error submitting daily document")
             return Response(
-                {'error': "Ha ocorregut un error inesperat."},
+                {'error': gettext("An unexpected error has occurred.")},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )

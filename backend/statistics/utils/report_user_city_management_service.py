@@ -10,6 +10,7 @@ automàtics (estat de factura, PDF...) i els processos dels comptes tècnics. El
 municipi és el del punt de subministrament del contracte de la gestió.
 """
 
+from django.utils.translation import gettext
 import datetime
 import logging
 from collections import defaultdict
@@ -441,6 +442,6 @@ def generate_user_city_management_report(request, black_fill=None, white_bold_fo
         logger.exception("Error generant l'informe de gestions per usuari i municipi")
         # Un error no es pot confondre amb "sense dades": l'informe diari el desa com a error.
         return Response(
-            {'error': "Ha ocorregut un error inesperat."},
+            {'error': gettext("An unexpected error has occurred.")},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         ), None, None

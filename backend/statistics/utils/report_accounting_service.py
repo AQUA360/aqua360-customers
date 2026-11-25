@@ -1,3 +1,4 @@
+from django.utils.translation import gettext
 import datetime
 from django.http import HttpResponse
 from rest_framework import status
@@ -88,4 +89,4 @@ def generate_general_accounting_report(request, black_fill=None, white_bold_font
         import traceback
         print("Error in generate_general_accounting_report: ", e)
         traceback.print_exc()
-        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None

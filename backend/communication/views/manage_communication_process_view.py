@@ -1,3 +1,4 @@
+from django.utils.translation import gettext
 import re
 from datetime import datetime, time as datetime_time
 from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
@@ -98,7 +99,7 @@ class ManageCommunicationProcessViewSet(APIView):
             return Response({"task_id": task.id}, status=status.HTTP_202_ACCEPTED)
         except Exception as e:
             logger.exception("Error inesperat")
-            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_400_BAD_REQUEST)
 
         # persons = []
         # time_start = time.time()

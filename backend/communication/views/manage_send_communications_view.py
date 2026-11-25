@@ -1,3 +1,4 @@
+from django.utils.translation import gettext
 from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
 from rest_framework import status
 from rest_framework.response import Response
@@ -53,7 +54,7 @@ class ManageSendCommunicationsViewSet(APIView):
             
         except Exception as e:
             logger.exception("Error inesperat")
-            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_400_BAD_REQUEST)
 
     
     def get(self, request, *args, **kwargs):
@@ -81,5 +82,5 @@ class ManageSendCommunicationsViewSet(APIView):
         except Exception as e:
             logger.exception("Error inesperat")
             print(f"error: {e}")
-            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_400_BAD_REQUEST)
         

@@ -1,3 +1,4 @@
+from django.utils.translation import gettext
 from rest_framework import status, views
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
@@ -27,7 +28,7 @@ class CompleteOrderView(views.APIView):
             return Response({"error": "Status 'pendent' no trobat."}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             print(e)
-            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
 class InvalidateOrderView(views.APIView):
     permission_classes = [IsAuthenticated, DjangoModelPermissions]
@@ -51,4 +52,4 @@ class InvalidateOrderView(views.APIView):
             return Response({"error": "Status 'pendent' no trobat."}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             print(e)
-            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

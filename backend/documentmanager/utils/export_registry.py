@@ -1062,7 +1062,7 @@ def _cluster_config():
 def _connection_config():
     from rest_framework.permissions import IsAuthenticated
     from service.models import Connection
-    from service.filters.connection_filter import ConnectionFilter
+    from service.filters.connection_filter import ConnectionFilter, annotate_supply_points_count
     from documentmanager.utils.export_permissions import export_permission_class
 
     available_columns = {
@@ -1074,12 +1074,14 @@ def _connection_config():
         "diameter": (_("Diàmetre"), lambda c: c.diameter.name if c.diameter else ""),
         "installation_at": (_("Data instal·lació"), lambda c: c.installation_at.strftime("%Y-%m-%d") if c.installation_at else ""),
         "address_city": (_("Municipi"), lambda c: c.address_city.name if c.address_city else ""),
+        "installation_type": (_("Tipus d'instal·lació"), lambda c: c.installation_type.name if c.installation_type else ""),
+        "supply_points_count": (_("Núm. Punts de Subministrament"), lambda c: c.supply_points_count),
     }
 
     return ExportConfig(
-        queryset=lambda: Connection.objects.filter(is_active=True).select_related(
-            "exploitation", "status", "type", "use_type", "diameter", "address_city",
-        ),
+        queryset=lambda: annotate_supply_points_count(Connection.objects.filter(is_active=True).select_related(
+            "exploitation", "status", "type", "use_type", "diameter", "address_city", "installation_type",
+        )),
         filterset_class=ConnectionFilter,
         permission_classes=[IsAuthenticated, export_permission_class('service', 'connection')],
         available_columns=available_columns,

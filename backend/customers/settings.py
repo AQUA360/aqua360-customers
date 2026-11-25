@@ -499,7 +499,9 @@ REST_FRAMEWORK.update(
 # per inactivitat o per antiguitat, el que arribi primer.
 AUTH_TOKEN_IDLE_HOURS = config("AUTH_TOKEN_IDLE_HOURS", default=24, cast=int)
 AUTH_TOKEN_MAX_AGE_DAYS = config("AUTH_TOKEN_MAX_AGE_DAYS", default=7, cast=int)
-# Usuaris d'integració amb token permanent: els de les variables que ja creen
+# Caducitat del token de DRF dels usuaris d'integració: en caducar, cal tornar a fer login.
+AUTH_INTEGRATION_TOKEN_MAX_AGE_DAYS = config("AUTH_INTEGRATION_TOKEN_MAX_AGE_DAYS", default=15, cast=int)
+# Usuaris d'integració amb token de DRF: els de les variables que ja creen
 # aquests usuaris, els de AUTH_TOKEN_NON_EXPIRING_USERS i els dels grups indicats.
 AUTH_TOKEN_NON_EXPIRING_USERS = sorted({
     username

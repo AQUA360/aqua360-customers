@@ -1,8 +1,8 @@
 import re
 
+from coredata.authentication import ExpiringTokenAuthentication
 from django.db.models import Q
 from rest_framework import status
-from rest_framework.authentication import TokenAuthentication
 from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -47,7 +47,7 @@ class GMAOPropertySearchView(APIView):
     grup `gmao` (token de `POST /gmao/v1/auth/login/`).
     """
 
-    authentication_classes = [TokenAuthentication]
+    authentication_classes = [ExpiringTokenAuthentication]
     permission_classes = [IsGMAOUser]
     pagination_class = OVLimitPagination
     min_search_length = 3

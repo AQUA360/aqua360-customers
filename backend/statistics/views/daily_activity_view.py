@@ -10,6 +10,7 @@ Celery no té `request.user`, per tant el POST hi ha d'enviar els `user_ids` ja
 validats dins del payload.
 """
 
+from django.utils.translation import gettext
 from django.contrib.auth.models import User
 from rest_framework import status, views
 from rest_framework.permissions import BasePermission, IsAuthenticated
@@ -191,7 +192,7 @@ class ReportDailyActivitySummary(views.APIView):
             return Response({'task_id': task.id, 'status': 'pending'}, status=status.HTTP_202_ACCEPTED)
         except Exception as error:
             logger.exception("Error inesperat")
-            return Response({'error': "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({'error': gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class ReportUserCityManagement(views.APIView):
@@ -222,4 +223,4 @@ class ReportUserCityManagement(views.APIView):
             return Response({'task_id': task.id, 'status': 'pending'}, status=status.HTTP_202_ACCEPTED)
         except Exception:
             logger.exception("Error inesperat")
-            return Response({'error': "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({'error': gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

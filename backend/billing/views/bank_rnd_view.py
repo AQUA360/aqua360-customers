@@ -1,4 +1,5 @@
 # views.py (or wherever your API view is defined)
+from django.utils.translation import gettext
 import datetime
 from decimal import Decimal
 from django.db.models import Q
@@ -309,7 +310,7 @@ class BankRNDDocumentView(APIView):
             return Response({'message': 'Payments updated'}, status=status.HTTP_200_OK)
         except Exception as e:
             logger.exception("Error inesperat")
-            return Response({'error': "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({'error': gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     def put(self, request, *args, **kwargs):
         from billing.utils.payment_service import reconnect_payment_signals

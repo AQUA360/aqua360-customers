@@ -1,3 +1,4 @@
+from django.utils.translation import gettext
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 from django.db import transaction
@@ -279,7 +280,7 @@ class InvoiceSendGroupedEmailView(APIView):
                     "sent": False,
                     "invoice_ids": invoice_ids,
                     "communication_id": comm.id,
-                    "error": "Ha ocorregut un error inesperat.",
+                    "error": gettext("An unexpected error has occurred."),
                 },
                 status=status.HTTP_502_BAD_GATEWAY,
             )

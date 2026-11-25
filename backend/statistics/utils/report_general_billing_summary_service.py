@@ -1,3 +1,4 @@
+from django.utils.translation import gettext
 import re
 from itertools import groupby
 
@@ -273,4 +274,4 @@ def generate_general_billing_summary_report(request, black_fill, white_bold_font
         return response, document_id, None
     except Exception as e:
         logger.exception("Error inesperat")
-        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None

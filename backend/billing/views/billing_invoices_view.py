@@ -1,4 +1,5 @@
 # contract/views/contract_request_finalize_view.py
+from django.utils.translation import gettext
 from django.http import FileResponse
 from rest_framework import status, views
 from django_filters.rest_framework import DjangoFilterBackend
@@ -194,7 +195,7 @@ class BillingInvoicesSummaryViewSet(views.APIView):
         
         except Exception as e:
             logger.exception("Error inesperat")
-            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class BillingInvoicesPdfViewSet(views.APIView):
     permission_classes = [IsAuthenticated, DjangoModelPermissions]
@@ -218,4 +219,4 @@ class BillingInvoicesPdfViewSet(views.APIView):
         
         except Exception as e:
             logger.exception("Error inesperat")
-            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

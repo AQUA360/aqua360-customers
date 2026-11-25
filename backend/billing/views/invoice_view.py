@@ -1,3 +1,4 @@
+from django.utils.translation import gettext
 import datetime
 import calendar
 from rest_framework.decorators import action
@@ -673,7 +674,7 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
         logger.exception("Error inesperat")
-        return Response({'error': "Ha ocorregut un error inesperat."}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({'error': gettext("An unexpected error has occurred.")}, status=status.HTTP_400_BAD_REQUEST)
 
   @action(detail=True, methods=['post'], url_path='bill-to-new-contract')
   def bill_to_new_contract(self, request, pk=None):
