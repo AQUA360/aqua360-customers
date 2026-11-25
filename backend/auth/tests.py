@@ -562,6 +562,18 @@ class ExtraSuperuserTest(TestCase):
         self.assertEqual(get_user_role(self.extra2), "admin")
         self.assertEqual(get_user_role(self.residual), "admin")
 
+    def test_stale_request_cannot_restore_revoked_superuser(self):
+        # La sessió encara té l'usuari d'abans de la revocació (is_superuser=True a memòria)
+        stale_extra = User.objects.get(pk=self.extra.pk)
+        User.objects.filter(pk=self.extra.pk).update(is_superuser=False, is_staff=True)
+        self.client.force_authenticate(stale_extra)
+        response = self.client.patch(
+            f"/auth/user/{self.extra.id}/", {"first_name": "Extra", "role": "superuser"}, format="json",
+        )
+        self.assertEqual(response.status_code, 403, response.content)
+        self.extra.refresh_from_db()
+        self.assertFalse(self.extra.is_superuser)
+
     def test_extra_superuser_can_create_and_modify_users(self):
         self.client.force_authenticate(self.extra)
         response = self.client.post(

@@ -216,6 +216,8 @@ watch(userRole, (newValue) => {
 watch(username, (newValue) => {
   // En carregar la fitxa (o tornar al nom original) es conserva el rol que ja tenia
   if (props.id && newValue === originalUsername.value) return;
+  // Si el rol està bloquejat no es toca: el servidor ja rebutja el canvi de nom que el faria perdre
+  if (roleLocked.value) return;
   if (newValue !== CANONICAL_SUPERUSER_USERNAME && userRole.value === 'superuser' && !canSelectSuperuser.value) {
     userRole.value = 'admin';
   }

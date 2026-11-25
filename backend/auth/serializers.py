@@ -14,6 +14,7 @@ from auth.roles import (
 from auth.utils import manage_group_permissions
 from .permissions import PermissionManager
 from django.contrib.auth.hashers import make_password
+from django.db import transaction
 from django.core.exceptions import PermissionDenied, ValidationError as DjangoValidationError
 from django.utils.translation import gettext
 
@@ -154,9 +155,15 @@ class UserSerializer(serializers.HyperlinkedModelSerializer):
         user = User.objects.create_user(username, email, new_pwd, **validated_data)
         return self._apply_role(user, role, group_id=group_id, update_group=True)
 
+    @transaction.atomic
     def update(self, instance, validated_data):
         user_request = self.context.get('request').user
         if not is_canonical_superuser(user_request):
+            raise PermissionDenied("Only a superuser can update users")
+        # Comprovar i desar sobre la fila bloquejada: un canvi de rol simultani (p. ex. una
+        # revocació) no es pot perdre amb un desament fet amb dades antigues
+        instance = User.objects.select_for_update().get(pk=instance.pk)
+        if instance.pk == user_request.pk and not is_canonical_superuser(instance):
             raise PermissionDenied("Only a superuser can update users")
 
         new_pwd = validated_data.pop('new_pwd', None)
