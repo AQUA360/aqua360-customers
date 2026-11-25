@@ -54,7 +54,7 @@ from logger.models import LogIncidentStatusChange, LogContractRequestStatus
 from notification.models import Incident, IncidentStatus, IncidentType
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.response import Response
-from rest_framework import status
+from rest_framework import serializers, status
 from rest_framework.views import APIView
 from rest_framework.generics import RetrieveAPIView
 from rest_framework.exceptions import NotFound, ValidationError
@@ -308,6 +308,8 @@ class BillingDataOVUpdateIBANView(APIView):
                 },
                 status=status.HTTP_200_OK,
             )
+        except serializers.ValidationError as e:
+            return Response({"error": e.detail}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             logger.exception("Error inesperat")
             return Response(

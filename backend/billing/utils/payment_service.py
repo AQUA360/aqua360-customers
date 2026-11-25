@@ -55,6 +55,39 @@ except ImportError:
     pass
 
 
+def general_payment_reference_count(general_payment):
+    """Quantes entitats apunten a aquesta GeneralPayment.
+
+    `Contract.payment` és una FK normal, no un OneToOne: la importació
+    inicial va crear una GeneralPayment per (titular, compte) i hi va
+    vincular tots els contractes d'aquell titular, de manera que la fila
+    pot estar compartida.
+    """
+    from contract.models import ContractRequest, GeneralInvoice
+    from service.models import ConnectionRequest
+    return (
+        Contract.objects.filter(payment=general_payment).count()
+        + GeneralInvoice.objects.filter(payment=general_payment).count()
+        + ContractRequest.objects.filter(payment=general_payment).count()
+        + ConnectionRequest.objects.filter(payment=general_payment).count()
+    )
+
+
+def split_general_payment(general_payment):
+    """Còpia la GeneralPayment per no arrossegar la resta de contractes.
+
+    Els mandate logs i el document SEPA es queden a la fila original:
+    pertanyen a l'historial dels contractes que no s'estan modificant. La
+    còpia arrenca sense document SEPA, que és el que toca quan hi ha un
+    compte nou (cal una ordre de domiciliació nova).
+    """
+    from billing.models import GeneralPayment
+    copy = GeneralPayment.objects.get(pk=general_payment.pk)
+    copy.pk = None
+    copy.save()
+    return copy
+
+
 
 def get_payment_SEPA_data(payments, payment_data):
     print("\n\nGET PAYMENT SEPA DATA (DEPRECATED)")

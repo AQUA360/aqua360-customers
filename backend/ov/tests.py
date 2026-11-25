@@ -1621,6 +1621,9 @@ class SepaDocumentUploadTests(TestCase):
     def test_update_iban_locks_and_modifies_reloaded_payment(self):
         from ov.serializers import UpdateBillingDataOVIBANSerializer
 
+        ConfigProject.objects.update_or_create(
+            token="direct_debit_token", defaults={"value": "DIRECT_DEBIT"}
+        )
         contract = Contract.objects.select_related("payment__IBAN").get(pk=self.contract.pk)
         current_bank = PersonBank.objects.create(
             person=self.holder, iban="ES00000000000000000000", name="Current holder"
@@ -8893,3 +8896,208 @@ class InvoiceReturnOVTests(TestCase):
         for item in response.data:
             self.assertIs(item["is_returned"], False)
             self.assertIsNone(item["last_return"])
+
+
+class UpdateIbanDirectDebitOVTests(TestCase):
+    """`update-iban` posa el compte nou i passa el contracte a domiciliació
+    (`direct_debit_token`), amb historial, mandat i còpia de la forma de
+    pagament si és compartida."""
+
+    OLD_IBAN = "ES1111111111111111111111"
+    NEW_IBAN = "ES2222222222222222222222"
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(username="ov-update-iban-test", password="not-used")
+        for token, value in (
+            ("contract_termination_completed_token", "3"),
+            ("contract_terminated_status", "-1"),
+            ("direct_debit_token", "DIRECT_DEBIT"),
+        ):
+            ConfigProject.objects.update_or_create(token=token, defaults={"value": value})
+        cls.status = ContractStatus.objects.create(token="1", name="Activo")
+        cls.direct_debit = PaymentType.objects.create(token="DIRECT_DEBIT", name="Domiciliación")
+        cls.cash = PaymentType.objects.create(token="CASH", name="Efectivo")
+        cls.holder = Person.objects.create(token=HOLDER_TOKEN, name="Test", surname="Holder")
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+        self.old_bank = PersonBank.objects.create(
+            person=self.holder, dni=HOLDER_TOKEN, iban=self.OLD_IBAN, is_active=True
+        )
+        self.payment = GeneralPayment.objects.create(token="GP-IBAN", type=self.cash)
+        self.contract = Contract.objects.create(
+            token=PLAIN_TOKEN, status=self.status, holder=self.holder, payment=self.payment
+        )
+
+    def _post(self, iban=NEW_IBAN, nif=HOLDER_TOKEN):
+        return self.client.post(
+            f"{reverse('update-iban-ov')}?contract_token={self.contract.token}",
+            {
+                "iban": iban,
+                "nif": nif,
+                "iban_holder_name": "Test Holder",
+                "iban_holder_dni": HOLDER_TOKEN,
+            },
+            format="json",
+        )
+
+    def _logs(self, field_name):
+        from contract.models import ContractLog
+
+        return ContractLog.objects.filter(contract=self.contract, field_name=field_name)
+
+    def test_cash_contract_becomes_direct_debit(self):
+        response = self._post()
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.contract.refresh_from_db()
+        payment = self.contract.payment
+        self.assertEqual(payment.pk, self.payment.pk)
+        self.assertEqual(payment.type, self.direct_debit)
+        self.assertEqual(payment.IBAN.iban, self.NEW_IBAN)
+        self.assertTrue(payment.mandate_id)
+        self.assertTrue(payment.mandate_logs.filter(new_mandate_id=payment.mandate_id).exists())
+        change = ContractDataChange.objects.get(contract=self.contract)
+        self.assertEqual(change.previous_payment_type, self.cash)
+        self.assertEqual(change.new_payment_type, self.direct_debit)
+        self.assertEqual(change.new_payment, payment.IBAN)
+        self.assertIsNone(change.new_general_payment)
+        self.assertEqual(self._logs("payment_type").get().new_value, "DIRECT_DEBIT")
+        self.assertEqual(self._logs("payment_IBAN").get().new_value, self.NEW_IBAN)
+
+    def test_shared_payment_is_copied_for_this_contract_only(self):
+        self.payment.IBAN = self.old_bank
+        self.payment.save()
+        other = Contract.objects.create(
+            token="OTHER-1", status=self.status, holder=self.holder, payment=self.payment
+        )
+
+        response = self._post()
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.contract.refresh_from_db()
+        other.refresh_from_db()
+        self.old_bank.refresh_from_db()
+        self.assertNotEqual(self.contract.payment_id, self.payment.pk)
+        self.assertEqual(self.contract.payment.type, self.direct_debit)
+        self.assertEqual(self.contract.payment.IBAN.iban, self.NEW_IBAN)
+        # L'altre contracte continua igual i el compte vell, actiu
+        self.assertEqual(other.payment_id, self.payment.pk)
+        self.assertEqual(other.payment.type, self.cash)
+        self.assertEqual(other.payment.IBAN, self.old_bank)
+        self.assertTrue(self.old_bank.is_active)
+        change = ContractDataChange.objects.get(contract=self.contract)
+        self.assertEqual(change.new_general_payment, self.contract.payment)
+
+    def test_same_iban_already_direct_debit_changes_nothing(self):
+        self.payment.type = self.direct_debit
+        self.payment.IBAN = self.old_bank
+        self.payment.mandate_id = "M-1"
+        self.payment.save()
+
+        response = self._post(iban=self.OLD_IBAN.lower())
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.payment.refresh_from_db()
+        self.assertEqual(self.payment.IBAN, self.old_bank)
+        self.assertEqual(self.payment.mandate_id, "M-1")
+        self.assertEqual(PersonBank.objects.filter(person=self.holder).count(), 1)
+        self.assertFalse(ContractDataChange.objects.filter(contract=self.contract).exists())
+
+    def test_same_iban_on_cash_only_changes_type_and_keeps_signed_mandate(self):
+        self.payment.IBAN = self.old_bank
+        self.payment.save()
+        GeneralPaymentSepaDocument.objects.create(general_payment=self.payment, checked=True)
+
+        response = self._post(iban=self.OLD_IBAN)
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.payment.refresh_from_db()
+        self.assertEqual(self.payment.type, self.direct_debit)
+        self.assertEqual(self.payment.IBAN, self.old_bank)
+        self.assertTrue(self.payment.mandate_id)
+        self.assertTrue(GeneralPaymentSepaDocument.objects.filter(general_payment=self.payment).exists())
+        self.assertFalse(self._logs("payment_IBAN").exists())
+        self.assertEqual(self._logs("payment_type").count(), 1)
+
+    def test_new_iban_retires_old_signed_mandate_and_renews_mandate_id(self):
+        from billing.utils.payment_service import generate_mandate_id
+
+        self.payment.type = self.direct_debit
+        self.payment.IBAN = self.old_bank
+        self.payment.mandate_id = generate_mandate_id(self.payment, self.contract.token)
+        self.payment.save()
+        self.payment.mandate_logs.create(new_mandate_id=self.payment.mandate_id)
+        previous_mandate = self.payment.mandate_id
+        document = Document.objects.create(
+            document_name="mandat.pdf", entity="SEPA", entity_id=self.payment.pk, service="hdd"
+        )
+        GeneralPaymentSepaDocument.objects.create(
+            general_payment=self.payment, file=document, checked=True
+        )
+
+        response = self._post()
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.payment.refresh_from_db()
+        self.old_bank.refresh_from_db()
+        self.assertEqual(self.payment.IBAN.iban, self.NEW_IBAN)
+        self.assertNotEqual(self.payment.mandate_id, previous_mandate)
+        self.assertFalse(self.old_bank.is_active)
+        self.assertFalse(response.data["data"]["has_sepa_document"])
+        self.assertFalse(GeneralPaymentSepaDocument.objects.filter(general_payment=self.payment).exists())
+        self.assertTrue(Document.objects.filter(pk=document.pk).exists())
+        self.assertFalse(self._logs("payment_type").exists())
+
+    def test_contract_without_payment_gets_direct_debit_payment(self):
+        self.contract.payment = None
+        self.contract.save()
+
+        response = self._post()
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.contract.refresh_from_db()
+        self.assertEqual(self.contract.payment.type, self.direct_debit)
+        self.assertEqual(self.contract.payment.IBAN.iban, self.NEW_IBAN)
+
+    def test_nif_mismatch_returns_400_and_changes_nothing(self):
+        response = self._post(nif="00000000T")
+
+        self.assertEqual(response.status_code, 400)
+        self.payment.refresh_from_db()
+        self.assertEqual(self.payment.type, self.cash)
+        self.assertEqual(PersonBank.objects.filter(person=self.holder).count(), 1)
+
+    def test_missing_direct_debit_config_returns_500_and_changes_nothing(self):
+        ConfigProject.objects.filter(token="direct_debit_token").delete()
+
+        response = self._post()
+
+        self.assertEqual(response.status_code, 500)
+        self.payment.refresh_from_db()
+        self.assertEqual(self.payment.type, self.cash)
+        self.assertIsNone(self.payment.IBAN)
+
+    def test_signed_mandate_can_be_uploaded_after_update(self):
+        with tempfile.TemporaryDirectory() as storage, override_settings(
+            DOCUMENT_STORAGE_PATH=storage
+        ):
+            self.assertEqual(self._post().status_code, 200)
+            response = self.client.post(
+                reverse("upload-sepa-signed-ov", kwargs={"contract_token": PLAIN_TOKEN}),
+                {
+                    "sepa": SimpleUploadedFile(
+                        "sepa.pdf", b"%PDF-1.4 test", content_type="application/pdf"
+                    ),
+                    "iban": self.NEW_IBAN,
+                },
+                format="multipart",
+            )
+
+        self.assertEqual(response.status_code, 201, response.data)
+        self.contract.refresh_from_db()
+        self.assertTrue(
+            GeneralPaymentSepaDocument.objects.filter(general_payment=self.contract.payment).exists()
+        )
