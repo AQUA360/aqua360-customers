@@ -4,6 +4,7 @@ from django.conf import settings
 from django.db import connection, transaction
 from django.contrib.postgres.aggregates import ArrayAgg
 from django.db.models import (
+    BooleanField,
     Case,
     CharField,
     Count,
@@ -150,6 +151,7 @@ from ov.throttles import (
     ContractChangeProcedureThrottle,
     DniEnumerationThrottle,
     PaymentReceiptThrottle,
+    PersonContractsThrottle,
     PersonDataThrottle,
     PersonInvoicesThrottle,
     QuickPayThrottle,
@@ -2305,6 +2307,203 @@ class PersonInvoicesOVView(APIView):
             "supply_address": str(address) if address else None,
             "invoices": [],
         }
+
+
+class PersonContractsOVView(APIView):
+    """GET /ov/person-contracts/?dni=<DNI>[&role=holder|payer][&related_now=true|false][&page=<n>][&limit=<n>]
+
+    Contractes actuals i antics d'una persona, amb el seu paper a cadascun.
+    Hi surten els contractes on la persona:
+
+    - és ara la titular (`Contract.holder`) o la titular del compte de
+      domiciliació (`payment.IBAN`), encara que no tinguin factures; o
+    - consta com a titular (`customer_token_final`) o pagadora
+      (`payer_token_final`, o la titular si la factura no en té) en alguna
+      factura del contracte, amb els mateixos criteris que
+      `/ov/person-invoices/` (sense prefactures ni factures amb data futura).
+
+    `roles` diu si hi és (o hi ha estat) titular (`holder`) i/o pagadora
+    (`payer`). Avui és pagadora la titular del compte de domiciliació (pel DNI
+    del compte) i, si el contracte no té compte o el compte no té DNI, la
+    titular, com en facturar. `related_now` és cert si avui és la
+    titular o la titular del compte i el contracte és d'alta (estat de
+    `contract_active_token`); un contracte de baixa sempre surt a fals.
+
+    El DNI es normalitza com a `/ov/person-data/`. Tot es resol amb unes
+    poques consultes per petició (configuració, contractes candidats, recompte
+    i pàgina), no una per contracte.
+    """
+
+    # Només el compte de servei de l'OV (i superusuaris): amb un DNI es veu
+    # l'històric de contractes d'una persona.
+    permission_classes = [IsAuthenticated, IsOVUser]
+    throttle_classes = [PersonContractsThrottle]
+    pagination_class = OVLimitPagination
+
+    ROLES = ("holder", "payer")
+    BOOLEANS = {"true": True, "false": False}
+
+    def get(self, request):
+        dni = _normalize_person_dni(request.query_params.get("dni"))
+        if not dni:
+            return Response(
+                {"error": "DNI is required"}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        role = (request.query_params.get("role") or "").strip().lower()
+        if role and role not in self.ROLES:
+            return Response(
+                {"error": "Invalid role (expected holder or payer)"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        related_raw = (request.query_params.get("related_now") or "").strip().lower()
+        if related_raw and related_raw not in self.BOOLEANS:
+            return Response(
+                {"error": "Invalid related_now (expected true or false)"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        contracts = self._contracts(dni)
+        if role:
+            contracts = contracts.filter(**{f"is_{role}": True})
+        if related_raw:
+            contracts = contracts.filter(related_now=self.BOOLEANS[related_raw])
+
+        paginator = self.pagination_class()
+        try:
+            page = paginator.paginate_queryset(contracts, request, view=self)
+        except NotFound:
+            return Response(
+                {"error": "Invalid page"}, status=status.HTTP_400_BAD_REQUEST
+            )
+        return paginator.get_paginated_response([self._item(c) for c in page])
+
+    @staticmethod
+    def _contracts(dni):
+        # Persones i comptes del DNI com a subconsultes: no fan cap consulta
+        # a part, van dins la dels contractes. El compte és de qui diu el seu
+        # DNI (`PersonBank.dni`), no de la fitxa a què està lligat: és el
+        # pagador que posa la facturació (`invoice_service`).
+        persons = (
+            Person.objects.annotate(normalized_token=_normalized_dni_expression("token"))
+            .filter(normalized_token=dni)
+            .values("id")
+        )
+        accounts = (
+            PersonBank.objects.annotate(normalized_dni=_normalized_dni_expression("dni"))
+            .filter(normalized_dni=dni)
+            .values("id")
+        )
+
+        # Les factures es comparen exactament amb el DNI normalitzat, com a
+        # `/ov/person-invoices/`, per fer servir els índexs dels dos camps.
+        invoices = exclude_future_invoices(Invoice.objects).exclude(status__token="1")
+        invoice_contracts = invoices.filter(
+            Q(customer_token_final=dni) | Q(payer_token_final=dni),
+            contract__isnull=False,
+        )
+        contract_invoices = invoices.filter(contract=OuterRef("pk"))
+        # Si la factura no té pagador, la pagadora és la titular.
+        no_payer = Q(payer_token_final__isnull=True) | Q(payer_token_final="")
+        as_invoice_holder = contract_invoices.filter(customer_token_final=dni)
+        as_invoice_payer = contract_invoices.filter(
+            Q(payer_token_final=dni) | (Q(customer_token_final=dni) & no_payer)
+        )
+
+        holder_now = Q(holder__in=persons)
+        account_now = Q(payment__IBAN__in=accounts)
+        # Com en facturar: sense compte o amb un compte sense DNI, la
+        # pagadora és la titular.
+        account_without_dni = (
+            Q(payment__IBAN__isnull=True)
+            | Q(payment__IBAN__dni__isnull=True)
+            | Q(payment__IBAN__dni="")
+        )
+        payer_now = account_now | (holder_now & account_without_dni)
+        active_token = (
+            ConfigProject.objects.filter(token="contract_active_token")
+            .values_list("value", flat=True)
+            .first()
+        )
+        active_token = str(active_token).strip() if active_token is not None else ""
+        if active_token:
+            related_now = Case(
+                When(
+                    (holder_now | account_now) & Q(status__token=active_token),
+                    then=Value(True),
+                ),
+                default=Value(False),
+                output_field=BooleanField(),
+            )
+        else:
+            related_now = Value(False, output_field=BooleanField())
+
+        # Primer els ids candidats amb una UNION, on cada branca fa servir el
+        # seu índex; un OR dins la consulta principal recorre tots els
+        # contractes.
+        candidate_ids = list(
+            Contract.objects.filter(holder_now)
+            .values_list("pk", flat=True)
+            .union(
+                Contract.objects.filter(account_now).values_list("pk", flat=True),
+                invoice_contracts.values_list("contract_id", flat=True),
+            )
+        )
+
+        return (
+            Contract.objects.filter(pk__in=candidate_ids)
+            .annotate(
+                invoice_holder=Exists(as_invoice_holder),
+                invoice_payer=Exists(as_invoice_payer),
+            )
+            .annotate(
+                is_holder=Case(
+                    When(holder_now | Q(invoice_holder=True), then=Value(True)),
+                    default=Value(False),
+                    output_field=BooleanField(),
+                ),
+                is_payer=Case(
+                    When(payer_now | Q(invoice_payer=True), then=Value(True)),
+                    default=Value(False),
+                    output_field=BooleanField(),
+                ),
+                related_now=related_now,
+            )
+            .select_related(
+                "status",
+                "supply_point_default__address__street__type",
+                "supply_point_default__address__street_number__number_type",
+                "supply_point_default__address__city",
+                "supply_point_default__address__country",
+            )
+            .order_by("-related_now", "token", "pk")
+        )
+
+    @staticmethod
+    def _item(contract):
+        supply_point = contract.supply_point_default
+        address = supply_point.address if supply_point else None
+        roles = [
+            role
+            for role, present in (
+                ("holder", contract.is_holder),
+                ("payer", contract.is_payer),
+            )
+            if present
+        ]
+        return {
+            "contract_token": contract.token,
+            "contract_status": (
+                {"token": contract.status.token, "name": contract.status.name}
+                if contract.status
+                else None
+            ),
+            "supply_point": supply_point.token if supply_point else None,
+            "address": str(address) if address else None,
+            "roles": roles,
+            "related_now": contract.related_now,
+        }
+
 
 QUICK_PAY_NON_PAYABLE_STATUS_CONFIG_TOKENS = [
     "invoice_status_paid_token",

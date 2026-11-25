@@ -16,6 +16,7 @@ info:
     | `/ov/contact-data/` | GET | Consulta de la configuración del perfil (datos de facturación + dirección del titular) |
     | `/ov/person-data/` | GET | Datos de contacto de la persona por DNI (teléfonos, correos y direcciones, incluidas las inactivas) |
     | `/ov/person-invoices/` | GET | Facturas de una persona por DNI como titular o pagadora, agrupadas por contrato (incluye contratos de baja y facturas sin contrato) |
+    | `/ov/person-contracts/` | GET | Contratos actuales y antiguos de una persona por DNI, con su papel (titular o pagadora) y si está vinculada hoy |
     | `/ov/invoices/` | GET | Listado de facturas (excluye pre-facturas) |
     | `/ov/invoices/download/` | POST | Descarga en lote de facturas seleccionadas (ZIP) |
     | `/ov/invoice/` | GET | Detalle de una factura |
@@ -628,6 +629,112 @@ paths:
                         is_payer: true
                         is_returned: false
                         last_return: null
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: El usuario autenticado no es la cuenta de servicio de la OV (grupo `ov`) ni superusuario
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  /ov/person-contracts/:
+    get:
+      tags:
+        - Contrato
+      summary: Listar los contratos actuales y antiguos de una persona por DNI
+      description: |
+        Devuelve los contratos en los que la persona identificada por `dni`:
+
+        - es hoy titular del contrato o titular de la cuenta de
+          domiciliación, aunque el contrato no tenga facturas; o
+        - consta como titular o pagadora en alguna factura del contrato
+          (si la factura no tiene pagador, el pagador es el titular). Se
+          excluyen las pre-facturas y las facturas con fecha de emisión
+          futura.
+
+        Cada contrato aparece una sola vez. `roles` indica si la persona es o
+        ha sido titular (`holder`) y/o pagadora (`payer`) del contrato. Hoy es
+        pagadora la titular de la cuenta de domiciliación (según el DNI de la
+        cuenta) y, si el contrato no tiene cuenta o la cuenta no tiene DNI, la
+        titular.
+
+        `related_now` es `true` si hoy la persona es la titular o la titular
+        de la cuenta de domiciliación y el contrato está de alta; es `false`
+        si solo está vinculada por facturas o si el contrato está de baja.
+
+        Los contratos vinculados hoy aparecen primero y, después, por número
+        de contrato. La respuesta está paginada.
+
+        Responde `400` si falta el DNI, si `role` o `related_now` no tienen
+        un valor admitido o si la página no existe. Un DNI sin contratos
+        devuelve `results` vacío. El endpoint está limitado a 35 peticiones
+        por minuto y cuenta.
+
+        Solo lo puede llamar la cuenta de servicio de la OV (usuarios del
+        grupo `ov`) o un superusuario; cualquier otro usuario autenticado
+        recibe `403`.
+      operationId: listPersonContracts
+      security:
+        - tokenAuth: []
+      parameters:
+        - name: dni
+          in: query
+          required: true
+          description: |
+            DNI/NIF de la persona. Se normaliza ignorando espacios, guiones y
+            puntos y pasando a mayúsculas.
+          schema:
+            type: string
+          example: "12345678A"
+        - name: role
+          in: query
+          required: false
+          description: Solo los contratos en los que la persona tiene este papel.
+          schema:
+            type: string
+            enum: [holder, payer]
+        - name: related_now
+          in: query
+          required: false
+          description: Filtra por `related_now`.
+          schema:
+            type: boolean
+        - $ref: "#/components/parameters/pageParam"
+        - $ref: "#/components/parameters/limitParam"
+      responses:
+        "200":
+          description: Lista paginada de contratos de la persona
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonContractsResponse"
+              example:
+                count: 2
+                page: 1
+                limit: 20
+                total_pages: 1
+                results:
+                  - contract_token: CTR-002
+                    contract_status:
+                      token: "1"
+                      name: Alta
+                    supply_point: "12345/1"
+                    address: "C. Major, 123, Barcelona"
+                    roles:
+                      - holder
+                      - payer
+                    related_now: true
+                  - contract_token: CTR-001
+                    contract_status:
+                      token: "-1"
+                      name: Baja
+                    supply_point: "12345/1"
+                    address: "C. Major, 123, Barcelona"
+                    roles:
+                      - holder
+                      - payer
+                    related_now: false
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -4014,6 +4121,76 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PersonInvoiceItem"
+    PersonContractsResponse:
+      type: object
+      description: Envoltorio paginado de los contratos de una persona.
+      required:
+        - count
+        - page
+        - limit
+        - total_pages
+        - results
+      properties:
+        count:
+          type: integer
+          description: Número total de contratos que cumplen los filtros
+        page:
+          type: integer
+          description: Página actual
+        limit:
+          type: integer
+          description: Tamaño de página aplicado
+        total_pages:
+          type: integer
+          description: Número total de páginas
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/PersonContractItem"
+    PersonContractItem:
+      type: object
+      required:
+        - contract_token
+        - contract_status
+        - supply_point
+        - address
+        - roles
+        - related_now
+      properties:
+        contract_token:
+          type: string
+          nullable: true
+          description: Token del contrato, utilizable como `contract_token` en el resto de endpoints `/ov/`
+        contract_status:
+          type: object
+          nullable: true
+          description: Estado actual del contrato `{token, name}`
+          properties:
+            token:
+              type: string
+              nullable: true
+            name:
+              type: string
+              nullable: true
+        supply_point:
+          type: string
+          nullable: true
+          description: Token (NIC) del punto de suministro por defecto del contrato
+        address:
+          type: string
+          nullable: true
+          description: Dirección del punto de suministro por defecto del contrato
+        roles:
+          type: array
+          description: Papeles de la persona en el contrato, hoy o en sus facturas
+          items:
+            type: string
+            enum: [holder, payer]
+        related_now:
+          type: boolean
+          description: |
+            `true` si hoy la persona es la titular o la titular de la cuenta
+            de domiciliación y el contrato está de alta.
     PersonInvoiceItem:
       type: object
       properties:
