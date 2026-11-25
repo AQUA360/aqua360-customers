@@ -18,6 +18,7 @@ from contract.models import (
 from pricing.models import PriceRate
 from billing.models import (
     GeneralPayment,
+    GeneralPaymentMandateLog,
     GeneralPaymentSepaDocument,
     Invoice,
     InvoiceLineItem,
@@ -26,7 +27,12 @@ from billing.models import (
     PaymentStatus,
     Reading,
 )
-from billing.utils.payment_service import get_status_map
+from billing.utils.payment_service import (
+    general_payment_reference_count,
+    generate_mandate_id,
+    get_status_map,
+    split_general_payment,
+)
 from billing.utils.remittance_mark_service import in_pending_remittance
 from decouple import config
 from coredata.models import (
@@ -42,7 +48,7 @@ from coredata.models import (
 from coredata.utils.iban_validator_utils import validate_iban as is_valid_iban
 from coredata.utils.person_dni_utils import normalize_person_dni, normalized_dni_expression
 from django.utils import timezone
-from django.core.exceptions import SuspiciousFileOperation
+from django.core.exceptions import ImproperlyConfigured, SuspiciousFileOperation
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import validate_email
 from django.db import transaction
@@ -488,28 +494,73 @@ class UpdateBillingDataOVIBANSerializer(serializers.Serializer):
         return data
 
     def update(self, instance: Contract, validated_data):
-        try:
-            holder: Person = instance.holder
-            if not holder:
-                raise serializers.ValidationError({"error": "Contract has no holder"})
+        """Posa el compte nou a la forma de pagament del contracte i la passa a
+        domiciliació (`ConfigProject` `direct_debit_token`).
 
-            # Validate NIF matches contract holder
-            if holder.token != validated_data["nif"]:
-                raise serializers.ValidationError(
-                    {"error": "NIF does not match the contract holder's NIF"}
-                )
+        - Si la forma de pagament és compartida amb altres contractes o
+          sol·licituds, se'n fa una còpia per a aquest contracte (com la
+          pantalla interna) i el compte vell no es desactiva.
+        - Si l'IBAN canvia, es genera un mandat nou i es retira el mandat SEPA
+          signat de l'IBAN vell (el document queda arxivat).
+        - Si l'IBAN és el mateix i ja és domiciliada, no es canvia res.
+        - Les factures ja emeses mantenen la forma de pagament que tenien.
+        """
+        holder: Person = instance.holder
+        if not holder:
+            raise serializers.ValidationError({"error": "Contract has no holder"})
 
-            if not instance.payment:
-                raise serializers.ValidationError(
-                    {"error": "Contract has no payment method to update IBAN"}
-                )
-            with transaction.atomic():
+        # Validate NIF matches contract holder
+        if holder.token != validated_data["nif"]:
+            raise serializers.ValidationError(
+                {"error": "NIF does not match the contract holder's NIF"}
+            )
+
+        direct_debit = _ov_direct_debit_payment_type()
+        user = (
+            self.context["request"].user if self.context.get("request") else None
+        )
+        new_iban = validated_data["iban"]
+
+        with transaction.atomic():
+            general_payment = None
+            if instance.payment_id:
                 general_payment = GeneralPayment.objects.select_for_update().get(
                     pk=instance.payment_id
                 )
+            person_bank_current = general_payment.IBAN if general_payment else None
+            previous_type = general_payment.type if general_payment else None
+            same_iban = bool(
+                person_bank_current
+                and (person_bank_current.iban or "").replace(" ", "").upper()
+                == new_iban
+            )
+            type_changed = previous_type != direct_debit
+            if same_iban and not type_changed:
+                # Ja domiciliada amb aquest IBAN: res a fer
                 instance.payment = general_payment
-                person_bank_current = general_payment.IBAN
-                if person_bank_current:
+                return instance
+
+            created_payment = None
+            if general_payment is None:
+                created_payment = general_payment = GeneralPayment.objects.create(
+                    token=instance.token, type=direct_debit
+                )
+            elif general_payment_reference_count(general_payment) > 1:
+                # Compartida: el canvi només ha d'afectar aquest contracte
+                created_payment = general_payment = split_general_payment(
+                    general_payment
+                )
+            instance.payment = general_payment
+
+            if same_iban:
+                person_bank_new = person_bank_current
+            else:
+                if (
+                    person_bank_current
+                    and not GeneralPayment.objects.filter(IBAN=person_bank_current)
+                    .exclude(pk=general_payment.pk)
+                    .exists()
+                ):
                     person_bank_current.is_active = False
                     person_bank_current.is_default = False
                     person_bank_current.deactivated_at = timezone.now()
@@ -517,36 +568,52 @@ class UpdateBillingDataOVIBANSerializer(serializers.Serializer):
 
                 person_bank_new = PersonBank.objects.create(
                     person=holder,
-                    iban=validated_data["iban"],
-                    account_number=validated_data["iban"],
+                    iban=new_iban,
+                    account_number=new_iban,
                     name=validated_data["iban_holder_name"],
                     dni=validated_data["iban_holder_dni"],
                     is_active=True,
                     is_default=True,
                     origin=PersonBank.ORIGIN_OV,
-                    country=Country.objects.filter(
-                        iso_code=validated_data["iban"][:2]
-                    ).first(),
+                    country=Country.objects.filter(iso_code=new_iban[:2]).first(),
                     token=f"{holder.token}_BANK_{PersonBank.objects.filter(person=holder).count() + 1}",
                 )
                 general_payment.IBAN = person_bank_new
-                general_payment.save()
-                instance.save()
+                # El mandat signat era de l'IBAN vell: deixa de ser vigent,
+                # però el document queda al gestor documental.
+                GeneralPaymentSepaDocument.objects.filter(
+                    general_payment=general_payment
+                ).delete()
 
-                # Log the change in ContractDataChange
-                ContractDataChange.objects.create(
-                    token=f"CDC_{instance.token}_{ContractDataChange.objects.filter(contract=instance).count() + 1}",
-                    requested_at=timezone.now(),
-                    approved_at=timezone.now(),
-                    contract=instance,
-                    new_payment=person_bank_new,
-                    previous_payment=person_bank_current,
-                    user=(
-                        self.context["request"].user
-                        if self.context.get("request")
-                        else None
-                    ),
-                )
+            general_payment.type = direct_debit
+            if not same_iban or not general_payment.mandate_id:
+                new_mandate_id = generate_mandate_id(general_payment, instance.token)
+                if new_mandate_id and new_mandate_id != general_payment.mandate_id:
+                    GeneralPaymentMandateLog.objects.create(
+                        general_payment=general_payment,
+                        previous_mandate_id=general_payment.mandate_id,
+                        new_mandate_id=new_mandate_id,
+                        user=user,
+                        is_manual=False,
+                    )
+                    general_payment.mandate_id = new_mandate_id
+            general_payment.save()
+            instance.save()
+
+            # Log the change in ContractDataChange
+            ContractDataChange.objects.create(
+                token=f"CDC_{instance.token}_{ContractDataChange.objects.filter(contract=instance).count() + 1}",
+                requested_at=timezone.now(),
+                approved_at=timezone.now(),
+                contract=instance,
+                new_payment=person_bank_new,
+                previous_payment=person_bank_current,
+                new_payment_type=direct_debit,
+                previous_payment_type=previous_type,
+                new_general_payment=created_payment,
+                user=user,
+            )
+            if not same_iban:
                 ContractLog.objects.create(
                     contract=instance,
                     field_name="payment_IBAN",
@@ -555,20 +622,33 @@ class UpdateBillingDataOVIBANSerializer(serializers.Serializer):
                     ),
                     new_value=person_bank_new.iban,
                     operation_token=f"LOG_{instance.token}_{ContractLog.objects.filter(contract=instance).count() + 1}",
-                    user=(
-                        self.context["request"].user
-                        if self.context.get("request")
-                        else None
-                    ),
+                    user=user,
+                )
+            if type_changed:
+                ContractLog.objects.create(
+                    contract=instance,
+                    field_name="payment_type",
+                    old_value=previous_type.token if previous_type else "None",
+                    new_value=direct_debit.token,
+                    operation_token=f"LOG_{instance.token}_{ContractLog.objects.filter(contract=instance).count() + 1}",
+                    user=user,
                 )
 
-            return instance
+        return instance
 
-        except Exception as e:
-            logger.exception("Error inesperat")
-            raise serializers.ValidationError(
-                {"error": "Failed to update IBAN data."}
-            )
+
+def _ov_direct_debit_payment_type():
+    """`PaymentType` de domiciliació (`ConfigProject` `direct_debit_token`).
+    `ImproperlyConfigured` (500) si no està configurat o no existeix."""
+    token = (
+        ConfigProject.objects.filter(token="direct_debit_token")
+        .values_list("value", flat=True)
+        .first()
+    )
+    payment_type = PaymentType.objects.filter(token=token).first() if token else None
+    if not payment_type:
+        raise ImproperlyConfigured("direct_debit_token is not a valid PaymentType")
+    return payment_type
 
 
 def ov_pdf_from_date():
