@@ -527,3 +527,158 @@ class GroupPermissionsTest(TestCase):
         self.assertEqual(response.status_code, 201)
         group = Group.objects.get(name="g")
         self.assertTrue(group.permissions.filter(codename="view_user").exists())
+
+
+from django.test import override_settings
+
+
+@override_settings(EXTRA_SUPERUSER_USERNAMES=["extra", "extra2"])
+class ExtraSuperuserTest(TestCase):
+    """Superusuaris addicionals de la configuració: gestionen usuaris, però només
+    `customers` dona o treu el rol de superusuari i modifica la configuració."""
+
+    def setUp(self):
+        MainPermission.objects.update_or_create(
+            name="users",
+            defaults={
+                "view_key": "view_user",
+                "change_key": "change_user",
+                "affected_models": "auth.user,auth.group,auth.permission",
+                "change_requires_superuser": True,
+            },
+        )
+        self.client = APIClient()
+        self.customers = User.objects.create_superuser("customers", "customers@example.com", "customers-pwd")
+        self.extra = User.objects.create_superuser("extra", "extra@example.com", "extra-pwd")
+        self.extra2 = User.objects.create_user("extra2", "extra2@example.com", "extra2-pwd", is_staff=True)
+        # is_superuser residual d'abans de separar admin i superuser: continua sent admin
+        self.residual = User.objects.create_superuser("residual", "residual@example.com", "residual-pwd")
+        self.plain = User.objects.create_user("plain", "plain@example.com", "plain-pwd")
+
+    def test_roles(self):
+        from auth.roles import get_user_role
+        self.assertEqual(get_user_role(self.customers), "superuser")
+        self.assertEqual(get_user_role(self.extra), "superuser")
+        self.assertEqual(get_user_role(self.extra2), "admin")
+        self.assertEqual(get_user_role(self.residual), "admin")
+
+    def test_extra_superuser_can_create_and_modify_users(self):
+        self.client.force_authenticate(self.extra)
+        response = self.client.post(
+            "/auth/user/",
+            {"username": "nou", "email": "nou@example.com", "new_pwd": "riu-blau-2026", "role": "none"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+        response = self.client.patch(
+            f"/auth/user/{self.plain.id}/", {"role": "admin", "first_name": "Nou"}, format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.plain.refresh_from_db()
+        self.assertTrue(self.plain.is_staff)
+
+    def test_extra_superuser_can_manage_groups(self):
+        self.client.force_authenticate(self.extra)
+        response = self.client.post(
+            "/auth/group/", {"name": "nou-grup", "user_ids": [], "permissions_data": []}, format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+
+    def test_customers_can_grant_and_revoke_superuser_to_allowed_account(self):
+        self.client.force_authenticate(self.customers)
+        response = self.client.patch(f"/auth/user/{self.extra2.id}/", {"role": "superuser"}, format="json")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.extra2.refresh_from_db()
+        self.assertTrue(self.extra2.is_superuser)
+        self.assertEqual(response.data["role"], "superuser")
+
+        response = self.client.patch(f"/auth/user/{self.extra2.id}/", {"role": "admin"}, format="json")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.extra2.refresh_from_db()
+        self.assertFalse(self.extra2.is_superuser)
+
+    def test_customers_cannot_grant_superuser_to_account_not_allowed(self):
+        self.client.force_authenticate(self.customers)
+        response = self.client.patch(f"/auth/user/{self.plain.id}/", {"role": "superuser"}, format="json")
+        self.assertEqual(response.status_code, 403)
+        self.plain.refresh_from_db()
+        self.assertFalse(self.plain.is_superuser)
+
+    def test_extra_superuser_cannot_grant_superuser(self):
+        self.client.force_authenticate(self.extra)
+        response = self.client.patch(f"/auth/user/{self.extra2.id}/", {"role": "superuser"}, format="json")
+        self.assertEqual(response.status_code, 403)
+        self.extra2.refresh_from_db()
+        self.assertFalse(self.extra2.is_superuser)
+
+        response = self.client.post(
+            "/auth/user/",
+            {"username": "extra3", "email": "extra3@example.com", "new_pwd": "Riu-blau-2026!", "role": "superuser"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(User.objects.filter(username="extra3").exists())
+
+    def test_extra_superuser_cannot_revoke_own_superuser(self):
+        self.client.force_authenticate(self.extra)
+        response = self.client.patch(f"/auth/user/{self.extra.id}/", {"role": "admin"}, format="json")
+        self.assertEqual(response.status_code, 403)
+        self.extra.refresh_from_db()
+        self.assertTrue(self.extra.is_superuser)
+
+    def test_extra_superuser_can_edit_own_data(self):
+        self.client.force_authenticate(self.extra)
+        response = self.client.patch(f"/auth/user/{self.extra.id}/", {"first_name": "Jo"}, format="json")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.extra.refresh_from_db()
+        self.assertTrue(self.extra.is_superuser)
+        self.assertEqual(self.extra.first_name, "Jo")
+
+    def test_extra_superuser_cannot_modify_or_delete_customers(self):
+        self.client.force_authenticate(self.extra)
+        response = self.client.patch(
+            f"/auth/user/{self.customers.id}/", {"new_pwd": "Riu-blau-2026!"}, format="json",
+        )
+        self.assertEqual(response.status_code, 403)
+        self.customers.refresh_from_db()
+        self.assertTrue(self.customers.check_password("customers-pwd"))
+        self.assertEqual(self.client.delete(f"/auth/user/{self.customers.id}/").status_code, 403)
+
+    def test_extra_superuser_cannot_modify_or_delete_other_superuser(self):
+        self.extra2.is_superuser = True
+        self.extra2.save(update_fields=["is_superuser"])
+        self.client.force_authenticate(self.extra)
+        response = self.client.patch(f"/auth/user/{self.extra2.id}/", {"first_name": "X"}, format="json")
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(self.client.delete(f"/auth/user/{self.extra2.id}/").status_code, 403)
+        self.assertTrue(User.objects.filter(id=self.extra2.id).exists())
+
+    def test_residual_superuser_cannot_manage_users(self):
+        self.client.force_authenticate(self.residual)
+        response = self.client.patch(f"/auth/user/{self.plain.id}/", {"first_name": "X"}, format="json")
+        self.assertEqual(response.status_code, 403)
+
+    def test_extra_superuser_cannot_edit_config_project_nor_main_permissions(self):
+        from coredata.models import ConfigProject
+        config = ConfigProject.objects.create(token="some_token", name="Some token", value="old")
+        self.client.force_authenticate(self.extra)
+        response = self.client.post(
+            "/coredata/config-project/bulk-update-values/",
+            [{"token": "some_token", "value": "new"}],
+            format="json",
+        )
+        self.assertEqual(response.status_code, 403)
+        config.refresh_from_db()
+        self.assertEqual(config.value, "old")
+
+        main_permission = MainPermission.objects.get(name="users")
+        response = self.client.patch(
+            f"/coredata/main-permission/{main_permission.id}/", {"is_default": True}, format="json",
+        )
+        self.assertEqual(response.status_code, 403)
+
+        self.client.force_authenticate(self.customers)
+        response = self.client.patch(
+            f"/coredata/main-permission/{main_permission.id}/", {"is_default": False}, format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)

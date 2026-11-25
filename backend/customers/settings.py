@@ -369,6 +369,12 @@ DATABASES = {
     }
 }
 
+# Comptes que, a més de `customers`, són superusuaris (gestionen usuaris i grups).
+# Llista de noms d'usuari separats per comes; per defecte cap.
+EXTRA_SUPERUSER_USERNAMES = [
+    username for username in config("EXTRA_SUPERUSER_USERNAMES", default="", cast=Csv()) if username
+]
+
 # Informes personalitzats (django-sql-explorer + statistics/custom-report).
 # Les consultes SQL dels usuaris s'executen SEMPRE amb un rol de PostgreSQL de només lectura i
 # sense accés a taules sensibles (tokens, contrasenyes, sessions). Si no es configura el rol,

@@ -6,8 +6,10 @@ from auth.roles import (
     ROLE_ADMIN,
     ROLE_NONE,
     ROLE_SUPERUSER,
+    can_be_superuser,
     get_user_role,
     is_canonical_superuser,
+    is_customers_account,
 )
 from auth.utils import manage_group_permissions
 from .permissions import PermissionManager
@@ -52,14 +54,15 @@ class UserSerializer(serializers.HyperlinkedModelSerializer):
         representation = super().to_representation(instance)
         representation['group_id'] = instance.groups.first().id if instance.groups.first() else None
         representation['role'] = get_user_role(instance)
+        representation['can_be_superuser'] = can_be_superuser(instance.username)
         return representation
 
     def _apply_role(self, user, role, group_id=None, update_group=False):
-        """Aplica rol. Només `customers` pot ser superuser."""
+        """Aplica rol. Només `customers` i els superusuaris addicionals poden ser superuser."""
         if role == ROLE_SUPERUSER:
-            if user.username != CANONICAL_SUPERUSER_USERNAME:
+            if not can_be_superuser(user.username):
                 raise PermissionDenied(
-                    f"Only the '{CANONICAL_SUPERUSER_USERNAME}' account can be a superuser"
+                    "This account is not allowed to be a superuser"
                 )
             user.is_superuser = True
             user.is_staff = True
@@ -93,8 +96,8 @@ class UserSerializer(serializers.HyperlinkedModelSerializer):
         return user
 
     def _normalize_residual_superuser(self, user):
-        """Rebaixa is_superuser residual a admin (excepte `customers`)."""
-        if user.username != CANONICAL_SUPERUSER_USERNAME and user.is_superuser:
+        """Rebaixa is_superuser residual a admin (excepte els comptes que poden ser superuser)."""
+        if not can_be_superuser(user.username) and user.is_superuser:
             user.is_superuser = False
             user.is_staff = True
             user.save(update_fields=['is_superuser', 'is_staff'])
@@ -139,9 +142,14 @@ class UserSerializer(serializers.HyperlinkedModelSerializer):
                 f"The '{CANONICAL_SUPERUSER_USERNAME}' account cannot be created via the API"
             )
         if role == ROLE_SUPERUSER:
-            raise PermissionDenied(
-                f"Only the '{CANONICAL_SUPERUSER_USERNAME}' account can be a superuser"
-            )
+            if not is_customers_account(user_request):
+                raise PermissionDenied(
+                    f"Only the '{CANONICAL_SUPERUSER_USERNAME}' account can grant superuser rights"
+                )
+            if not can_be_superuser(username):
+                raise PermissionDenied(
+                    "This account is not allowed to be a superuser"
+                )
 
         user = User.objects.create_user(username, email, new_pwd, **validated_data)
         return self._apply_role(user, role, group_id=group_id, update_group=True)
@@ -173,9 +181,19 @@ class UserSerializer(serializers.HyperlinkedModelSerializer):
             )
         # Validar el rol abans de mutar (contrasenya, etc.) per no deixar canvis parcials
         if role is not None:
-            if role == ROLE_SUPERUSER and target_username != CANONICAL_SUPERUSER_USERNAME:
+            # Donar o treure drets de superusuari: només el compte `customers`
+            current_role = get_user_role(instance)
+            if (
+                role != current_role
+                and ROLE_SUPERUSER in (role, current_role)
+                and not is_customers_account(user_request)
+            ):
                 raise PermissionDenied(
-                    f"Only the '{CANONICAL_SUPERUSER_USERNAME}' account can be a superuser"
+                    f"Only the '{CANONICAL_SUPERUSER_USERNAME}' account can grant or revoke superuser rights"
+                )
+            if role == ROLE_SUPERUSER and not can_be_superuser(target_username):
+                raise PermissionDenied(
+                    "This account is not allowed to be a superuser"
                 )
             if target_username == CANONICAL_SUPERUSER_USERNAME and role != ROLE_SUPERUSER:
                 raise PermissionDenied(

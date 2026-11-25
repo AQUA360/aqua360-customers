@@ -3475,9 +3475,9 @@ export default {
     role: 'Role',
     role_none: 'From group',
     role_none_permissions: 'No elevated role: permissions come only from assigned groups',
-    only_customers_superuser: 'Only the customers account can be a superuser',
+    only_customers_superuser: 'Only the customers account can grant or revoke the superuser role',
     admin_permissions: 'Like a superuser, but without permissions over users, groups or permissions. Does not need to belong to a group',
-    superuser_permissions: 'All permissions, including user and group management. Only the customers account'
+    superuser_permissions: 'All permissions, including user and group management. The customers account and the accounts allowed by the installation settings'
   },
   settings_block:   {
     general: 'General',

@@ -3475,9 +3475,9 @@ export default {
     role: 'Rol',
     role_none: 'Segundo o grupo',
     role_none_permissions: 'Sen rol elevado: os permisos veñen só dos grupos asignados',
-    only_customers_superuser: 'Só a conta customers pode ser superusuario',
+    only_customers_superuser: 'Só a conta customers pode dar ou quitar o rol de superusuario',
     admin_permissions: 'Como un superusuario, pero sen permisos sobre usuarios, grupos nin permisos. Non precisa estar en ningún grupo',
-    superuser_permissions: 'Todos os permisos, incluída a xestión de usuarios e grupos. Só a conta customers'
+    superuser_permissions: 'Todos os permisos, incluída a xestión de usuarios e grupos. A conta customers e as contas que permita a configuración da instalación'
   },
   settings_block:   {
     general: 'Xeral',
