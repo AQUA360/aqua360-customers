@@ -880,7 +880,7 @@ paths:
           content:
             application/json:
               schema:
-                oneOf:
+                anyOf:
                   - $ref: "#/components/schemas/ValidationErrors"
                   - $ref: "#/components/schemas/ErrorMessage"
               examples:
@@ -897,7 +897,7 @@ paths:
                   summary: Factura ajena al contrato o desconocida
                   value:
                     invoice_tokens:
-                      - Invoice not found for this contract: "FAKE-TOKEN"
+                      - "Invoice not found for this contract: FAKE-TOKEN"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
@@ -1098,7 +1098,7 @@ paths:
           content:
             application/json:
               schema:
-                oneOf:
+                anyOf:
                   - $ref: "#/components/schemas/ValidationErrors"
                   - $ref: "#/components/schemas/ErrorMessage"
         "401":
@@ -2464,7 +2464,7 @@ paths:
           content:
             application/json:
               schema:
-                oneOf:
+                anyOf:
                   - $ref: "#/components/schemas/ValidationErrors"
                   - $ref: "#/components/schemas/ErrorMessage"
               examples:
@@ -2707,8 +2707,8 @@ paths:
         - La solicitud se crea con el estado por defecto (borrador). El tipo de
           baja (el "Motivo" de la plataforma de gestión) es el indicado en
           `reason_token`, sin restricción por tipo (también admite los de
-          cambio de nombre); si se omite, se usa el tipo por defecto
-          (petición del cliente). La fecha de solicitud es la de recepción.
+          cambio de nombre); es obligatorio (el endpoint no aplica ningún tipo por
+          defecto si falta). La fecha de solicitud es la de recepción.
         - **No** se recogen lecturas, fotos, estimaciones, fechas ni datos de
           contacto: la lectura de corte la registra el personal de campo.
           Cualquier campo adicional del cuerpo se ignora.
@@ -3028,7 +3028,7 @@ paths:
           content:
             application/json:
               schema:
-                oneOf:
+                anyOf:
                   - $ref: "#/components/schemas/ValidationErrors"
                   - $ref: "#/components/schemas/ErrorMessage"
               examples:
@@ -3180,7 +3180,7 @@ paths:
           content:
             application/json:
               schema:
-                oneOf:
+                anyOf:
                   - $ref: "#/components/schemas/ValidationErrors"
                   - $ref: "#/components/schemas/ErrorMessage"
               examples:
@@ -3671,7 +3671,7 @@ components:
             date_from:
               - La fecha de inicio no puede ser posterior a la final
             reading_ids:
-              - ID de lectura desconocido: 999
+              - "ID de lectura desconocido: 999"
 
     NotFound:
       description: Recurso no encontrado

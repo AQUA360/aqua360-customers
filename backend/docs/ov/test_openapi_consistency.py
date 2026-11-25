@@ -7,9 +7,11 @@ comproven que no derivin:
 - A cada versió, tot endpoint de la taula de resum del `info.description` té
   un `path` real a la secció `paths:`, i tot `path` hi està documentat.
 - Les dues versions tenen la mateixa estructura: mateixos paths, mètodes,
-  paràmetres, cossos, respostes, esquemes, camps, enums i exemples. Només
-  poden diferir els textos (`description`, `summary`, `title`) i els noms de
-  les etiquetes (`tags`).
+  paràmetres, cossos, respostes, esquemes, camps, enums, exemples, servidors i
+  versió. Només poden diferir els textos (`description`, `summary`, `title`) i
+  els noms de les etiquetes (`tags`); cada operació ha de pertànyer al mateix
+  grup d'etiquetes (es compara per posició a la llista `tags` de nivell superior).
+  Els exemples (`example` i `examples.*.value`) es comparen sencers.
 
 Escrit perquè `manage.py test` el descobreixi automàticament: `docs/` i
 `docs/ov/` són paquets (tenen `__init__.py`) i el fitxer compleix el patró
@@ -31,12 +33,13 @@ SPEC_PATHS = {
 # Claus de text lliure, que es tradueixen i per tant poden diferir entre versions.
 TEXT_KEYS = {"description", "summary", "title"}
 
-# Seccions de nivell superior que només porten text o metadades traduïdes.
-TOP_LEVEL_TEXT_SECTIONS = {"info", "servers", "tags"}
+# Claus el contingut de les quals són dades literals de l'API: no es tradueixen
+# i es comparen sense treure'n res.
+LITERAL_KEYS = {"example", "value", "default", "enum"}
 
 
 def _load_spec(path):
-    with path.open() as spec_file:
+    with path.open(encoding="utf-8") as spec_file:
         return yaml.safe_load(spec_file)
 
 
@@ -50,25 +53,42 @@ def _index_table_paths(info_description):
     return paths
 
 
-def _structure(node):
+def _structure(node, tag_index):
     """Torna el node sense els textos traduïbles.
 
-    Les etiquetes d'una operació (`tags`) es redueixen al seu nombre: el nom
-    es tradueix, però cada operació ha de tenir les mateixes.
+    Els noms d'etiqueta d'una operació (`tags`) se substitueixen per la seva
+    posició a la llista `tags` de nivell superior: el nom es tradueix, però
+    cada operació ha de quedar al mateix grup. Els valors literals
+    (`LITERAL_KEYS`: exemples, valors per defecte, enums) es conserven sencers.
     """
     if isinstance(node, dict):
         result = {}
         for key, value in node.items():
+            if key in LITERAL_KEYS:
+                result[key] = value
+                continue
             if key in TEXT_KEYS and isinstance(value, str):
                 continue
             if key == "tags" and isinstance(value, list):
-                result[key] = len(value)
+                result[key] = [tag_index.get(tag, f"no declarada: {tag}") for tag in value]
                 continue
-            result[key] = _structure(value)
+            result[key] = _structure(value, tag_index)
         return result
     if isinstance(node, list):
-        return [_structure(item) for item in node]
+        return [_structure(item, tag_index) for item in node]
     return node
+
+
+def _comparable(spec):
+    """Torna l'especificació preparada per comparar-la amb l'altra versió."""
+    tags = spec.get("tags", [])
+    tag_index = {tag["name"]: index for index, tag in enumerate(tags)}
+    body = {key: value for key, value in spec.items() if key != "tags"}
+    comparable = _structure(body, tag_index)
+    comparable["tags"] = len(tags)
+    # El nom de contacte d'`info` també és text traduït.
+    comparable.get("info", {}).get("contact", {}).pop("name", None)
+    return comparable
 
 
 def _differences(left, right, path="", limit=20):
@@ -93,7 +113,7 @@ def _differences(left, right, path="", limit=20):
                 return
             for index, (item_a, item_b) in enumerate(zip(a, b)):
                 walk(item_a, item_b, f"{where}[{index}]")
-        elif a != b:
+        elif type(a) is not type(b) or a != b:
             found.append(f"{where}: {a!r} (es) vs {b!r} (ca)")
 
     walk(left, right, path)
@@ -151,14 +171,8 @@ class OpenApiTranslationsParityTests(unittest.TestCase):
     def test_same_top_level_sections(self):
         self.assertEqual(list(self.es.keys()), list(self.ca.keys()))
 
-    def test_same_number_of_tags_and_servers(self):
-        self.assertEqual(len(self.es.get("tags", [])), len(self.ca.get("tags", [])))
-        self.assertEqual(len(self.es.get("servers", [])), len(self.ca.get("servers", [])))
-
     def test_same_structure(self):
-        es = {k: v for k, v in self.es.items() if k not in TOP_LEVEL_TEXT_SECTIONS}
-        ca = {k: v for k, v in self.ca.items() if k not in TOP_LEVEL_TEXT_SECTIONS}
-        differences = _differences(_structure(es), _structure(ca))
+        differences = _differences(_comparable(self.es), _comparable(self.ca))
         self.assertEqual(
             differences,
             [],

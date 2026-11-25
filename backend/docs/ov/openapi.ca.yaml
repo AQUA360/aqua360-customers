@@ -880,7 +880,7 @@ paths:
           content:
             application/json:
               schema:
-                oneOf:
+                anyOf:
                   - $ref: "#/components/schemas/ValidationErrors"
                   - $ref: "#/components/schemas/ErrorMessage"
               examples:
@@ -897,7 +897,7 @@ paths:
                   summary: Factura aliena al contracte o desconeguda
                   value:
                     invoice_tokens:
-                      - Invoice not found for this contract: "FAKE-TOKEN"
+                      - "Invoice not found for this contract: FAKE-TOKEN"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
@@ -1098,7 +1098,7 @@ paths:
           content:
             application/json:
               schema:
-                oneOf:
+                anyOf:
                   - $ref: "#/components/schemas/ValidationErrors"
                   - $ref: "#/components/schemas/ErrorMessage"
         "401":
@@ -2464,7 +2464,7 @@ paths:
           content:
             application/json:
               schema:
-                oneOf:
+                anyOf:
                   - $ref: "#/components/schemas/ValidationErrors"
                   - $ref: "#/components/schemas/ErrorMessage"
               examples:
@@ -2707,8 +2707,8 @@ paths:
         - La sol·licitud es crea amb l'estat per defecte (esborrany). El tipus de
           baixa (el "Motiu" de la plataforma de gestió) és l'indicat a
           `reason_token`, sense restricció per tipus (també admet els de
-          canvi de nom); si s'omet, s'utilitza el tipus per defecte
-          (petició del client). La data de sol·licitud és la de recepció.
+          canvi de nom); és obligatori (l'endpoint no aplica cap tipus per
+          defecte si falta). La data de sol·licitud és la de recepció.
         - **No** es recullen lectures, fotos, estimacions, dates ni dades de
           contacte: la lectura de tall la registra el personal de camp.
           Qualsevol camp addicional del cos s'ignora.
@@ -3028,7 +3028,7 @@ paths:
           content:
             application/json:
               schema:
-                oneOf:
+                anyOf:
                   - $ref: "#/components/schemas/ValidationErrors"
                   - $ref: "#/components/schemas/ErrorMessage"
               examples:
@@ -3180,7 +3180,7 @@ paths:
           content:
             application/json:
               schema:
-                oneOf:
+                anyOf:
                   - $ref: "#/components/schemas/ValidationErrors"
                   - $ref: "#/components/schemas/ErrorMessage"
               examples:
@@ -3671,7 +3671,7 @@ components:
             date_from:
               - La fecha de inicio no puede ser posterior a la final
             reading_ids:
-              - ID de lectura desconocido: 999
+              - "ID de lectura desconocido: 999"
 
     NotFound:
       description: Recurs no trobat
