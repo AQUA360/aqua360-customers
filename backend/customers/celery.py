@@ -191,6 +191,12 @@ if getattr(settings, "WEBHOOKS_ENABLED", False):
         # depenen) i el bloqueig d'enviador únic evita duplicats.
         "schedule": crontab(minute="*"),
     }
+    # Avisos d'estat de pagament de les factures: compara amb la foto del darrer
+    # estat avisat (vegeu integrations/outbound/webhooks/invoice_status.py)
+    beat_schedule["scan-invoice-status-webhooks"] = {
+        "task": "integrations.outbound.webhooks.tasks.scan_invoice_status_webhooks",
+        "schedule": crontab(minute=f"*/{settings.WEBHOOKS_INVOICE_SCAN_MINUTES}"),
+    }
 
 app.conf.beat_schedule = beat_schedule
 """ 'check-send-date': {

@@ -715,6 +715,10 @@ WEBHOOKS_RETRY_DELAYS = [60, 300, 900, 3600, 3 * 3600, 6 * 3600, 12 * 3600]
 WEBHOOKS_SEND_INTERVAL = 0.2  # segons entre enviaments: no saturar el receptor
 WEBHOOKS_SEND_BATCH = 100  # avisos per execució de la tasca; si en queden, es torna a encuar
 WEBHOOKS_BILLING_CHUNK_SIZE = 500  # factures per avís de facturació massiva
+# Avisos d'estat de pagament (invoice.paid, .returned, .expired, .cancelled): una tasca
+# compara cada tants minuts l'estat de les factures amb el darrer avisat.
+WEBHOOKS_INVOICE_SCAN_MINUTES = 5
+WEBHOOKS_INVOICE_SCAN_LIMIT = 5000  # factures canviades per execució; la resta, a la següent
 
 SIGNING_BASE_URL = config("SIGNING_BASE_URL", default="")
 SIGNING_API_KEY = config("SIGNING_API_KEY", default="")

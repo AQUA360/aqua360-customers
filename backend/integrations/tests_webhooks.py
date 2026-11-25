@@ -506,3 +506,341 @@ class InvoiceEventsTest(TestCase):
         # Tornar a processar la mateixa facturació no repeteix els avisos
         self.assertEqual(events.emit_billing_issued(billing, ids), [])
         self.assertEqual(WebhookEvent.objects.count(), 3)
+
+
+@ACTIVE
+@mock.patch("integrations.outbound.webhooks.dispatcher.schedule_send")
+class InvoiceStatusScanTest(TestCase):
+    """Avisos d'estat de pagament: la tasca compara les factures amb la foto."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from billing.models import InvoiceStatus, PaymentStatus, RejectMotive
+
+        for token, value in (
+            ("invoice_status_paid_token", "I_PAID"),
+            ("invoice_status_expired_token", "I_EXPIRED"),
+            ("invoice_status_cancelled_token", "I_CANCELLED"),
+            ("invoice_status_dropped_token", "I_DROPPED"),
+            ("payment_status_paid_token", "P_PAID"),
+            ("payment_status_returned_token", "P_RETURNED"),
+            ("invoice_type_budget_token", "P"),
+            ("direct_debit_token", "DD"),
+            ("contract_terminated_status", "TERMINATED"),
+        ):
+            ConfigProject.objects.update_or_create(token=token, defaults={"value": value})
+        cls.confirmed = InvoiceStatus.objects.create(token="I_CONFIRMED", name="Confirmada")
+        cls.paid = InvoiceStatus.objects.create(token="I_PAID", name="Pagada")
+        cls.expired = InvoiceStatus.objects.create(token="I_EXPIRED", name="Vençuda")
+        cls.cancelled = InvoiceStatus.objects.create(token="I_CANCELLED", name="Abonada")
+        cls.dropped = InvoiceStatus.objects.create(token="I_DROPPED", name="Anul·lada")
+        cls.payment_pending = PaymentStatus.objects.create(token="P_PENDING", name="Pendent")
+        cls.payment_paid = PaymentStatus.objects.create(token="P_PAID", name="Pagat")
+        cls.payment_returned = PaymentStatus.objects.create(token="P_RETURNED", name="Retornat")
+        cls.reject = RejectMotive.objects.create(token="AM04", name="Fons insuficients")
+        cls.invoice_type, _ = InvoiceType.objects.get_or_create(token="F", defaults={"name": "Factura"})
+        cls.budget_type, _ = InvoiceType.objects.get_or_create(token="P", defaults={"name": "Pressupost"})
+        cls.holder = Person.objects.create(name="Titular", surname="Prova", token="00000000T")
+        cls.contract = Contract.objects.create(token="C-STATUS", holder=cls.holder)
+
+    def _invoice(self, number, status=None, **kwargs):
+        """Factura amb un rebut pendent. Es creen sense els senyals de facturació
+        (que generen rebuts i canvien estats): aquí es prova només la comparació."""
+        from billing.models import Payment
+
+        [invoice] = Invoice.objects.bulk_create([Invoice(
+            serie_final=number, serie_token_final="FC", type=self.invoice_type, contract=self.contract,
+            issue_date=datetime.date(2026, 11, 1), due_date=datetime.date(2026, 11, 30),
+            payment_type_token_final="DD", status=status or self.confirmed, token=f"tok-{number}", **kwargs
+        )])
+        InvoiceLineItem.objects.bulk_create([InvoiceLineItem(invoice=invoice, price=100, tax_percent=10, tax_price=10)])
+        [payment] = Payment.objects.bulk_create([Payment(
+            invoice=invoice, contract=self.contract, amount=110, status=self.payment_pending, token=f"pay-{number}"
+        )])
+        return invoice, payment
+
+    def _update_payment(self, payment, **fields):
+        from billing.models import Payment
+
+        Payment.objects.filter(pk=payment.pk).update(**fields)
+
+    def _scan(self):
+        from integrations.outbound.webhooks.invoice_status import scan
+
+        with self.captureOnCommitCallbacks(execute=True):
+            return scan()
+
+    def _events(self, event_type=None):
+        events_qs = WebhookEvent.objects.order_by("id")
+        if event_type:
+            events_qs = events_qs.filter(event_type=event_type)
+        return list(events_qs)
+
+    def test_first_scan_takes_the_photo_without_notifying(self, schedule):
+        from integrations.models import WebhookInvoiceState
+
+        self._invoice("FC/1", status=self.paid)
+        result = self._scan()
+        self.assertEqual(result["status"], "seeded")
+        self.assertEqual(WebhookInvoiceState.objects.count(), 1)
+        self.assertFalse(WebhookEvent.objects.exists())
+        self.assertEqual(self._scan(), {"status": "success", "changes": 0, "events": 0})
+        schedule.assert_not_called()
+
+    def test_paid_invoice(self, schedule):
+        invoice, payment = self._invoice("FC/2")
+        self._scan()
+
+        self._update_payment(payment, status=self.payment_paid, payment_date=datetime.date(2026, 11, 20))
+        Invoice.objects.filter(pk=invoice.pk).update(status=self.paid)
+        result = self._scan()
+
+        self.assertEqual(result["events"], 1)
+        schedule.assert_called_once()
+        event = self._events("invoice.paid")[0]
+        self.assertEqual(event.object_type, "invoices")
+        data = event.payload["data"]
+        self.assertEqual((data["part"], data["parts"]), (1, 1))
+        item = data["invoices"][0]
+        self.assertEqual(item["id"], invoice.id)
+        self.assertEqual(item["token"], "tok-FC/2")
+        self.assertEqual(item["number"], "FC/2")
+        self.assertEqual(item["contract"], {"id": self.contract.id, "code": "C-STATUS"})
+        self.assertEqual(item["holder"], {"id": self.holder.id})
+        self.assertEqual(item["previous_status"], {"token": "I_CONFIRMED", "name": "Confirmada"})
+        self.assertEqual(item["status"], {"token": "I_PAID", "name": "Pagada"})
+        self.assertTrue(item["direct_debit"])
+        self.assertEqual(item["amounts"], {"total": "110.00", "paid": "110.00", "pending": "0.00", "currency": "EUR"})
+        self.assertEqual(item["payment_date"], "2026-11-20")
+        self.assertIsNone(item["return"])
+        # Ja avisada: no es repeteix
+        self.assertEqual(self._scan()["events"], 0)
+
+    def test_returned_receipt(self, _schedule):
+        invoice, payment = self._invoice("FC/3")
+        self._scan()
+
+        self._update_payment(
+            payment, status=self.payment_returned, reject_date=datetime.date(2026, 11, 21), reject=self.reject
+        )
+        self._scan()
+
+        item = self._events("invoice.returned")[0].payload["data"]["invoices"][0]
+        self.assertEqual(item["id"], invoice.id)
+        self.assertEqual(item["status"]["token"], "I_CONFIRMED")
+        self.assertEqual(item["amounts"]["pending"], "110.00")
+        self.assertIsNone(item["payment_date"])
+        self.assertEqual(
+            item["return"], {"date": "2026-11-21", "reason": {"code": "AM04", "name": "Fons insuficients"}}
+        )
+        self.assertEqual(len(self._events()), 1)
+
+    def test_returned_wins_over_status_change(self, _schedule):
+        _invoice, payment = self._invoice("FC/4")
+        self._scan()
+
+        self._update_payment(payment, status=self.payment_returned)
+        Invoice.objects.filter(pk=_invoice.pk).update(status=self.expired)
+        self._scan()
+
+        self.assertEqual([event.event_type for event in self._events()], ["invoice.returned"])
+
+    def test_expired_and_cancelled(self, _schedule):
+        expired, _ = self._invoice("FC/5")
+        cancelled, _ = self._invoice("FC/6")
+        dropped, _ = self._invoice("FC/6B")
+        self._scan()
+
+        Invoice.objects.filter(pk=expired.pk).update(status=self.expired)
+        Invoice.objects.filter(pk=cancelled.pk).update(status=self.cancelled)
+        Invoice.objects.filter(pk=dropped.pk).update(status=self.dropped)
+        self._scan()
+
+        self.assertEqual(self._events("invoice.expired")[0].payload["data"]["invoices"][0]["id"], expired.id)
+        # Abonada i anul·lada van al mateix avís; l'estat diu quina
+        items = self._events("invoice.cancelled")[0].payload["data"]["invoices"]
+        self.assertEqual(
+            [(item["id"], item["status"]["token"]) for item in items],
+            [(cancelled.id, "I_CANCELLED"), (dropped.id, "I_DROPPED")],
+        )
+
+    def test_only_the_final_status_between_two_scans(self, _schedule):
+        invoice, _ = self._invoice("FC/7")
+        self._scan()
+
+        Invoice.objects.filter(pk=invoice.pk).update(status=self.expired)
+        Invoice.objects.filter(pk=invoice.pk).update(status=self.paid)
+        self._scan()
+
+        self.assertEqual([event.event_type for event in self._events()], ["invoice.paid"])
+
+    def test_back_to_previous_status_between_two_scans_is_not_notified(self, _schedule):
+        invoice, _ = self._invoice("FC/8")
+        self._scan()
+
+        Invoice.objects.filter(pk=invoice.pk).update(status=self.paid)
+        Invoice.objects.filter(pk=invoice.pk).update(status=self.confirmed)
+        self._scan()
+
+        self.assertFalse(WebhookEvent.objects.exists())
+
+    def test_unnumbered_budget_and_inactive_are_not_notified(self, _schedule):
+        from integrations.models import WebhookInvoiceState
+
+        draft, _ = self._invoice("TMP")
+        Invoice.objects.filter(pk=draft.pk).update(serie_final=None)
+        budget, _ = self._invoice("P/1")
+        Invoice.objects.filter(pk=budget.pk).update(type=self.budget_type)
+        inactive, _ = self._invoice("FC/9")
+        Invoice.objects.filter(pk=inactive.pk).update(is_active=False)
+        self._scan()
+
+        Invoice.objects.filter(pk__in=[draft.pk, budget.pk, inactive.pk]).update(status=self.paid)
+        result = self._scan()
+
+        self.assertEqual(result["changes"], 3)
+        self.assertFalse(WebhookEvent.objects.exists())
+        # La foto sí que s'actualitza: no es tornen a detectar
+        self.assertEqual(WebhookInvoiceState.objects.filter(status_id=self.paid.id).count(), 3)
+        self.assertEqual(self._scan()["changes"], 0)
+
+    def test_new_invoice_after_the_photo(self, _schedule):
+        self._invoice("FC/10")
+        self._scan()
+
+        new_paid, _ = self._invoice("FC/11", status=self.paid)
+        self._invoice("FC/12")
+        self._scan()
+
+        events_ = self._events()
+        self.assertEqual([event.event_type for event in events_], ["invoice.paid"])
+        item = events_[0].payload["data"]["invoices"][0]
+        self.assertEqual(item["id"], new_paid.id)
+        self.assertIsNone(item["previous_status"])
+
+    @override_settings(WEBHOOKS_BILLING_CHUNK_SIZE=2)
+    def test_changes_in_chunks(self, schedule):
+        invoices = [self._invoice(f"FC/2{n}")[0] for n in range(3)]
+        self._scan()
+
+        Invoice.objects.filter(pk__in=[invoice.pk for invoice in invoices]).update(status=self.paid)
+        result = self._scan()
+
+        self.assertEqual(result["events"], 2)
+        schedule.assert_called_once()
+        parts = [event.payload["data"] for event in self._events("invoice.paid")]
+        self.assertEqual([(part["part"], part["parts"]) for part in parts], [(1, 2), (2, 2)])
+        self.assertEqual(
+            [item["id"] for part in parts for item in part["invoices"]], [invoice.id for invoice in invoices]
+        )
+        self.assertEqual(self._events("invoice.paid")[0].object_id, f"{invoices[0].id}-{invoices[1].id}")
+
+    @override_settings(WEBHOOKS_INVOICE_SCAN_LIMIT=2)
+    def test_limit_leaves_the_rest_for_the_next_scan(self, _schedule):
+        invoices = [self._invoice(f"FC/3{n}")[0] for n in range(3)]
+        self._scan()
+
+        Invoice.objects.filter(pk__in=[invoice.pk for invoice in invoices]).update(status=self.paid)
+        self.assertEqual(self._scan()["changes"], 2)
+        self.assertEqual(self._scan()["changes"], 1)
+        self.assertEqual(self._scan()["changes"], 0)
+        notified = [item["id"] for event in self._events() for item in event.payload["data"]["invoices"]]
+        self.assertEqual(notified, [invoice.id for invoice in invoices])
+
+    def test_chunk_that_cannot_be_built_is_retried(self, _schedule):
+        invoice, _ = self._invoice("FC/40")
+        self._scan()
+        Invoice.objects.filter(pk=invoice.pk).update(status=self.paid)
+
+        with mock.patch(
+            "integrations.outbound.webhooks.invoice_status.invoice_status_data", side_effect=ValueError("error")
+        ):
+            result = self._scan()
+        self.assertEqual((result["events"], result["retry"]), (0, 1))
+        self.assertFalse(WebhookEvent.objects.exists())
+
+        self._scan()
+        self.assertEqual(len(self._events("invoice.paid")), 1)
+
+    @override_settings(WEBHOOKS_ENABLED=False)
+    def test_disabled_does_nothing(self, _schedule):
+        from integrations.models import WebhookInvoiceState
+
+        self._invoice("FC/50")
+        self.assertEqual(self._scan(), {"status": "skipped"})
+        self.assertFalse(WebhookInvoiceState.objects.exists())
+
+    def test_baseline_command_resets_the_photo_without_notifying(self, _schedule):
+        invoice, _ = self._invoice("FC/60")
+        self._scan()
+        Invoice.objects.filter(pk=invoice.pk).update(status=self.paid)
+
+        out = io.StringIO()
+        call_command("webhooks_invoice_baseline", stdout=out)
+
+        self.assertIn("1", out.getvalue())
+        self.assertEqual(self._scan()["changes"], 0)
+        self.assertFalse(WebhookEvent.objects.exists())
+
+    def test_task_runs_the_scan(self, _schedule):
+        from integrations.outbound.webhooks.tasks import scan_invoice_status_webhooks
+
+        self._invoice("FC/70")
+        self.assertEqual(scan_invoice_status_webhooks()["status"], "seeded")
+
+
+@ACTIVE
+@mock.patch("integrations.outbound.webhooks.dispatcher.schedule_send")
+class ContractRequestCancelledTest(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        from contract.models import ContractRequestStatus
+
+        ConfigProject.objects.update_or_create(token="contract_request_cancel_token", defaults={"value": "CR_CANCEL"})
+        cls.draft = ContractRequestStatus.objects.create(token="CR_DRAFT", name="Esborrany")
+        cls.other = ContractRequestStatus.objects.create(token="CR_OTHER", name="En tràmit")
+        cls.cancel = ContractRequestStatus.objects.create(token="CR_CANCEL", name="Anul·lada")
+
+    def test_cancelling_emits_once(self, _schedule):
+        request_obj = ContractRequest.objects.create(token="CR-10", status=self.draft)
+        request_obj.status = self.other
+        request_obj.save()
+        self.assertFalse(WebhookEvent.objects.exists())
+
+        request_obj.status = self.cancel
+        request_obj.save()
+        # Desar-la de nou sense canviar l'estat no repeteix l'avís
+        request_obj.save()
+
+        event = WebhookEvent.objects.get(event_type="contract_request.cancelled")
+        self.assertEqual(event.object_type, "contract_request")
+        self.assertEqual(
+            event.payload["data"],
+            {
+                "contract_request": {"id": request_obj.id, "code": "CR-10"},
+                "status": {"token": "CR_CANCEL", "name": "Anul·lada"},
+            },
+        )
+
+    def test_reopened_and_cancelled_again_emits_again(self, _schedule):
+        request_obj = ContractRequest.objects.create(token="CR-11", status=self.cancel)
+        self.assertFalse(WebhookEvent.objects.exists())
+        request_obj.status = self.draft
+        request_obj.save()
+        request_obj.status = self.cancel
+        request_obj.save()
+        self.assertEqual(WebhookEvent.objects.filter(event_type="contract_request.cancelled").count(), 1)
+
+        request_obj = ContractRequest.objects.get(pk=request_obj.pk)
+        request_obj.status = self.draft
+        request_obj.save()
+        request_obj.status = self.cancel
+        request_obj.save()
+        self.assertEqual(WebhookEvent.objects.filter(event_type="contract_request.cancelled").count(), 2)
+
+    @override_settings(WEBHOOKS_ENABLED=False)
+    def test_disabled_does_nothing(self, _schedule):
+        request_obj = ContractRequest.objects.create(token="CR-12", status=self.draft)
+        request_obj.status = self.cancel
+        request_obj.save()
+        self.assertFalse(WebhookEvent.objects.exists())
