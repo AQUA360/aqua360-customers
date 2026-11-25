@@ -163,8 +163,14 @@ class UserSerializer(serializers.HyperlinkedModelSerializer):
         # Comprovar i desar sobre la fila bloquejada: un canvi de rol simultani (p. ex. una
         # revocació) no es pot perdre amb un desament fet amb dades antigues
         instance = User.objects.select_for_update().get(pk=instance.pk)
-        if instance.pk == user_request.pk and not is_canonical_superuser(instance):
-            raise PermissionDenied("Only a superuser can update users")
+        if instance.pk == user_request.pk:
+            if not is_canonical_superuser(instance):
+                raise PermissionDenied("Only a superuser can update users")
+        elif instance.is_superuser and not is_customers_account(user_request):
+            # Com check_superuser_target, però sobre la fila bloquejada (pot haver canviat)
+            raise PermissionDenied(
+                f"Only the '{CANONICAL_SUPERUSER_USERNAME}' account can modify another superuser"
+            )
 
         new_pwd = validated_data.pop('new_pwd', None)
         username = validated_data.pop('username', None)
@@ -226,6 +232,12 @@ class UserSerializer(serializers.HyperlinkedModelSerializer):
         if last_name:
             instance.last_name = last_name
         if new_pwd:
+            # validate() ho ha comprovat abans del bloqueig: es repeteix amb el rol final de la fila
+            is_superuser = (role == ROLE_SUPERUSER) if role is not None else instance.is_superuser
+            try:
+                validate_user_password(new_pwd, instance, is_superuser)
+            except DjangoValidationError as error:
+                raise serializers.ValidationError({'new_pwd': list(error.messages)})
             instance.password = make_password(new_pwd)
         instance.save()
 

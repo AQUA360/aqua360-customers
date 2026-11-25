@@ -574,6 +574,38 @@ class ExtraSuperuserTest(TestCase):
         self.extra.refresh_from_db()
         self.assertFalse(self.extra.is_superuser)
 
+    def test_target_promoted_meanwhile_is_checked_on_locked_row(self):
+        from auth.serializers import UserSerializer
+        from django.core.exceptions import PermissionDenied
+        from rest_framework.test import APIRequestFactory
+        request = APIRequestFactory().patch("/")
+        request.user = self.extra
+        # La vista ha llegit el destinatari com a admin; customers el promou abans del bloqueig
+        stale_target = User.objects.get(pk=self.extra2.pk)
+        User.objects.filter(pk=self.extra2.pk).update(is_superuser=True)
+        serializer = UserSerializer(
+            stale_target, data={"new_pwd": "riu-blau-2026!"}, partial=True, context={"request": request},
+        )
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        with self.assertRaises(PermissionDenied):
+            serializer.save()
+
+    def test_password_rules_use_locked_role(self):
+        from auth.serializers import UserSerializer
+        from rest_framework.test import APIRequestFactory
+        request = APIRequestFactory().patch("/")
+        request.user = self.customers
+        # validate() veu un admin; la fila bloquejada ja és superusuari (regles més estrictes)
+        stale_target = User.objects.get(pk=self.extra2.pk)
+        User.objects.filter(pk=self.extra2.pk).update(is_superuser=True)
+        serializer = UserSerializer(
+            stale_target, data={"new_pwd": "riublau2026"}, partial=True, context={"request": request},
+        )
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        from rest_framework import serializers
+        with self.assertRaises(serializers.ValidationError):
+            serializer.save()
+
     def test_extra_superuser_can_create_and_modify_users(self):
         self.client.force_authenticate(self.extra)
         response = self.client.post(
