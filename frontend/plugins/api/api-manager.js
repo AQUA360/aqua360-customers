@@ -33,6 +33,13 @@ export default defineNuxtPlugin(nuxtApp => {
     nuxtApp.$router.push('/auth/login').catch(() => {});
   };
 
+  // Idioma de l'app per al backend: sense aquesta capçalera, Django fa servir el del navegador
+  // i els missatges d'error poden sortir en un idioma diferent del de la instal·lació.
+  const languageHeader = () => {
+    const locale = nuxtApp.$i18n?.locale?.value;
+    return locale ? { 'Accept-Language': locale } : {};
+  };
+
   const apiService = {
     handleUnauthorized,
     // Name shown in the downloads queue for the next server-side export. Set by
@@ -48,6 +55,7 @@ export default defineNuxtPlugin(nuxtApp => {
           method: method,
           headers: {
             'Authorization': `Token ${authToken}`,
+            ...languageHeader(),
             ...headers
           }
         }
@@ -115,7 +123,8 @@ export default defineNuxtPlugin(nuxtApp => {
       let options = {
         method: 'GET',
         headers: {
-          'Authorization': `Token ${authToken}`
+          'Authorization': `Token ${authToken}`,
+          ...languageHeader()
         }
       }
 
@@ -148,6 +157,7 @@ export default defineNuxtPlugin(nuxtApp => {
         method: 'POST',
         headers: {
           'Authorization': `Token ${authToken}`,
+          ...languageHeader(),
           'Content-Type': 'application/json'
         },
         body: JSON.stringify(data)
@@ -206,7 +216,8 @@ export default defineNuxtPlugin(nuxtApp => {
       try {
         return await $fetch(config.public.apiHost + '/auth/permissions/my-permissions/', {
           headers: {
-            'Authorization': `Token ${authToken}`
+            'Authorization': `Token ${authToken}`,
+            ...languageHeader()
           }
         });
       } catch (error) {
