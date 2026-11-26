@@ -26,6 +26,7 @@ from rest_framework.test import APIClient
 from billing.models import (
     Biller,
     GeneralPayment,
+    GeneralPaymentMandateLog,
     GeneralPaymentSepaDocument,
     Invoice,
     InvoiceStatus,
@@ -122,7 +123,7 @@ SLASH_TOKEN = "12345678/001"
 PLAIN_TOKEN = "12345678"
 HOLDER_TOKEN = "12345678Z"
 PAYER_DNI = "87654321Y"
-NIC = "12345/1234"
+NIC = "123456000001"
 
 
 class ContractOVViewTests(TestCase):
@@ -435,6 +436,8 @@ class ContractDetailRoleFlagsTests(TestCase):
         for token, value in (
             ("contract_termination_completed_token", "3"),
             ("contract_terminated_status", "-1"),
+            # El NIC el comparteixen dos contractes: by-nic tria el d'alta.
+            ("contract_active_token", "1"),
         ):
             if not ConfigProject.objects.filter(token=token).exists():
                 ConfigProject.objects.create(token=token, value=value)
@@ -451,7 +454,7 @@ class ContractDetailRoleFlagsTests(TestCase):
         )
         cls.payment_type = PaymentType.objects.create(token="DIRECT_DEBIT")
         cls.payment = GeneralPayment.objects.create(
-            type=cls.payment_type, IBAN=cls.person_bank
+            type=cls.payment_type, IBAN=cls.person_bank, mandate_id=NIC
         )
         cls.supply_point = SupplyPoint.objects.create(token=NIC)
         cls.contract = Contract.objects.create(
@@ -546,6 +549,138 @@ class ContractDetailRoleFlagsTests(TestCase):
         self.assertEqual(response.data["status"], {"token": "1", "name": "Activo"})
         self.assertTrue(response.data["is_payer"])
         self.assertFalse(response.data["is_holder"])
+
+
+class ContractByNicOVTests(TestCase):
+    """GET /ov/contract/by-nic/<nic>/: el NIC és la referència de mandat de 12
+    xifres de la forma de pagament; el NIC antic es troba per l'historial de
+    mandats i, si el comparteixen diversos contractes, mana el d'alta."""
+
+    ACTIVE = "1"
+    TERMINATED = "-1"
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(
+            username="ov-contract-by-nic-test", password="not-used"
+        )
+        for token, value in (
+            ("contract_active_token", cls.ACTIVE),
+            ("contract_terminated_status", cls.TERMINATED),
+            ("contract_termination_completed_token", "3"),
+        ):
+            ConfigProject.objects.update_or_create(
+                token=token, defaults={"value": value}
+            )
+        cls.active = ContractStatus.objects.create(token=cls.ACTIVE, name="Alta")
+        cls.terminated = ContractStatus.objects.create(
+            token=cls.TERMINATED, name="Baja"
+        )
+        cls.holder = Person.objects.create(token=HOLDER_TOKEN, name="Test")
+        cls.payment = GeneralPayment.objects.create(mandate_id=NIC)
+
+    def setUp(self):
+        cache.clear()
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def _get(self, nic):
+        return self.client.get(reverse("contract-by-nic-ov", kwargs={"nic": nic}))
+
+    def _contract(self, token, status, payment=None):
+        contract = Contract.objects.create(
+            token=token, holder=self.holder, payment=payment or self.payment
+        )
+        # update() evita el senyal de baixa (fiances), aliè a aquesta cerca.
+        Contract.objects.filter(pk=contract.pk).update(status=status)
+        return contract
+
+    def test_finds_contract_by_mandate_reference(self):
+        self._contract("C-NIC-1", self.active)
+
+        response = self._get(NIC)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["contract_token"], "C-NIC-1")
+
+    def test_prefers_active_contract_over_newer_terminated_one(self):
+        # El contracte de baixa és més recent, però el NIC és del d'alta.
+        self._contract("C-NIC-ACTIVE", self.active)
+        self._contract("C-NIC-TERMINATED", self.terminated)
+
+        response = self._get(NIC)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["contract_token"], "C-NIC-ACTIVE")
+
+    def test_without_active_contract_returns_most_recent(self):
+        self._contract("C-NIC-OLD", self.terminated)
+        self._contract("C-NIC-NEW", self.terminated)
+
+        response = self._get(NIC)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["contract_token"], "C-NIC-NEW")
+
+    def test_finds_contract_by_previous_mandate_after_iban_change(self):
+        payment = GeneralPayment.objects.create(mandate_id="CTR-NEW-MANDATE")
+        GeneralPaymentMandateLog.objects.create(
+            general_payment=payment,
+            previous_mandate_id="654321000002",
+            new_mandate_id="CTR-NEW-MANDATE",
+        )
+        self._contract("C-NIC-CHANGED", self.active, payment=payment)
+
+        response = self._get("654321000002")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["contract_token"], "C-NIC-CHANGED")
+
+    def test_current_mandate_wins_over_history(self):
+        # Un altre pagament havia tingut aquest NIC abans: mana el vigent.
+        old_payment = GeneralPayment.objects.create(mandate_id="OTHER-MANDATE")
+        GeneralPaymentMandateLog.objects.create(
+            general_payment=old_payment,
+            previous_mandate_id=NIC,
+            new_mandate_id="OTHER-MANDATE",
+        )
+        self._contract("C-NIC-HISTORY", self.active, payment=old_payment)
+        self._contract("C-NIC-CURRENT", self.active)
+
+        response = self._get(NIC)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["contract_token"], "C-NIC-CURRENT")
+
+    def test_active_contract_in_history_wins_over_terminated_with_current_nic(self):
+        # Canvi d'IBAN des de l'OV d'un contracte que compartia la forma de
+        # pagament amb un de baixa: el d'alta passa a una forma de pagament nova
+        # (el NIC queda a l'historial) i el de baixa es queda la referència.
+        self._contract("C-NIC-TERMINATED", self.terminated)
+        new_payment = GeneralPayment.objects.create(mandate_id="CTR-SPLIT-MANDATE")
+        GeneralPaymentMandateLog.objects.create(
+            general_payment=new_payment,
+            previous_mandate_id=NIC,
+            new_mandate_id="CTR-SPLIT-MANDATE",
+        )
+        self._contract("C-NIC-SPLIT-ACTIVE", self.active, payment=new_payment)
+
+        response = self._get(NIC)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["contract_token"], "C-NIC-SPLIT-ACTIVE")
+
+    def test_unknown_nic_returns_404(self):
+        response = self._get("999999999999")
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_invalid_formats_return_400(self):
+        for nic in ("12345/1234", "012345/654321/12345678", "12345678901", "1234567890123", "12345678901A"):
+            with self.subTest(nic=nic):
+                response = self._get(nic)
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(response.data, {"error": "Invalid NIC format"})
 
 
 class InvoiceStatusObjectTests(TestCase):
