@@ -5,7 +5,7 @@ from ..models import OrderType
 from ..serializers.value_objects_serializer import OrderTypeSerializer
 from order.permissions import OrderPermission
 class OrderTypeViewSet(viewsets.ModelViewSet):
-    queryset = OrderType.objects.all().order_by('token')
+    queryset = OrderType.objects.prefetch_related('reasons').order_by('token')
     serializer_class = OrderTypeSerializer
     permission_classes = [IsAuthenticated, OrderPermission]
     search_fields = ['token', ]
