@@ -27,7 +27,9 @@ const handleSubRegionEvent = (event) => {
   isSubRegionOpen.value = event;
 }
 
-const { $OrderTypeApiService, $OrderApiService } = useNuxtApp();
+const { $OrderTypeApiService, $OrderApiService, $OrderReasonApiService } = useNuxtApp();
+// Vista: 'types' (llistat de tipus amb els seus motius) o 'reasons' (vista inversa: motius amb els seus tipus)
+const viewMode = ref('types');
 const error = ref(null);
 const items = ref([]);
 const pending = ref(true);
@@ -35,6 +37,7 @@ const searchInput = ref('');
 const filter_status = ref([]);
 const selectedFilters = ref([]);
 const sortBy = ref('token');
+const defaultSort = () => (viewMode.value === 'reasons' ? 'position' : 'token');
 const sortDesc = ref(false);
 
 const currentRegion = ref(null);
@@ -54,7 +57,8 @@ const getData = async (searchQuery = '', filters = [], page = 1, sort = 'token',
     pending.value = true;
     error.value = null;
     try {
-        const data = await $OrderTypeApiService.getAll(searchQuery, filters, page, sort, desc);
+        const service = viewMode.value === 'reasons' ? $OrderReasonApiService : $OrderTypeApiService;
+        const data = await service.getAll(searchQuery, filters, page, sort, desc);
         items.value = data.results;
         Object.assign(pagination.value, {
             total: data.count,
@@ -106,6 +110,19 @@ const exportColumns = computed(() => [
 ]);
 
 const exportOrderTypes = (columns) => $OrderTypeApiService.exportData(searchInput.value, selectedFilters.value, sortBy.value, sortDesc.value, columns);
+
+const switchView = (mode) => {
+  if (viewMode.value === mode) return;
+  viewMode.value = mode;
+  selectedItemId.value = null;
+  sortBy.value = defaultSort();
+  sortDesc.value = false;
+  searchInput.value = '';
+  pagination.value.page = 1;
+  items.value = [];
+  toggleRegion(false);
+  getData('', [], 1, sortBy.value, false);
+}
 
 const resetFilters = () => {
   searchInput.value = '';
@@ -164,21 +181,38 @@ const rowClass = (item) => ({
   'bg-yellow-50': item.id === selectedItemId.value,
 });
 
-const tableColumns = computed(() => [
-  { key: 'token', label: t('common.identification'), sortKey: 'token', width: 200, min: 120, priority: 1, removable: false },
-  { key: 'name', label: t('common.name'), sortKey: 'name', width: 300, min: 140, grow: 1, priority: 1, removable: false },
-]);
+const tableColumns = computed(() => viewMode.value === 'reasons'
+  ? [
+    { key: 'token', label: t('common.identification'), sortKey: 'token', width: 200, min: 120, priority: 1, removable: false },
+    { key: 'name', label: t('common.name'), sortKey: 'name', width: 300, min: 140, priority: 1, removable: false },
+    { key: 'types', label: t('order_block.order_types'), width: 400, min: 160, grow: 1, priority: 1, removable: false },
+  ]
+  : [
+    { key: 'token', label: t('common.identification'), sortKey: 'token', width: 200, min: 120, priority: 1, removable: false },
+    { key: 'name', label: t('common.name'), sortKey: 'name', width: 300, min: 140, priority: 1, removable: false },
+    { key: 'reasons', label: t('order_block.order_reasons'), width: 400, min: 160, grow: 1, priority: 1, removable: false },
+  ]);
 </script>
 
 <template>
     <div v-if="objectPermissions?.can_view" id="wrapper" class="text-base">
         <div class="flex justify-between items-center mb-2">
-            <H1>{{ $t('order_block.order_types') }}</H1>
+            <H1>{{ viewMode === 'reasons' ? $t('order_block.order_reasons') : $t('order_block.order_types') }}</H1>
             <div class="flex items-center gap-2">
                 <AtomsDownloadXlsxButton :rows="items" :columns="exportColumns" file-name="order_types"
                     :total-pages="pagination.totalPages" :server-export-fn="exportOrderTypes" />
-                <button v-if="objectPermissions?.can_change" @click="showAddRegion" class="button-primary">{{ $t('order_block.new_order_type') }}</button>
+                <button v-if="objectPermissions?.can_change && viewMode === 'types'" @click="showAddRegion" class="button-primary">{{ $t('order_block.new_order_type') }}</button>
             </div>
+        </div>
+        <div class="mb-2 flex gap-2" role="tablist">
+            <button type="button" role="tab" :aria-selected="viewMode === 'types'"
+                class="px-3 py-1 rounded-md text-sm"
+                :class="viewMode === 'types' ? 'bg-sky-500 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'"
+                @click="switchView('types')">{{ $t('order_block.order_types') }}</button>
+            <button type="button" role="tab" :aria-selected="viewMode === 'reasons'"
+                class="px-3 py-1 rounded-md text-sm"
+                :class="viewMode === 'reasons' ? 'bg-sky-500 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'"
+                @click="switchView('reasons')">{{ $t('order_block.order_reasons') }}</button>
         </div>
         <form id="form_filter" role="search"
             class="mb-3 text-base border-b border-gray-400 flex flex-start gap-4 justify-start items-center"
@@ -220,13 +254,26 @@ const tableColumns = computed(() => [
             @sort="handleSort"
             @retry="getData">
             <template #cell-token="{ item }">
-                <button class="group flex justify-between w-full items-center text-sky-500 text-nowrap text-left"
+                <button v-if="viewMode === 'types'" class="group flex justify-between w-full items-center text-sky-500 text-nowrap text-left"
                     @click="showDetail(item.id);">
                     <abbr :title="item.token" class="no-underline">{{ item.token }}</abbr>
                     <Icon name="fa6-solid:eye" class="opacity-0 group-hover:opacity-100 text-slate-500 mr-1 transition-opacity duration-200 ease-in-out" />
                 </button>
+                <abbr v-else :title="item.token" class="no-underline">{{ item.token }}</abbr>
             </template>
             <template #cell-name="{ item }">{{ item.name }}</template>
+            <template #cell-reasons="{ item }">
+                <span class="flex flex-wrap gap-1">
+                    <span v-for="reason in item.reasons" :key="reason.id" :title="reason.token"
+                        class="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">{{ reason.name }}</span>
+                </span>
+            </template>
+            <template #cell-types="{ item }">
+                <span class="flex flex-wrap gap-1">
+                    <span v-for="type in item.types" :key="type.id" :title="type.token"
+                        class="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">{{ type.name }}</span>
+                </span>
+            </template>
         </DataTable>
         <div id="list__footer">
             <Pagination v-if="items.length > 0" :pagination="pagination" @update:page="handlePageChange" />
