@@ -22,7 +22,9 @@ from rest_framework import status
 from rest_framework.response import Response
 
 from billing.utils.aca_company_service import ACACompanyError, get_records_company, resolve_aca_company, use_multiple_companies
-from billing.utils.generate_factdeta_service import AGRICULTURAL_USE_ACA, factdeta_invoice_volumes, use_aca_invoices_q
+from billing.utils.generate_factdeta_service import (
+    AGRICULTURAL_USE_ACA, ALTA_USE_ACA, DECLARATION_ALTA_USE_ACA, factdeta_invoice_volumes, use_aca_invoices_q,
+)
 from billing.models import Biller, Billing, Invoice, InvoiceLineItem, InvoiceStatus, Payment, PaymentRemittance, Reading
 from billing.utils.invoice_service import get_invoice_status, get_totals
 from billing.utils.payment_service import get_status_map
@@ -137,11 +139,13 @@ def _aca_date_range_trimester(start_date, end_date):
 
 
 def _aca_effective_use_annotation():
+    """Ús ACA de la línia per a la Declaració ACA: el de la factura o, si no en té, el del contracte.
+    L'alta, que el FACTDETA declara a part, aquí es declara com a industrial."""
+    has_used_aca = Q(invoice__used_aca__isnull=False) & ~Q(invoice__used_aca='')
     return Case(
-        When(
-            Q(invoice__used_aca__isnull=False) & ~Q(invoice__used_aca=''),
-            then=F('invoice__used_aca'),
-        ),
+        When(has_used_aca & Q(invoice__used_aca=ALTA_USE_ACA), then=Value(DECLARATION_ALTA_USE_ACA)),
+        When(has_used_aca, then=F('invoice__used_aca')),
+        When(invoice__contract__use_aca=ALTA_USE_ACA, then=Value(DECLARATION_ALTA_USE_ACA)),
         default=F('invoice__contract__use_aca'),
         output_field=CharField(),
     )
@@ -164,11 +168,8 @@ def _aca_price_to_interval(invoice_dom_lines, part_fixa_token):
 
 
 def _invoice_effective_use_aca(invoice):
-    if invoice.used_aca:
-        return invoice.used_aca
-    if invoice.contract:
-        return invoice.contract.use_aca or ''
-    return ''
+    use_aca = invoice.used_aca or (invoice.contract.use_aca if invoice.contract else None) or ''
+    return DECLARATION_ALTA_USE_ACA if use_aca == ALTA_USE_ACA else use_aca
 
 
 def _split_aca_product_tokens(aca_product_token):
@@ -1055,14 +1056,7 @@ def generate_aca_summary_report(request, black_fill=None, white_bold_font=None, 
                 print(f"dom lines units: {dom_lines.aggregate(total_units=Sum('units'))['total_units'] or 0}")
                 print(f"dom lines units: {dom_lines.exclude(line_item_type__article__token=part_fixa_token).distinct().aggregate(total_units=Sum('units'))['total_units'] or 0}")
                 
-                # ALTA
-                alta_lines = aca_line_items_ex.filter(effective_use_aca="L").distinct()
-                alta_invoices = invoices_exploitation.filter(id__in=alta_lines.values_list('invoice__id', flat=True)).distinct()
-                
-                serie_final_row = _add_invoices_to_sheet(serie_final_sheet, serie_final_row, alta_invoices, alta_lines, part_fixa_token, written_invoice_ids=written_invoice_ids, volumes_by_invoice=volumes_by_invoice)
-                print(f"alta lines units: {alta_lines.aggregate(total_units=Sum('units'))['total_units'] or 0}")
-                
-                #IND
+                #IND (l'alta hi entra: l'ús efectiu la declara com a industrial)
                 #watch out on diff corr, currently getting by price_unit
                 ind_lines = aca_line_items_ex.filter(effective_use_aca="I").exclude(
                         price_unit__range=(-0.001, 0.001)).distinct()
