@@ -646,6 +646,19 @@ const onDigitalPersonContact = (contact) => {
   closeAllRegions();
 };
 
+/** Un contacte esborrat des del selector deixa d'estar seleccionat (correu, telèfons i SMS). */
+const onPersonContactDeleted = (contact) => {
+  const deletedId = Number(resolveId(contact));
+  if (!deletedId) return;
+  const isDeleted = (item) => Number(resolveId(item)) === deletedId;
+  if (selectedDigitalPersonContact.value && isDeleted(selectedDigitalPersonContact.value)) {
+    selectedDigitalPersonContact.value = null;
+  }
+  selectedPhones.value = selectedPhones.value.filter((phone) => !isDeleted(phone));
+  selectedSMSPhones.value = selectedSMSPhones.value.filter((phone) => !isDeleted(phone));
+  emitChange();
+};
+
 // Funcions per gestionar la selecció de telèfons
 const openAddPhoneSelect = () => {
   closeAllRegions();
@@ -1487,13 +1500,13 @@ const handleSubRegionEvent = (show) => {
             :persons="rolePersons" @selected-item="onPersonBankSelected" />
           <PersonContactSelect ref="personContactSelectRef" v-if="showRegionComponent === 'DigitalPersonContactSelect'"
             :title="`${$t('common.select')} ${$t('common.email_long')}`" :persons="rolePersonsNoReps"
-            :onlyEmail="true" @selected-item="onDigitalPersonContact" />
+            :onlyEmail="true" @selected-item="onDigitalPersonContact" @deleted-item="onPersonContactDeleted" />
           <PersonContactSelect v-if="showRegionComponent === 'PhonePersonContactSelect'"
             :title="`${$t('common.select')} ${$t('common.tlf')}`" :persons="rolePersonsNoReps" :onlyPhone="true"
-            @selected-item="onPhoneSelected" />
+            @selected-item="onPhoneSelected" @deleted-item="onPersonContactDeleted" />
           <PersonContactSelect v-if="showRegionComponent === 'SMSPhonePersonContactSelect'"
             :title="`${$t('common.select')} ${$t('customer_service_block.tlf_sms')}`" :persons="rolePersonsNoReps"
-            :onlyPhone="true" @selected-item="onSMSPhoneSelected" />
+            :onlyPhone="true" @selected-item="onSMSPhoneSelected" @deleted-item="onPersonContactDeleted" />
           <PersonAddressSelect v-if="showRegionComponent === 'BillingAddressSelect'"
             :title="`${$t('common.select')} ${$t('common.fiscal_address')}`"
             :persons="rolePersons" :isBilling="true"

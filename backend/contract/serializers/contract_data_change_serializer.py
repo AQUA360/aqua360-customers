@@ -6,11 +6,38 @@ from coredata.serializers import PersonAddressSerializer, PersonBankSerializer, 
 from ..models import ContractDataChange
 
 class ContractDataChangeSerializer(serializers.ModelSerializer):
-    
+
+    # Camps d'històric (valor anterior i nou) que apunten a dades de la persona. Si el registre
+    # ja no existeix (p. ex. un contacte esborrat mentre s'editava), es desa buit: el registre
+    # del canvi no ha de bloquejar el desat del contracte.
+    HISTORY_FK_FIELDS = (
+        'new_payment', 'previous_payment',
+        'new_payment_type', 'previous_payment_type',
+        'new_person_contact_email', 'previous_person_contact_email',
+        'new_address_contact', 'previous_address_contact',
+        'new_address_billing', 'previous_address_billing',
+    )
+
     class Meta:
         model = ContractDataChange
         fields = '__all__'
-    
+
+    def to_internal_value(self, data):
+        if hasattr(data, 'copy'):
+            data = data.copy()
+        for field_name in self.HISTORY_FK_FIELDS:
+            value = data.get(field_name) if hasattr(data, 'get') else None
+            if value in (None, ''):
+                continue
+            related_model = ContractDataChange._meta.get_field(field_name).related_model
+            try:
+                exists = related_model.objects.filter(pk=value).exists()
+            except (TypeError, ValueError):
+                exists = False
+            if not exists:
+                data[field_name] = None
+        return super().to_internal_value(data)
+
     def to_representation(self, instance):
         representation = super().to_representation(instance)
         
