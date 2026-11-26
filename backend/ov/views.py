@@ -790,20 +790,23 @@ class ContractDetailByTokenOVView(RetrieveAPIView):
         return contract
 
 
+NIC_LENGTH = 12
+
+
 def is_valid_nic(nic):
-    r"""Equivale a re.fullmatch(r"\d+(?:/\d+){1,2}", nic) sin regex: de 2 a 3
-    grupos de dígitos separados por «/» (CodeQL marca la regex como ReDoS)."""
-    parts = nic.split("/")
-    return 2 <= len(parts) <= 3 and all(part.isdecimal() for part in parts)
+    """El NIC són 12 xifres sense separadors (p. ex. `123456000001`)."""
+    return len(nic) == NIC_LENGTH and nic.isdecimal()
 
 
 class ContractByNicView(RetrieveAPIView):
-    """GET /ov/contract/by-nic/<nic>/ — detalle del contrato por NIC (token del
-    punto de suministro). El NIC incluye «/» con una o dos barras (p. ej.
-    `12345/1234` o `012345/654321/12345678`), por eso la
-    ruta usa `<path:nic>`; el formato se valida con regex ANTES de consultar la
-    BD. Si el punto de suministro es el por defecto de varios contratos se
-    devuelve el más reciente (`created_at` desc)."""
+    """GET /ov/contract/by-nic/<nic>/ — detall del contracte per NIC.
+
+    El NIC és la referència de mandat de 12 xifres de la forma de pagament
+    (`GeneralPayment.mandate_id`). Si el canvi de domiciliació n'ha generat una
+    de nova, el NIC antic es busca a l'historial de mandats
+    (`GeneralPaymentMandateLog.previous_mandate_id`). Quan el NIC el comparteixen
+    diversos contractes, es retorna primer el d'alta i després el més recent
+    (`created_at` desc). El format es valida ABANS de consultar la BD."""
 
     permission_classes = [IsAuthenticated]
     throttle_classes = [DniEnumerationThrottle]
@@ -819,22 +822,44 @@ class ContractByNicView(RetrieveAPIView):
         "use_type",
     )
 
-    def get_object(self):
-        """Valida el NIC, busca el contrato más reciente y comprueba los permisos.
+    def _first_contract(self, queryset, active_token):
+        """El contracte d'alta (`contract_active_token`) si n'hi ha; si no, el
+        més recent."""
+        if active_token:
+            queryset = queryset.annotate(
+                not_active=Case(
+                    When(status__token=active_token, then=Value(0)),
+                    default=Value(1),
+                    output_field=IntegerField(),
+                )
+            ).order_by("not_active", "-created_at", "-id")
+        else:
+            queryset = queryset.order_by("-created_at", "-id")
+        return queryset.first()
 
-        Prioriza el punto de suministro por defecto y después busca en los demás.
-        Lanza ValidationError si el NIC es inválido o NotFound si no hay contrato.
+    def get_object(self):
+        """Valida el NIC, busca el contracte i en comprova els permisos.
+
+        Primer per la referència de mandat vigent i, si no n'hi ha cap, per
+        l'historial de mandats. Llança ValidationError si el NIC no és vàlid o
+        NotFound si no hi ha cap contracte.
         """
         nic = (self.kwargs.get("nic") or "").strip()
         if not is_valid_nic(nic):
             raise ValidationError({"error": "Invalid NIC format"})
-        contract = (
-            self.queryset.filter(supply_point_default__token=nic)
-            .order_by("-created_at")
+        active_token = (
+            ConfigProject.objects.filter(token="contract_active_token")
+            .values_list("value", flat=True)
             .first()
-            or self.queryset.filter(supply_points__token=nic)
-            .order_by("-created_at")
-            .first()
+        )
+        active_token = str(active_token).strip() if active_token is not None else ""
+        contract = self._first_contract(
+            self.queryset.filter(payment__mandate_id=nic), active_token
+        ) or self._first_contract(
+            self.queryset.filter(
+                payment__mandate_logs__previous_mandate_id=nic
+            ).distinct(),
+            active_token,
         )
         if contract is None:
             raise NotFound({"error": "Contract not found"})
