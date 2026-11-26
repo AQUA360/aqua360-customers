@@ -260,7 +260,9 @@ class MeterChangeService:
             order=self.order,
         )
 
-        if current_meter:
+        # Sense dades de tancament (p. ex. es retira un comptador fictici) no es
+        # crea la lectura de tancament.
+        if current_meter and previous_reading_data is not None:
             self._create_meter_reading(
                 current_meter, previous_reading_data, change_date, supply_point,
                 origin, active_contract_token,

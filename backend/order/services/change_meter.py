@@ -10,6 +10,24 @@ from service.services.meter_change_service import (
 
 
 OPTIONAL_FIELDS = {'reading_new'}
+# En una instal·lació no hi ha comptador sortint.
+INSTALLATION_OPTIONAL_FIELDS = OPTIONAL_FIELDS | {'meter_old', 'reading_old'}
+
+DEFAULT_INSTALL_METER_ORDER_TYPE = 'install_meter'
+
+
+def install_meter_order_type_token():
+    """Token del tipus d'ordre d'instal·lació de comptador (configurable)."""
+    config = ConfigProject.objects.filter(token='order_type_install_meter_token').first()
+    return (config.value if config and config.value else DEFAULT_INSTALL_METER_ORDER_TYPE).strip()
+
+
+def is_no_meter(meter):
+    """Comptador fictici (estat «sense comptador»)."""
+    if not meter or not meter.status:
+        return False
+    config = ConfigProject.objects.filter(token='token_meter_status_no_meter').first()
+    return bool(config and meter.status.token == config.value)
 
 
 def _has_value(value):
@@ -64,15 +82,21 @@ class OrderChangeMeterValidationService:
     def _resolve_supply_point(self):
         return self.order.supply_point
 
+    def is_installation(self):
+        order_type = self.order.type if self.order else None
+        token = (order_type.token or '').lower() if order_type else ''
+        return bool(token) and token == install_meter_order_type_token().lower()
+
     def validate(self):
         mapping = self._field_mapping()
         answers = self._all_answers()
 
         # La lectura inicial del comptador nou és opcional: buida val 0.
+        optional = INSTALLATION_OPTIONAL_FIELDS if self.is_installation() else OPTIONAL_FIELDS
         missing = [
             m['form_field']
             for m in mapping
-            if m.get('customers_field') not in OPTIONAL_FIELDS
+            if m.get('customers_field') not in optional
             and not _has_value(answers.get(m['form_field']))
         ]
 
@@ -109,6 +133,9 @@ class OrderChangeMeterValidationService:
 
         meter_old_code = mapping.get('meter_old')
         meter_new_code = mapping.get('meter_new')
+        is_installation = self.is_installation()
+        # Instal·lació: el punt no té comptador o en té un de fictici, que es retira.
+        installation_ok = is_installation and (not system_meter or is_no_meter(system_meter))
 
         meter_new = (
             Meter.objects.filter(code=meter_new_code).first()
@@ -118,6 +145,7 @@ class OrderChangeMeterValidationService:
 
         return {
             'supply_point': supply_point_data,
+            'is_installation': is_installation,
             'meter_old': {
                 'form_code': meter_old_code,
                 'system_meter': (
@@ -128,7 +156,7 @@ class OrderChangeMeterValidationService:
                     if system_meter
                     else None
                 ),
-                'matches': bool(
+                'matches': installation_ok or bool(
                     system_meter
                     and meter_old_code
                     and system_meter.code == meter_old_code
@@ -178,6 +206,9 @@ class OrderChangeMeterValidationService:
 
         prev_meter = supply_point.meter
 
+        # El comptador fictici d'una instal·lació no té lectura de tancament.
+        skip_close_reading = self.is_installation() and is_no_meter(prev_meter)
+
         service = MeterChangeService(user=user, source='order', order=self.order)
         service.apply(
             supply_point_id=supply_point.id,
@@ -188,7 +219,7 @@ class OrderChangeMeterValidationService:
             confirm_reassign=confirm_reassign,
             # calculated_value=None => el servei calcula el consum contra
             # l'última lectura del mateix comptador (no és el valor de lectura).
-            previous_reading_data={
+            previous_reading_data=None if skip_close_reading else {
                 'reading_value': data.get('reading_old'),
                 'calculated_value': None,
                 'is_close': True,
