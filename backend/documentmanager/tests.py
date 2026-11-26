@@ -729,3 +729,155 @@ class SftpServiceTest(SimpleTestCase):
         self.assertIsNone(kwargs["password"])
         self.assertEqual(kwargs["key_filename"], "/config/id_ed25519")
         self.assertFalse(kwargs["look_for_keys"])
+
+
+class DocumentSignJointDocumentsTest(TestCase):
+    """Contracte, mandat SEPA i factura s'envien junts a la mateixa sessió de Sign."""
+
+    SERVICES = "integrations.outbound.signing.services"
+
+    @staticmethod
+    def _invoice(token, contract_request):
+        """Sense senyals de facturació: aquí només compta la relació amb la sol·licitud."""
+        from billing.models import Invoice
+
+        return Invoice.objects.bulk_create([Invoice(token=token, contract_request=contract_request)])[0]
+
+    def setUp(self):
+        from billing.models import GeneralPayment, PaymentType
+
+        ConfigProject.objects.update_or_create(
+            token="DOCUMENT_SIGN_ENABLED", defaults={"value": "true"}
+        )
+        self.payment = GeneralPayment.objects.create(
+            type=PaymentType.objects.create(token="DIRECT_DEBIT", name="Domiciliació"),
+            mandate_id="MANDAT-1",
+        )
+        self.contract_request = ContractRequest.objects.create(token="SOL-1", payment=self.payment)
+        self.other_request = ContractRequest.objects.create(token="SOL-2")
+        self.invoice = self._invoice("FA-1", self.contract_request)
+        self.contract_file = Document.objects.create(
+            entity_id=1, service="hdd", document_name="contracte.pdf"
+        )
+        self.sepa_file = Document.objects.create(entity_id=1, service="hdd", document_name="SEPA.pdf")
+        self.invoice_file = Document.objects.create(
+            entity_id=1, service="hdd", document_name="factura.pdf"
+        )
+        self.document_sign = DocumentSign.objects.create(
+            contract_request=self.contract_request,
+            contract_file=self.contract_file,
+            invoice=self.invoice,
+            otp_name="Nom Cognom",
+            otp_email="info@example.com",
+        )
+
+        patches = {
+            "client": patch(f"{self.SERVICES}.SigningClient"),
+            "download": patch(f"{self.SERVICES}.download_document", return_value=io.BytesIO(b"%PDF")),
+            "upload": patch(f"{self.SERVICES}.upload_document", return_value=self.sepa_file),
+            "sepa": patch(
+                "billing.views.contract_sepa_pdf_view.render_contract_sepa_pdf",
+                return_value=b"%PDF-sepa",
+            ),
+            "invoice_pdf": patch(
+                "billing.tasks.generate_invoice_pdf", return_value=self.invoice_file.id
+            ),
+        }
+        self.mocks = {}
+        for name, patcher in patches.items():
+            self.mocks[name] = patcher.start()
+            self.addCleanup(patcher.stop)
+        self.create_session = self.mocks["client"].return_value.create_session
+        self.create_session.return_value = {"id": "sessio-1"}
+
+    @override_settings(
+        SIGNING_BASE_URL="https://sign.test",
+        SIGNING_API_KEY="clau",
+        SIGNING_CALLBACK_URL="https://customers.test/signing/callback/",
+    )
+    def _send(self):
+        from integrations.outbound.signing.services import create_document_sign_session
+
+        return create_document_sign_session(self.document_sign)
+
+    def test_sends_contract_sepa_and_invoice_in_one_session(self):
+        self._send()
+
+        kwargs = self.create_session.call_args.kwargs
+        self.assertEqual(
+            [name for name, _, _ in kwargs["documents"]],
+            ["contracte.pdf", "SEPA.pdf", "factura.pdf"],
+        )
+        metadata = kwargs["document_metadata"]
+        self.assertEqual([entry["requires_signature"] for entry in metadata], [True, True, False])
+        self.assertEqual(metadata[0]["external_document_id"], str(self.document_sign.id))
+        self.assertEqual(metadata[1]["external_document_id"], f"sepa-{self.document_sign.id}")
+        self.assertEqual(metadata[2]["external_document_id"], f"invoice-{self.invoice.id}")
+
+        self.document_sign.refresh_from_db()
+        self.assertEqual(self.document_sign.sepa_file, self.sepa_file)
+        self.assertEqual(self.document_sign.status, DocumentSign.STATUS_SENDED)
+
+    def test_no_sepa_when_payment_is_not_direct_debit(self):
+        from billing.models import PaymentType
+
+        self.payment.type = PaymentType.objects.create(token="BANK_TRANSFER", name="Transferència")
+        self.payment.save()
+        self._send()
+
+        metadata = self.create_session.call_args.kwargs["document_metadata"]
+        self.assertEqual(len(metadata), 2)
+        self.assertFalse(any(entry["external_document_id"].startswith("sepa-") for entry in metadata))
+        self.mocks["sepa"].assert_not_called()
+
+    def test_no_sepa_when_excluded(self):
+        self.document_sign.include_sepa = False
+        self.document_sign.save()
+        self._send()
+        self.assertEqual(len(self.create_session.call_args.kwargs["document_metadata"]), 2)
+
+    def test_invoice_of_another_request_is_rejected(self):
+        self.document_sign.invoice = self._invoice("FA-2", self.other_request)
+        self.document_sign.save()
+        with self.assertRaises(SigningApiError):
+            self._send()
+        self.create_session.assert_not_called()
+
+    def test_api_rejects_invoice_of_another_request(self):
+        client = APIClient()
+        client.force_authenticate(
+            User.objects.create_superuser(username="docsign2", email="d@example.com", password="x")
+        )
+        other_invoice = self._invoice("FA-3", self.other_request)
+        response = client.post(
+            reverse("documentsign-list"),
+            {
+                "contract_request": self.contract_request.id,
+                "invoice": other_invoice.id,
+                "otp_name": "Nom",
+                "otp_email": "a@example.com",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("invoice", response.data)
+
+    @patch("documentmanager.views.download_document")
+    def test_download_signed_sepa(self, mock_download):
+        mock_download.return_value = HttpResponse(b"%PDF-sepa-signat")
+        client = APIClient()
+        client.force_authenticate(
+            User.objects.create_superuser(username="docsign3", email="e@example.com", password="x")
+        )
+        url = reverse("document_sign_download", args=[self.document_sign.id])
+        response = client.get(url, {"document": "sepa"})
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+        self.document_sign.status = DocumentSign.STATUS_SIGNED
+        self.document_sign.sepa_file_signed = self.sepa_file
+        self.document_sign.save()
+        response = client.get(url, {"document": "sepa"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.content, b"%PDF-sepa-signat")
+        mock_download.assert_called_once_with(self.sepa_file)
+

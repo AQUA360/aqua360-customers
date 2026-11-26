@@ -285,7 +285,7 @@ class DocumentSignViewSet(viewsets.ModelViewSet):
 
         try:
             result = create_document_sign_session(
-                document_sign, callback_url=callback_url, force=force
+                document_sign, callback_url=callback_url, force=force, request=request
             )
         except SigningApiError:
             # El detall (resposta del servei extern) queda al log, no al client.
@@ -386,18 +386,17 @@ class DocumentSignViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'])
     def download(self, request, pk=None):
+        """PDF signat del contracte, o del mandat SEPA amb `?document=sepa`."""
         document_sign = self.get_object()
+        is_sepa = request.query_params.get('document') == 'sepa'
+        document = document_sign.sepa_file_signed if is_sepa else document_sign.contract_file_signed
 
-        if (
-            document_sign.status != DocumentSign.STATUS_SIGNED
-            or not document_sign.contract_file_signed_id
-        ):
+        if document_sign.status != DocumentSign.STATUS_SIGNED or not document:
             return Response(
                 {"error": "El document signat encara no està disponible"},
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        document = document_sign.contract_file_signed
         try:
             download_info = download_document(document)
         except Http404:

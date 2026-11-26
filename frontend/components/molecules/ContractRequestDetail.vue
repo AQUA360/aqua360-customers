@@ -417,7 +417,7 @@ const generateSignedContract = async () => {
         <div v-if="documentSignEnabled" class="my-3">
           <MoleculesDocumentSignStatus :contractId="signContractId" :contractRequestId="signContractRequestId"
             :contractFileId="signContractFileId" :defaultName="signOtpDefaultName" :defaultEmail="signOtpDefaultEmail"
-            :defaultPhone="signOtpDefaultPhone" />
+            :defaultPhone="signOtpDefaultPhone" :invoiceId="finalInvoice?.id || null" />
         </div>
 
         <div v-else class="flex gap-3 mt-1">

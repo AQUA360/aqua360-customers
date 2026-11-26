@@ -31,6 +31,11 @@ const props = defineProps({
         type: String,
         default: ''
     },
+    /** Factura de la sol·licitud que es pot adjuntar (sense signar) a la mateixa sessió. */
+    invoiceId: {
+        type: [Number, String],
+        default: null
+    },
 });
 
 const { t } = useI18n();
@@ -47,6 +52,9 @@ const showForm = ref(false);
 const otp_name = ref('');
 const otp_email = ref('');
 const otp_phone = ref('');
+/** El mandat SEPA només s'envia si el pagament és domiciliat (ho decideix el backend). */
+const include_sepa = ref(true);
+const include_invoice = ref(true);
 
 /** Sempre agafem l'últim DocumentSign creat per aquest contracte. */
 const currentSign = computed(() => {
@@ -95,6 +103,15 @@ const canSendFirstTime = computed(() => currentStatus.value === STATUS_PENDING &
 const downloadDocument = async () => {
     if (!signedDownloadUrl.value) return;
     await openAuthenticatedFileUrl(signedDownloadUrl.value, false);
+};
+
+const sepaSignedDownloadUrl = computed(() => (
+    currentStatus.value === STATUS_SIGNED ? currentSign.value?.sepa_file_signed_url || null : null
+));
+
+const downloadSepa = async () => {
+    if (!sepaSignedDownloadUrl.value) return;
+    await openAuthenticatedFileUrl(sepaSignedDownloadUrl.value, false);
 };
 
 const requestSigned = async () => {
@@ -163,6 +180,8 @@ const resetForm = () => {
     otp_name.value = props.defaultName || '';
     otp_email.value = props.defaultEmail || '';
     otp_phone.value = props.defaultPhone || '';
+    include_sepa.value = true;
+    include_invoice.value = !!props.invoiceId;
 };
 
 const openForm = () => {
@@ -183,6 +202,8 @@ const createAndSend = async () => {
             otp_name: otp_name.value,
             otp_email: otp_email.value,
             otp_phone: otp_phone.value,
+            include_sepa: include_sepa.value,
+            invoice: props.invoiceId && include_invoice.value ? props.invoiceId : null,
         });
         await $DocumentSignApiService.send(created.id);
         hasBeenSent.value = true;
@@ -252,6 +273,14 @@ defineExpose({ refresh: loadSigns });
                     class="w-full text-sm border border-slate-300 rounded-md px-3 py-2" />
                 <input v-model="otp_phone" type="text" :placeholder="t('common.tlf')"
                     class="w-full text-sm border border-slate-300 rounded-md px-3 py-2" />
+                <label class="flex items-start gap-2 text-sm text-slate-700">
+                    <input v-model="include_sepa" type="checkbox" class="mt-1" />
+                    <span>{{ t('contract_block.document_sign_include_sepa') }}</span>
+                </label>
+                <label v-if="invoiceId" class="flex items-start gap-2 text-sm text-slate-700">
+                    <input v-model="include_invoice" type="checkbox" class="mt-1" />
+                    <span>{{ t('contract_block.document_sign_include_invoice') }}</span>
+                </label>
                 <div class="flex justify-end gap-2 pt-1">
                     <button @click="showForm = false" :disabled="isBusy" class="button-default-xs">
                         {{ t('common.cancel') }}
@@ -292,6 +321,12 @@ defineExpose({ refresh: loadSigns });
                         <p class="text-xs text-slate-500 truncate" :title="currentSign.otp_email">
                             {{ currentSign.otp_email }}
                         </p>
+                        <p v-if="currentSign.sepa_file" class="text-xs text-slate-500">
+                            {{ t('contract_block.document_sign_with_sepa') }}
+                        </p>
+                        <p v-if="currentSign.invoice" class="text-xs text-slate-500 truncate">
+                            {{ t('contract_block.document_sign_with_invoice', { invoice: currentSign.invoice_token || currentSign.invoice }) }}
+                        </p>
                     </div>
                     <button @click="loadSigns" :title="t('common.refresh')" :disabled="isBusy"
                         class="text-slate-400 hover:text-slate-600 disabled:opacity-50 shrink-0 p-1">
@@ -314,7 +349,12 @@ defineExpose({ refresh: loadSigns });
                     <button v-if="canDownloadSigned" @click="downloadDocument"
                         class="button-default-xs w-full justify-center">
                         <Icon name="fa6-solid:download" class="mr-1" />
-                        {{ t('common.download') }}
+                        {{ sepaSignedDownloadUrl ? t('contract_block.document_sign_download_contract') : t('common.download') }}
+                    </button>
+                    <button v-if="sepaSignedDownloadUrl" @click="downloadSepa"
+                        class="button-default-xs w-full justify-center">
+                        <Icon name="fa6-solid:download" class="mr-1" />
+                        {{ t('contract_block.document_sign_download_sepa') }}
                     </button>
                     <button v-if="canSendFirstTime" @click="retrySend(false)" :disabled="isBusy"
                         class="button-default-xs w-full justify-center">
