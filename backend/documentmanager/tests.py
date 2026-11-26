@@ -839,6 +839,27 @@ class DocumentSignJointDocumentsTest(TestCase):
         names = [name for name, _, _ in self.create_session.call_args.kwargs["documents"]]
         self.assertEqual(names[-1], "factura-nova.pdf")
 
+    def test_storage_error_on_invoice_also_regenerates(self):
+        # Alfresco no llença Http404 sinó una excepció genèrica quan falta el fitxer.
+        regenerated = Document.objects.create(
+            entity_id=1, service="hdd", document_name="factura-nova.pdf"
+        )
+        self.mocks["invoice_pdf"].side_effect = (
+            lambda invoice, find_existing=False: self.invoice_file.id if find_existing else regenerated.id
+        )
+
+        def download(document):
+            if document == self.invoice_file:
+                raise Exception("Failed to get document")
+            return io.BytesIO(b"%PDF")
+
+        self.mocks["download"].side_effect = download
+        with self.assertLogs("integrations.outbound.signing.services", level="ERROR"):
+            self._send()
+
+        names = [name for name, _, _ in self.create_session.call_args.kwargs["documents"]]
+        self.assertEqual(names[-1], "factura-nova.pdf")
+
     def test_unreadable_contract_is_a_signing_error(self):
         from django.http import Http404
 

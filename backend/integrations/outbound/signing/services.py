@@ -1,4 +1,5 @@
 import base64
+import logging
 
 import requests
 from django.conf import settings
@@ -25,6 +26,8 @@ from integrations.models import ContractSigningSession
 
 from .client import SigningClient
 from .exceptions import SIGNING_SERVICE_ERROR, SigningApiError
+
+logger = logging.getLogger(__name__)
 
 
 def _resolve_recipient(
@@ -234,9 +237,14 @@ def _ensure_document_sign_contract_file(document_sign):
 
 
 def _document_bytes(document):
+    # Cada servei de documents avisa diferent d'un fitxer absent (Http404, None o una
+    # excepció genèrica, p. ex. Alfresco): tots es tracten com a document il·legible.
     try:
         content = download_document(document)
     except Http404:
+        content = None
+    except Exception:
+        logger.exception("No s'ha pogut llegir el document %s per enviar a signar", document.id)
         content = None
     if not content:
         raise SigningApiError(f"No s'ha pogut descarregar el document (id={document.id})")
