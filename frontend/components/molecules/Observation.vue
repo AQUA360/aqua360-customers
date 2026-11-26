@@ -23,6 +23,7 @@ const emit = defineEmits(['delete:observation', 'mark:observation', 'edit:observ
 const editing = ref(false);
 const draft = ref('');
 const editTextarea = ref(null);
+const saving = ref(false);
 
 const deleteObservation = () => {
     emit('delete:observation', props.id)
@@ -46,13 +47,25 @@ const cancelEdit = () => {
 
 const saveEdit = () => {
     const text = draft.value?.trim();
-    if (!text) {
+    if (!text || saving.value) {
         return;
     }
-    if (text !== (props.observation || '').trim()) {
-        emit('edit:observation', { id: props.id, observation: text });
+    if (text === (props.observation || '').trim()) {
+        cancelEdit();
+        return;
     }
-    editing.value = false;
+    // L'editor només es tanca si el desament va bé; si falla, es conserva l'esborrany.
+    saving.value = true;
+    emit('edit:observation', {
+        id: props.id,
+        observation: text,
+        done: (ok) => {
+            saving.value = false;
+            if (ok) {
+                cancelEdit();
+            }
+        }
+    });
 }
 
 </script>
@@ -103,13 +116,14 @@ const saveEdit = () => {
         <div v-if="editing" class="mt-1">
             <textarea ref="editTextarea" v-model="draft" rows="3"
                 class="w-full text-base text-gray-700 border border-gray-300 rounded-md p-2 focus:outline-none focus:border-sky-500"
+                :disabled="saving"
                 @keydown.esc.prevent="cancelEdit"
                 @keydown.enter.ctrl.prevent="saveEdit"></textarea>
             <div class="flex justify-end gap-2 mt-1">
-                <button type="button" class="button-secondary !px-2.5 !py-1 text-xs" @click="cancelEdit">
+                <button type="button" class="button-secondary !px-2.5 !py-1 text-xs" :disabled="saving" @click="cancelEdit">
                     {{ t('common.cancel') }}
                 </button>
-                <button type="button" class="button-primary !px-2.5 !py-1 text-xs" :disabled="!draft?.trim()" @click="saveEdit">
+                <button type="button" class="button-primary !px-2.5 !py-1 text-xs" :disabled="saving || !draft?.trim()" @click="saveEdit">
                     {{ t('common.save') }}
                 </button>
             </div>

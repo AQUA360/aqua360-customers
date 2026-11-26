@@ -91,8 +91,8 @@ class ContractObservationSerializer(serializers.ModelSerializer):
         # En modificar no es pot canviar de contracte.
         validated_data.pop('contract', None)
         # Les observacions automàtiques (sense autor o de canvi d'estat) no es poden reescriure.
-        new_text = validated_data.get('observation')
-        if new_text is not None and new_text != instance.observation and (instance.user_id is None or instance.status_name):
+        is_automatic = instance.user_id is None or bool(instance.status_name)
+        if is_automatic and 'observation' in validated_data and validated_data['observation'] != instance.observation:
             raise serializers.ValidationError({'observation': _('Automatic observations cannot be edited.')})
         return super().update(instance, validated_data)
 

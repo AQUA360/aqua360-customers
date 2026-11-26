@@ -1,9 +1,11 @@
 <script setup>
 import { ref, watch, onMounted, nextTick } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { useToast } from 'vue-toastification';
 
 const { $ObservationApiService, $OperatorApiService } = useNuxtApp();
 const { t } = useI18n();
+const toast = useToast();
 // Define an object for your plugin
 const props = defineProps({
   module: String,
@@ -114,7 +116,7 @@ const markObservation = async (item) => {
   }
 }
 
-const editObservation = async ({ id, observation }) => {
+const editObservation = async ({ id, observation, done }) => {
   try {
     let data = {
       id: id,
@@ -129,9 +131,12 @@ const editObservation = async ({ id, observation }) => {
     if (item) {
       item.observation = res?.observation ?? observation;
     }
+    done?.(true);
     emit('update:important-observations');
   } catch (err) {
     console.error(err);
+    toast.error(t('common.error_save'));
+    done?.(false);
   }
 };
 
@@ -195,7 +200,8 @@ watch(() => props.reload, (newValue) => {
   <div class="px-2">
     <AtomsInputTextarea @update:text="addObservation" text="" :autosave="true" :rows="1.25" />
     <MoleculesObservation 
-      v-for="observation in observations" 
+      v-for="observation in observations"
+      :key="observation.id"
       @delete:observation="deleteObservation"
       @mark:observation="markObservation"
       @edit:observation="editObservation"
