@@ -2226,6 +2226,7 @@ export default {
     validation_error_fallback: 'S\'ha produït un error en la validació de les dades.',
     unexpected_error: 'S\'ha produït un error inesperat',
     contract_finalized_success: 'Contracte finalitzat correctament',
+    contract_token_updated: 'Codi de contracte actualitzat: {old} → {new}',
     request_already_finalized: 'Aquesta sol·licitud ja està finalitzada',
     request_finalized_read_only: 'Aquesta sol·licitud ja està finalitzada: és de només lectura i els canvis no es desaran.',
     step_setup: 'Configuració',
