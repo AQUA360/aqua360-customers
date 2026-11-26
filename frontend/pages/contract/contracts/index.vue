@@ -943,7 +943,7 @@ watch(
 // (que decideix quantes icones hi caben).
 const tokenIndicators = (item) => [
   ...(isFireContract(item) ? [{ key: 'fire', icon: 'mdi:fire-hydrant', iconClass: 'text-red-500', title: t('common.fire_hydrant') }] : []),
-  ...(isSupplyPointCut(item) ? [{ key: 'supply_cut', icon: 'fa6-solid:droplet-slash', iconClass: 'text-red-600', title: t('service_block.active_supply_cut_warning') }] : []),
+  ...(isSupplyPointCut(item) ? [{ key: 'supply_cut', icon: 'fa6-solid:scissors', iconClass: 'text-red-600', title: t('service_block.active_supply_cut_warning') }] : []),
 ];
 
 const tableColumns = computed(() => [
