@@ -652,6 +652,24 @@ class ContractByNicOVTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["contract_token"], "C-NIC-CURRENT")
 
+    def test_active_contract_in_history_wins_over_terminated_with_current_nic(self):
+        # Canvi d'IBAN des de l'OV d'un contracte que compartia la forma de
+        # pagament amb un de baixa: el d'alta passa a una forma de pagament nova
+        # (el NIC queda a l'historial) i el de baixa es queda la referència.
+        self._contract("C-NIC-TERMINATED", self.terminated)
+        new_payment = GeneralPayment.objects.create(mandate_id="CTR-SPLIT-MANDATE")
+        GeneralPaymentMandateLog.objects.create(
+            general_payment=new_payment,
+            previous_mandate_id=NIC,
+            new_mandate_id="CTR-SPLIT-MANDATE",
+        )
+        self._contract("C-NIC-SPLIT-ACTIVE", self.active, payment=new_payment)
+
+        response = self._get(NIC)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["contract_token"], "C-NIC-SPLIT-ACTIVE")
+
     def test_unknown_nic_returns_404(self):
         response = self._get("999999999999")
 

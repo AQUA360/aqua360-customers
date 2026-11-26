@@ -805,8 +805,9 @@ class ContractByNicView(RetrieveAPIView):
     (`GeneralPayment.mandate_id`). Si el canvi de domiciliació n'ha generat una
     de nova, el NIC antic es busca a l'historial de mandats
     (`GeneralPaymentMandateLog.previous_mandate_id`). Quan el NIC el comparteixen
-    diversos contractes, es retorna primer el d'alta i després el més recent
-    (`created_at` desc). El format es valida ABANS de consultar la BD."""
+    diversos contractes, es retorna primer el d'alta, després el del mandat
+    vigent i després el més recent (`created_at` desc). El format es valida
+    ABANS de consultar la BD."""
 
     permission_classes = [IsAuthenticated]
     throttle_classes = [DniEnumerationThrottle]
@@ -822,27 +823,16 @@ class ContractByNicView(RetrieveAPIView):
         "use_type",
     )
 
-    def _first_contract(self, queryset, active_token):
-        """El contracte d'alta (`contract_active_token`) si n'hi ha; si no, el
-        més recent."""
-        if active_token:
-            queryset = queryset.annotate(
-                not_active=Case(
-                    When(status__token=active_token, then=Value(0)),
-                    default=Value(1),
-                    output_field=IntegerField(),
-                )
-            ).order_by("not_active", "-created_at", "-id")
-        else:
-            queryset = queryset.order_by("-created_at", "-id")
-        return queryset.first()
-
     def get_object(self):
         """Valida el NIC, busca el contracte i en comprova els permisos.
 
-        Primer per la referència de mandat vigent i, si no n'hi ha cap, per
-        l'historial de mandats. Llança ValidationError si el NIC no és vàlid o
-        NotFound si no hi ha cap contracte.
+        Candidats: els contractes amb el NIC com a referència de mandat vigent i
+        els que l'havien tingut (historial). Ordre: primer el d'alta
+        (`contract_active_token`), després el del mandat vigent i, per acabar,
+        el més recent. Així, si un canvi d'IBAN des de l'OV separa la forma de
+        pagament compartida, el NIC continua trobant el contracte d'alta i no
+        el de baixa que s'ha quedat la referència. Llança ValidationError si el
+        NIC no és vàlid o NotFound si no hi ha cap contracte.
         """
         nic = (self.kwargs.get("nic") or "").strip()
         if not is_valid_nic(nic):
@@ -853,14 +843,29 @@ class ContractByNicView(RetrieveAPIView):
             .first()
         )
         active_token = str(active_token).strip() if active_token is not None else ""
-        contract = self._first_contract(
-            self.queryset.filter(payment__mandate_id=nic), active_token
-        ) or self._first_contract(
+        candidates = (
             self.queryset.filter(
-                payment__mandate_logs__previous_mandate_id=nic
-            ).distinct(),
-            active_token,
+                Q(payment__mandate_id=nic)
+                | Q(payment__mandate_logs__previous_mandate_id=nic)
+            )
+            .annotate(
+                not_active=Case(
+                    When(status__token=active_token, then=Value(0)),
+                    default=Value(1),
+                    output_field=IntegerField(),
+                ),
+                not_current=Case(
+                    When(payment__mandate_id=nic, then=Value(0)),
+                    default=Value(1),
+                    output_field=IntegerField(),
+                ),
+            )
+            .distinct()
         )
+        ordering = ["not_current", "-created_at", "-id"]
+        if active_token:
+            ordering.insert(0, "not_active")
+        contract = candidates.order_by(*ordering).first()
         if contract is None:
             raise NotFound({"error": "Contract not found"})
         self.check_object_permissions(self.request, contract)

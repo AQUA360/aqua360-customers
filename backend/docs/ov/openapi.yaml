@@ -2180,14 +2180,14 @@ paths:
         expresión regular `^\d{12}$` **antes** de consultar la base de datos;
         el formato antiguo con «/» ya no se acepta y responde `400`.
 
-        Resolución del contrato: primero por la referencia de mandato vigente.
-        Si ningún contrato la tiene (p. ej. porque un cambio de domiciliación
-        generó una referencia nueva), se busca en el historial de mandatos de
-        la forma de pago (`GeneralPaymentMandateLog.previous_mandate_id`), de
-        modo que el NIC original sigue encontrando el contrato. Si el NIC lo
-        comparten varios contratos se devuelve primero el de alta
-        (`contract_active_token`) y, después, el más reciente (`created_at`
-        descendente).
+        Resolución del contrato: se buscan los contratos con el NIC como
+        referencia de mandato vigente y los que la tuvieron antes según el
+        historial de mandatos de la forma de pago
+        (`GeneralPaymentMandateLog.previous_mandate_id`), de modo que el NIC
+        original sigue encontrando el contrato después de un cambio de
+        domiciliación. Entre ellos se devuelve primero el de alta
+        (`contract_active_token`), después el del mandato vigente y, por
+        último, el más reciente (`created_at` descendente).
 
         El payload del `200` es idéntico al de `/ov/contract/{token}/` más la
         clave explícita `contract_token` (con el mismo valor que `token`), que
