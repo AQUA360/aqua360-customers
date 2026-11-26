@@ -139,14 +139,24 @@ def _aca_date_range_trimester(start_date, end_date):
 
 
 def _aca_effective_use_annotation():
-    """Ús ACA de la línia per a la Declaració ACA: el de la factura o, si no en té, el del contracte.
-    L'alta, que el FACTDETA declara a part, aquí es declara com a industrial."""
+    """Ús ACA de la línia per a la Declaració ACA: el de la factura o, si no en té, el del contracte (el de
+    la baixa si la factura no té contracte, com als volums). L'alta, que el FACTDETA declara a part, aquí es
+    declara com a industrial."""
     has_used_aca = Q(invoice__used_aca__isnull=False) & ~Q(invoice__used_aca='')
+    contract_use = Case(
+        When(invoice__contract__isnull=True, then=F('invoice__contract_termination__contract__use_aca')),
+        default=F('invoice__contract__use_aca'),
+        output_field=CharField(),
+    )
     return Case(
         When(has_used_aca & Q(invoice__used_aca=ALTA_USE_ACA), then=Value(DECLARATION_ALTA_USE_ACA)),
         When(has_used_aca, then=F('invoice__used_aca')),
-        When(invoice__contract__use_aca=ALTA_USE_ACA, then=Value(DECLARATION_ALTA_USE_ACA)),
-        default=F('invoice__contract__use_aca'),
+        When(
+            Q(invoice__contract__use_aca=ALTA_USE_ACA)
+            | Q(invoice__contract__isnull=True, invoice__contract_termination__contract__use_aca=ALTA_USE_ACA),
+            then=Value(DECLARATION_ALTA_USE_ACA),
+        ),
+        default=contract_use,
         output_field=CharField(),
     )
 
@@ -168,7 +178,8 @@ def _aca_price_to_interval(invoice_dom_lines, part_fixa_token):
 
 
 def _invoice_effective_use_aca(invoice):
-    use_aca = invoice.used_aca or (invoice.contract.use_aca if invoice.contract else None) or ''
+    contract = invoice.contract or (invoice.contract_termination.contract if invoice.contract_termination else None)
+    use_aca = invoice.used_aca or (contract.use_aca if contract else None) or ''
     return DECLARATION_ALTA_USE_ACA if use_aca == ALTA_USE_ACA else use_aca
 
 
