@@ -18,8 +18,9 @@ def _is_false(config):
 def merge_claim_attachment_configs(apps, schema_editor):
     """Passa els dos configProject d'adjunts d'impagats a un de sol.
 
-    Abans, sense `attach_invoices_in_claims` o amb `attach_extra_docs_in_claims` a 'false',
-    no s'adjuntava ni la factura ni el full de pagament: es manté igual (valor buit).
+    Abans, amb `attach_invoices_in_claims` diferent de 'true' o `attach_extra_docs_in_claims`
+    a 'false', no s'adjuntava ni la factura ni el full de pagament: es manté igual (valor buit).
+    Sense cap dels dos (la tasca creava el primer a 'true'), s'adjunten tots dos.
     """
     ConfigProject = apps.get_model('coredata', 'ConfigProject')
     invoices = ConfigProject.objects.filter(token=OLD_INVOICES_TOKEN).first()
