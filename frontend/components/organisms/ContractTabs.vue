@@ -758,7 +758,7 @@ const groupedPriceRates = computed(() => {
   <div id="contract_tabpanels" class="overflow-y-auto scrollbar-hide pb-20">
     <section v-show="activeTab === 'observations'" role="tabpanel" id="tab_observations" class="bg-white antialiased">
       <MoleculesObservationList v-if="contract" @update:observation-count="updateObservationCount"
-        parent_entity="contract" url_entity="contract" :id="contract.id" module="contract" :allow_mark="true"
+        parent_entity="contract" url_entity="contract" :id="contract.id" module="contract" :allow_mark="true" :allow_edit="canChange"
         @update:important-observations="handleChange" />
     </section>
 

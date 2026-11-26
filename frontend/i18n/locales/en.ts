@@ -435,6 +435,8 @@ export default {
     write_note: 'Write new notice'
   },
   common:   {
+    mark_important: "Mark as important",
+    unmark_important: "Unmark as important",
     restart: 'Restart',
     skip: 'Skip',
     kill_task: 'Kill task',

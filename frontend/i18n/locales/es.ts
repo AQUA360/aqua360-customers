@@ -435,6 +435,8 @@ export default {
     write_note: 'Escribir nuevo aviso'
   },
   common:   {
+    mark_important: "Marcar como importante",
+    unmark_important: "Desmarcar como importante",
     doe_not_expire: 'No vence',
     expires_in: 'Vence en',
     restart: 'Reiniciar',
