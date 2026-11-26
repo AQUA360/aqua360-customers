@@ -502,6 +502,13 @@ const saveToPiggyBank = async () => {
 const canMarkForRemittance = computed(() => !!data.value?.remittance_mark?.can_mark);
 const isMarkedForRemittance = computed(() => (data.value?.remittance_mark?.marked || 0) > 0);
 
+// Guardiola i marcar per remesar només per a factures (no pressupostos ni prefactures) no anul·lades.
+const isActiveOrdinaryInvoice = computed(() => data.value?.type?.token == invoice_token.value
+  && data.value?.status?.token != status_canceled_token.value);
+
+const hasPaymentActions = computed(() => canManualPay.value || (isActiveOrdinaryInvoice.value
+  && (canSaveToPiggyBank.value || canMarkForRemittance.value || isMarkedForRemittance.value)));
+
 const toggleMarkedForRemittance = async (marked) => {
   if (!confirm(t(marked ? "confirmation_text_block.confirm_mark_invoice_for_remittance" : "confirmation_text_block.confirm_unmark_invoice_for_remittance"))) return;
   try {
@@ -709,14 +716,34 @@ const handleRefactor = async () => {
             <Icon name="fa6-solid:credit-card" class="display-inline mr-2" /> {{ `${t('common.generate')}
             ${t('billing_block.payment').toLowerCase()}` }}
           </DropdownOption>
-          <DropdownOption
-            v-if="canManualPay"
-            :disabled="allow_changes || !Number(data.left_to_pay) || !(data.total_payments > 0)"
-            :name="t('billing_block.single_pay')"
-            @click="modalsRef?.openManualPayment()">
-            <Icon name="fa6-solid:coins" class="display-inline mr-2" />
-            {{ t('billing_block.single_pay') }}
-          </DropdownOption>
+          <!-- Accions dels pagaments de la factura, agrupades perquè no calgui obrir la regió del pagament -->
+          <div v-if="hasPaymentActions">
+            <hr class="my-2" />
+            <DropdownOption
+              v-if="canManualPay"
+              :disabled="allow_changes || !Number(data.left_to_pay) || !(data.total_payments > 0)"
+              :name="t('billing_block.single_pay')"
+              @click="modalsRef?.openManualPayment()">
+              <Icon name="fa6-solid:coins" class="display-inline mr-2" />
+              {{ t('billing_block.single_pay') }}
+            </DropdownOption>
+            <DropdownOption v-if="isActiveOrdinaryInvoice && canSaveToPiggyBank" :disabled="allow_changes"
+              :name="t('billing_block.save_amount_in_piggy_bank')" @click="saveToPiggyBank">
+              <Icon name="fa6-solid:piggy-bank" class="display-inline mr-2" />
+              {{ t('billing_block.save_amount_in_piggy_bank') }}
+            </DropdownOption>
+            <DropdownOption v-if="isActiveOrdinaryInvoice && canMarkForRemittance"
+              :name="t('billing_block.mark_for_remittance')" @click="toggleMarkedForRemittance(true)">
+              <Icon name="fa6-solid:flag" class="display-inline mr-2" />
+              {{ t('billing_block.mark_for_remittance') }}
+            </DropdownOption>
+            <DropdownOption v-if="isActiveOrdinaryInvoice && isMarkedForRemittance"
+              :name="t('billing_block.unmark_for_remittance')" @click="toggleMarkedForRemittance(false)">
+              <Icon name="fa6-solid:flag" class="display-inline mr-2" />
+              {{ t('billing_block.unmark_for_remittance') }}
+            </DropdownOption>
+            <hr class="my-2" />
+          </div>
           <!-- Pagada: el mètode no es pot canviar sense fer-ne abans el retorn (el moviment comptable no canviaria) -->
           <DropdownOption v-if="data.status?.token != status_canceled_token" :disabled="allow_changes ||
           data.status?.token == status_paid_token"
@@ -758,21 +785,6 @@ const handleRefactor = async () => {
               :name="`${t('common.confirm')} ${t('invoice').toLowerCase()}`" @click="confirmInvoice">
               <Icon name="fa6-solid:check" class="display-inline mr-2" /> {{ `${t('common.confirm')}
               ${t('invoice').toLowerCase()}` }}
-            </DropdownOption>
-            <DropdownOption v-if="canMarkForRemittance" :name="t('billing_block.mark_for_remittance')"
-              @click="toggleMarkedForRemittance(true)">
-              <Icon name="fa6-solid:flag" class="display-inline mr-2" />
-              {{ t('billing_block.mark_for_remittance') }}
-            </DropdownOption>
-            <DropdownOption v-if="isMarkedForRemittance" :name="t('billing_block.unmark_for_remittance')"
-              @click="toggleMarkedForRemittance(false)">
-              <Icon name="fa6-solid:flag" class="display-inline mr-2" />
-              {{ t('billing_block.unmark_for_remittance') }}
-            </DropdownOption>
-            <DropdownOption v-if="canSaveToPiggyBank" :disabled="allow_changes"
-              :name="t('billing_block.save_amount_in_piggy_bank')" @click="saveToPiggyBank">
-              <Icon name="fa6-solid:piggy-bank" class="display-inline mr-2" />
-              {{ t('billing_block.save_amount_in_piggy_bank') }}
             </DropdownOption>
             <DropdownOption
               :disabled="data.status?.token == status_pending_token || data.status?.token == status_canceled_token || data.return_invoice != null || data.returned_invoice != null || allow_changes"
