@@ -43,6 +43,8 @@ class DocumentSignSerializer(serializers.ModelSerializer):
     contract_request_token = serializers.CharField(source='contract_request.token', read_only=True, default=None)
     contract_file_url = serializers.SerializerMethodField()
     contract_file_signed_url = serializers.SerializerMethodField()
+    sepa_file_signed_url = serializers.SerializerMethodField()
+    invoice_token = serializers.CharField(source='invoice.token', read_only=True, default=None)
 
     class Meta:
         model = DocumentSign
@@ -53,6 +55,8 @@ class DocumentSignSerializer(serializers.ModelSerializer):
             'token',
             'signed_at',
             'contract_file_signed',
+            'sepa_file',
+            'sepa_file_signed',
             'created_at',
             'updated_at',
         )
@@ -66,6 +70,17 @@ class DocumentSignSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Cal indicar contract o contract_request."
             )
+        # La factura adjunta ha de ser de la mateixa sol·licitud que el contracte.
+        invoice = attrs.get('invoice', getattr(self.instance, 'invoice', None))
+        if invoice:
+            contract_request_id = (
+                contract_request.id if contract_request
+                else contract.contract_request_id if contract else None
+            )
+            if not contract_request_id or invoice.contract_request_id != contract_request_id:
+                raise serializers.ValidationError(
+                    {"invoice": "La factura no correspon a la sol·licitud del contracte."}
+                )
         return attrs
 
     def _absolute(self, path):
@@ -84,6 +99,12 @@ class DocumentSignSerializer(serializers.ModelSerializer):
         if obj.status != DocumentSign.STATUS_SIGNED or not obj.contract_file_signed_id:
             return None
         return self._absolute(reverse('document_sign_download', kwargs={'pk': obj.id}))
+
+    def get_sepa_file_signed_url(self, obj):
+        if obj.status != DocumentSign.STATUS_SIGNED or not obj.sepa_file_signed_id:
+            return None
+        path = reverse('document_sign_download', kwargs={'pk': obj.id})
+        return self._absolute(f"{path}?document=sepa")
 
 
 class ExportJobSerializer(serializers.ModelSerializer):

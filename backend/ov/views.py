@@ -790,20 +790,24 @@ class ContractDetailByTokenOVView(RetrieveAPIView):
         return contract
 
 
+NIC_LENGTH = 12
+
+
 def is_valid_nic(nic):
-    r"""Equivale a re.fullmatch(r"\d+(?:/\d+){1,2}", nic) sin regex: de 2 a 3
-    grupos de dígitos separados por «/» (CodeQL marca la regex como ReDoS)."""
-    parts = nic.split("/")
-    return 2 <= len(parts) <= 3 and all(part.isdecimal() for part in parts)
+    """El NIC són 12 xifres sense separadors (p. ex. `123456000001`)."""
+    return len(nic) == NIC_LENGTH and nic.isdecimal()
 
 
 class ContractByNicView(RetrieveAPIView):
-    """GET /ov/contract/by-nic/<nic>/ — detalle del contrato por NIC (token del
-    punto de suministro). El NIC incluye «/» con una o dos barras (p. ej.
-    `12345/1234` o `012345/654321/12345678`), por eso la
-    ruta usa `<path:nic>`; el formato se valida con regex ANTES de consultar la
-    BD. Si el punto de suministro es el por defecto de varios contratos se
-    devuelve el más reciente (`created_at` desc)."""
+    """GET /ov/contract/by-nic/<nic>/ — detall del contracte per NIC.
+
+    El NIC és la referència de mandat de 12 xifres de la forma de pagament
+    (`GeneralPayment.mandate_id`). Si el canvi de domiciliació n'ha generat una
+    de nova, el NIC antic es busca a l'historial de mandats
+    (`GeneralPaymentMandateLog.previous_mandate_id`). Quan el NIC el comparteixen
+    diversos contractes, es retorna primer el d'alta, després el del mandat
+    vigent i després el més recent (`created_at` desc). El format es valida
+    ABANS de consultar la BD."""
 
     permission_classes = [IsAuthenticated]
     throttle_classes = [DniEnumerationThrottle]
@@ -820,22 +824,48 @@ class ContractByNicView(RetrieveAPIView):
     )
 
     def get_object(self):
-        """Valida el NIC, busca el contrato más reciente y comprueba los permisos.
+        """Valida el NIC, busca el contracte i en comprova els permisos.
 
-        Prioriza el punto de suministro por defecto y después busca en los demás.
-        Lanza ValidationError si el NIC es inválido o NotFound si no hay contrato.
+        Candidats: els contractes amb el NIC com a referència de mandat vigent i
+        els que l'havien tingut (historial). Ordre: primer el d'alta
+        (`contract_active_token`), després el del mandat vigent i, per acabar,
+        el més recent. Així, si un canvi d'IBAN des de l'OV separa la forma de
+        pagament compartida, el NIC continua trobant el contracte d'alta i no
+        el de baixa que s'ha quedat la referència. Llança ValidationError si el
+        NIC no és vàlid o NotFound si no hi ha cap contracte.
         """
         nic = (self.kwargs.get("nic") or "").strip()
         if not is_valid_nic(nic):
             raise ValidationError({"error": "Invalid NIC format"})
-        contract = (
-            self.queryset.filter(supply_point_default__token=nic)
-            .order_by("-created_at")
-            .first()
-            or self.queryset.filter(supply_points__token=nic)
-            .order_by("-created_at")
+        active_token = (
+            ConfigProject.objects.filter(token="contract_active_token")
+            .values_list("value", flat=True)
             .first()
         )
+        active_token = str(active_token).strip() if active_token is not None else ""
+        candidates = (
+            self.queryset.filter(
+                Q(payment__mandate_id=nic)
+                | Q(payment__mandate_logs__previous_mandate_id=nic)
+            )
+            .annotate(
+                not_active=Case(
+                    When(status__token=active_token, then=Value(0)),
+                    default=Value(1),
+                    output_field=IntegerField(),
+                ),
+                not_current=Case(
+                    When(payment__mandate_id=nic, then=Value(0)),
+                    default=Value(1),
+                    output_field=IntegerField(),
+                ),
+            )
+            .distinct()
+        )
+        ordering = ["not_current", "-created_at", "-id"]
+        if active_token:
+            ordering.insert(0, "not_active")
+        contract = candidates.order_by(*ordering).first()
         if contract is None:
             raise NotFound({"error": "Contract not found"})
         self.check_object_permissions(self.request, contract)

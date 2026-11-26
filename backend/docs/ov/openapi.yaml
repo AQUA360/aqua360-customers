@@ -38,7 +38,7 @@ info:
     | `/ov/create-reading/` | POST | Registrar lectura de contador |
     | `/ov/contracts/` | GET | Listado de contratos por titular o pagador (DNI) |
     | `/ov/contract/{token}/` | GET | Detalle del contrato por token (incluye datos de la cuenta) |
-    | `/ov/contract/by-nic/{nic}/` | GET | Búsqueda de contrato por NIC (punto de suministro) |
+    | `/ov/contract/by-nic/{nic}/` | GET | Búsqueda de contrato por NIC (referencia de mandato de 12 dígitos) |
     | `/ov/meter/{contract_token}/` | GET | Detalle del contador del contrato por token |
     | `/ov/procedures/contract/` | POST | Solicitar el alta de un contrato (crea una solicitud; no crea contrato) |
     | `/ov/procedures/contract/{contract_request_token}/` | GET | Consultar el estado de una solicitud de alta de contrato |
@@ -2170,24 +2170,24 @@ paths:
         - Contrato
       summary: Búsqueda de contrato por NIC
       description: |
-        Devuelve el contrato asociado a un NIC (token del punto de suministro,
-        `SupplyPoint.token`). Existe para los flujos de acceso directo donde la
-        frontend aún no dispone de `contract_token` y solo conoce el NIC del
-        cliente.
+        Devuelve el contrato asociado a un NIC. Existe para los flujos de
+        acceso directo donde la frontend aún no dispone de `contract_token` y
+        solo conoce el NIC del cliente.
 
-        El NIC lleva «/» con una o dos barras: formato de dos tramos
-        `[num.puntosub]/[numcliente]` (p. ej. `12345/1234`) o de tres tramos
-        `[num.puntosub]/[numcliente]/[num.modificacion]` (p. ej.
-        `012345/654321/12345678`), por eso el parámetro de ruta usa el conversor
-        `path` de Django (si no, el ruter acaba en 404 a nivel de ruta antes de
-        llegar a la vista). El formato se valida con la expresión regular
-        `^\d+(?:/\d+){1,2}$` **antes** de consultar la base de datos.
+        El NIC es un código de 12 dígitos sin separadores (p. ej.
+        `123456000001`): la referencia del mandato SEPA de la forma de pago del
+        contrato (`GeneralPayment.mandate_id`). El formato se valida con la
+        expresión regular `^\d{12}$` **antes** de consultar la base de datos;
+        el formato antiguo con «/» ya no se acepta y responde `400`.
 
-        Resolución del contrato: primero los puntos de suministro por defecto
-        del contrato (`supply_point_default`); si ningún contrato lo tiene como
-        por defecto, se busca por la relación muchos-a-muchos
-        (`supply_points`). Si el punto es por defecto de varios contratos se
-        devuelve el más reciente (`created_at` descendente).
+        Resolución del contrato: se buscan los contratos con el NIC como
+        referencia de mandato vigente y los que la tuvieron antes según el
+        historial de mandatos de la forma de pago
+        (`GeneralPaymentMandateLog.previous_mandate_id`), de modo que el NIC
+        original sigue encontrando el contrato después de un cambio de
+        domiciliación. Entre ellos se devuelve primero el de alta
+        (`contract_active_token`), después el del mandato vigente y, por
+        último, el más reciente (`created_at` descendente).
 
         El payload del `200` es idéntico al de `/ov/contract/{token}/` más la
         clave explícita `contract_token` (con el mismo valor que `token`), que
@@ -2229,7 +2229,7 @@ paths:
                   name: Activo
                 has_sepa_document: false
         "400":
-          description: El NIC no cumple el formato esperado (`^\d+(?:/\d+){1,2}$`)
+          description: El NIC no cumple el formato esperado (`^\d{12}$`)
           content:
             application/json:
               schema:
@@ -3567,15 +3567,12 @@ components:
       in: path
       required: true
       description: |
-        NIC = token del punto de suministro (`SupplyPoint.token`), con una o
-        dos barras: formato de dos tramos `[num.puntosub]/[numcliente]`
-        (p. ej. `12345/1234`) o de tres tramos
-        `[num.puntosub]/[numcliente]/[num.modificacion]` (p. ej.
-        `012345/654321/12345678`). El «/» forma parte de la propia ruta.
+        NIC = referencia de mandato de 12 dígitos sin separadores de la forma
+        de pago del contrato (`GeneralPayment.mandate_id`).
       schema:
         type: string
-        pattern: '^\d+(?:/\d+){1,2}$'
-      example: "012345/654321/12345678"
+        pattern: '^\d{12}$'
+      example: "123456000001"
 
     contractTokenMeterPath:
       name: contract_token

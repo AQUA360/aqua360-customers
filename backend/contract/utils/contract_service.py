@@ -39,6 +39,54 @@ def _create_fictitious_meter(no_meter_status):
     )
 
 
+def _create_meter_installation_order(user, contract, contract_request, supply_point):
+    """Alta «sense comptador»: ordre d'instal·lació de comptador del punt, vinculada al
+    contracte. Si la sol·licitud ja en porta una, només la vincula al contracte."""
+    from order.models import OrderStatus, OrderType
+    from order.services.change_meter import install_meter_order_type_token
+    from order.utils.claim_request_order_service import get_order_type_initials
+
+    type_token = install_meter_order_type_token()
+    order_type = OrderType.objects.filter(token__iexact=type_token).first()
+    if not order_type:
+        logger.warning("No existeix el tipus d'ordre d'instal·lació de comptador '%s'.", type_token)
+        return None
+
+    existing = contract_request.orders.filter(type=order_type).filter(
+        Q(supply_point=supply_point) | Q(supply_point__isnull=True)
+    ).first()
+    if existing:
+        existing.contract = contract
+        existing.supply_point = supply_point
+        existing.save(update_fields=['contract', 'supply_point', 'updated_at'])
+        return existing
+
+    pending_token = ConfigProject.objects.filter(token='order_status_pending_token').values_list('value', flat=True).first()
+    status = (
+        OrderStatus.objects.filter(token=pending_token).first() if pending_token else None
+    ) or OrderStatus.objects.filter(is_default=True).first()
+
+    last_order = Order.objects.order_by('-id').first()
+    next_id = (last_order.id if last_order else 0) + 1
+    token = (
+        f"{timezone.localtime().strftime('%y%m%d')}/CR{contract_request.id}/"
+        f"{get_order_type_initials(order_type.token)}{f'{next_id:03d}'[-3:]}"
+    )
+    if Order.objects.filter(token=token).exists():
+        token = f"{token}-{generate_token(Order)}"
+
+    return Order.objects.create(
+        token=token,
+        type=order_type,
+        status=status,
+        contract=contract,
+        contract_request=contract_request,
+        supply_point=supply_point,
+        created_by=user,
+        description="Instal·lació de comptador de l'alta sense comptador.",
+    )
+
+
 def _rename_old_contract_and_get_reused_token(contract_request):
     """Per a un canvi de nom amb keep_same_code=True, renombra el(s) contracte(s)
     donat(s) de baixa afegint-los un sufix incremental (/000N) i retorna el codi
@@ -227,6 +275,8 @@ def _contract_create_locked(user, contract_request):
                     source='contract',
                     observation='Comptador fictici assignat en donar d\'alta el contracte',
                 )
+                if contract_request.meter_mode == 'none':
+                    _create_meter_installation_order(user, contract, contract_request, supply_point)
     
     """ if contract_request.contract_file:
         original_filename = os.path.basename(contract_request.contract_file.name)

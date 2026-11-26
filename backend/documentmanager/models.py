@@ -66,6 +66,14 @@ class DocumentSign(models.Model):
     contract_file_signed = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name='document_signs_as_signed_file')
     signed_at = models.DateTimeField(null=True, blank=True)
 
+    # Documents que s'envien a Sign a la mateixa sessió que el contracte.
+    # El mandat SEPA se signa amb el contracte (només si el pagament és domiciliat);
+    # la factura va com a adjunt informatiu, sense signar.
+    include_sepa = models.BooleanField(default=True)
+    sepa_file = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name='document_signs_as_sepa_file')
+    sepa_file_signed = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True, related_name='document_signs_as_signed_sepa_file')
+    invoice = models.ForeignKey('billing.Invoice', on_delete=models.SET_NULL, null=True, blank=True, related_name='document_signs')
+
     STATUS_PENDING = 1
     STATUS_SENDED = 2
     STATUS_SIGNED = 3
