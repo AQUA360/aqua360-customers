@@ -359,7 +359,9 @@ const toggleSearchFilter = (key) => {
     // Opening from an icon starts over: the searches left from before are dropped
     const previous = Object.keys(searchFlags).filter(k => k !== key && searchFlags[k].value);
     previous.forEach(deactivateSearch);
-    if (previous.some(k => searchClears[k])) handleSearch();
+    // Starting over also drops a hidden address, so it does not keep filtering
+    if (previous.includes('address')) searchByAddress.value = '';
+    if (previous.length) handleSearch();
     isFilterOpen.value = true;
     soloSearches.value = [key];
   } else if (soloSearches.value !== null) {
