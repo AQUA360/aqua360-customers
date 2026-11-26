@@ -1589,11 +1589,21 @@ paths:
 
         Solo se devuelven los consumos ya facturados: las lecturas que no están
         vinculadas a ninguna factura se excluyen del historial.
+
+        **Filtro por persona (`dni`, opcional):** con `dni`, solo se incluyen
+        las lecturas facturadas en facturas del contrato donde esa persona es
+        titular o pagadora, con el mismo criterio que `/ov/person-invoices/`
+        (titular y pagador guardados en la factura, sin prefacturas ni
+        facturas con fecha futura). Así una persona que ha dejado de ser
+        titular o pagadora sigue viendo sus consumos, pero no los de otras
+        personas. Un DNI sin facturas en el contrato devuelve una lista vacía.
+        Sin `dni`, o vacío, el comportamiento no cambia.
       operationId: listConsumptionHistory
       security:
         - tokenAuth: []
       parameters:
         - $ref: "#/components/parameters/contractToken"
+        - $ref: "#/components/parameters/consumptionDni"
         - $ref: "#/components/parameters/dateFrom"
         - $ref: "#/components/parameters/dateTo"
         - $ref: "#/components/parameters/pageParam"
@@ -1639,12 +1649,17 @@ paths:
         pertenece al contrato (aunque sea del mismo contador o punto de
         suministro), está fuera de su periodo de alta/baja o no está
         facturada en una factura del contrato.
+
+        Con `dni`, también responde `404` si la lectura no está facturada en
+        una factura del contrato donde esa persona es titular o pagadora
+        (mismo criterio que `GET /ov/consumptions/`).
       operationId: downloadConsumption
       security:
         - tokenAuth: []
       parameters:
         - $ref: "#/components/parameters/consumptionIdPath"
         - $ref: "#/components/parameters/contractToken"
+        - $ref: "#/components/parameters/consumptionDni"
         - $ref: "#/components/parameters/downloadFormat"
       responses:
         "200":
@@ -1681,7 +1696,10 @@ paths:
         contratos del mismo punto de suministro o contador). Los `reading_ids`
         del contrato no facturados se omiten del fichero sin devolver error;
         un `reading_id` de otro contrato o fuera del periodo del contrato
-        responde `400` como desconocido.
+        responde `400` como desconocido. Con `dni` en el cuerpo, solo se
+        incluyen las lecturas facturadas a esa persona (mismo criterio que
+        `GET /ov/consumptions/`); las demás lecturas del contrato se omiten sin
+        error, como las no facturadas.
 
         El formato se elige con `format` en el cuerpo (`pdf` por defecto,
         `csv` o `zip`). Responde `404` si el contrato no existe y `400` con
@@ -3441,6 +3459,19 @@ components:
         Formato de la cabecera: `Authorization: Token <token>`
 
   parameters:
+    consumptionDni:
+      name: dni
+      in: query
+      required: false
+      description: |
+        DNI/NIF de la persona. Opcional: si se indica, solo cuentan las
+        facturas del contrato donde es titular o pagadora. Se normaliza
+        ignorando espacios, guiones y puntos y pasando a mayúsculas, igual
+        que los DNI guardados en la factura. Vacío equivale a no indicarlo.
+      schema:
+        type: string
+      example: "12345678A"
+
     contractToken:
       name: contract_token
       in: query
@@ -5819,6 +5850,14 @@ components:
           type: string
           description: Token del contrato (`Contract.token`)
           example: CTR-001
+        dni:
+          type: string
+          nullable: true
+          description: |
+            DNI/NIF de la persona (opcional). Si se indica, solo se incluyen
+            las lecturas facturadas en facturas del contrato donde es titular
+            o pagadora. Vacío o nulo equivale a no indicarlo.
+          example: "12345678A"
         reading_ids:
           type: array
           description: ID de lecturas seleccionadas manualmente (`Reading.id`)

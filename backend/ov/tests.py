@@ -1573,6 +1573,259 @@ class ConsumptionBilledFilterTests(TestCase):
         self.assertEqual(timestamps, {"2026-01-15", "2026-01-20"})
 
 
+class ConsumptionPersonDniFilterTests(TestCase):
+    """Tiquet 2963: amb `dni`, els endpoints de consums només retornen les
+    lectures facturades en factures del contracte on aquella persona és
+    titular o pagadora (criteri de `/ov/person-invoices/`). Sense `dni`, o
+    buit, tot funciona com abans."""
+
+    TOKEN = "DNI-CTR"
+    OTHER_TOKEN = "DNI-OTHER"
+    OLD_HOLDER = "00000001R"
+    NEW_HOLDER = "00000002W"
+    PAYER = "00000003A"
+    STRANGER = "00000004G"
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(
+            username="ov-consumption-dni-test", password="not-used"
+        )
+        for token, value in (
+            ("contract_termination_completed_token", "3"),
+            ("contract_terminated_status", "-1"),
+            ("invoice_status_paid_token", "0"),
+            ("invoice_status_cancelled_token", "-1"),
+        ):
+            ConfigProject.objects.get_or_create(
+                token=token, defaults={"value": value}
+            )
+        status = ContractStatus.objects.create(token="1", name="Activo")
+        cls.sent_status = InvoiceStatus.objects.create(token="3", name="Enviada")
+        cls.preinvoice_status = InvoiceStatus.objects.create(
+            token="1", name="Prefactura"
+        )
+        holder = Person.objects.create(token=cls.NEW_HOLDER, name="Nou")
+        cls.meter = Meter.objects.create(code="MTR-DNI")
+        supply_point = SupplyPoint.objects.create(token="88888/8888", meter=cls.meter)
+        cls.contract = Contract.objects.create(
+            token=cls.TOKEN,
+            status=status,
+            holder=holder,
+            supply_point_default=supply_point,
+        )
+        cls.other_contract = Contract.objects.create(
+            token=cls.OTHER_TOKEN,
+            status=status,
+            holder=holder,
+            supply_point_default=supply_point,
+        )
+
+        # Factura de l'antic titular, amb el DNI desat sense normalitzar
+        # (dada heretada): ha de coincidir igualment.
+        old_invoice = cls._invoice(
+            "DNI-INV-OLD", cls.contract, date(2025, 6, 28), customer="0000 0001-r"
+        )
+        # Factura del titular actual amb un pagador diferent.
+        new_invoice = cls._invoice(
+            "DNI-INV-NEW",
+            cls.contract,
+            date(2026, 3, 28),
+            customer=cls.NEW_HOLDER,
+            payer=cls.PAYER,
+        )
+        # Prefactura i factura futura de l'antic titular: no compten amb DNI.
+        preinvoice = cls._invoice(
+            "DNI-INV-PRE",
+            cls.contract,
+            date(2025, 9, 28),
+            customer=cls.OLD_HOLDER,
+            status=cls.preinvoice_status,
+        )
+        future_invoice = cls._invoice(
+            "DNI-INV-FUT",
+            cls.contract,
+            timezone.localdate() + timedelta(days=30),
+            customer=cls.OLD_HOLDER,
+        )
+        # Factura de l'antic titular en un altre contracte.
+        other_invoice = cls._invoice(
+            "DNI-INV-OTH",
+            cls.other_contract,
+            date(2025, 6, 28),
+            customer=cls.OLD_HOLDER,
+        )
+
+        cls.old_reading = cls._reading(cls.contract, date(2025, 6, 30), old_invoice)
+        cls.new_reading = cls._reading(cls.contract, date(2026, 3, 31), new_invoice)
+        cls.pre_reading = cls._reading(cls.contract, date(2025, 9, 30), preinvoice)
+        cls.future_reading = cls._reading(
+            cls.contract, date(2025, 12, 31), future_invoice
+        )
+        cls.other_reading = cls._reading(
+            cls.other_contract, date(2025, 6, 30), other_invoice
+        )
+
+    @classmethod
+    def _invoice(cls, token, contract, issue_date, customer, payer=None, status=None):
+        return Invoice.objects.create(
+            token=token,
+            contract=contract,
+            status=status or cls.sent_status,
+            issue_date=issue_date,
+            billing_period_year=issue_date.year,
+            billing_period_month=issue_date.month,
+            customer_token_final=customer,
+            payer_token_final=payer,
+        )
+
+    @classmethod
+    def _reading(cls, contract, reading_date, invoice):
+        reading = Reading.objects.create(
+            contract=contract,
+            meter=cls.meter,
+            reading_date=reading_date,
+            reading_value=100.0,
+            real_consumption=10.0,
+        )
+        invoice.readings.add(reading)
+        return reading
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def _list_ids(self, **params):
+        response = self.client.get(
+            reverse("consumptions-ov"), {"contract_token": self.TOKEN, **params}
+        )
+        self.assertEqual(response.status_code, 200)
+        return [item["id"] for item in response.data["results"]]
+
+    def _csv_ids(self, response):
+        self.assertEqual(response.status_code, 200)
+        content = b"".join(response.streaming_content).decode("utf-8")
+        return {int(row["id"]) for row in csv.DictReader(StringIO(content))}
+
+    def _single(self, reading, **params):
+        return self.client.get(
+            reverse("consumption-download-ov", kwargs={"id": reading.id}),
+            {"contract_token": self.TOKEN, "format": "csv", **params},
+        )
+
+    def _bulk(self, **body):
+        return self.client.post(
+            reverse("consumptions-download-ov"),
+            {"contract_token": self.TOKEN, "format": "csv", **body},
+            format="json",
+        )
+
+    @property
+    def all_ids(self):
+        """Lectures facturades del contracte, sense filtre de persona."""
+        return [
+            self.new_reading.id,
+            self.future_reading.id,
+            self.pre_reading.id,
+            self.old_reading.id,
+        ]
+
+    def test_without_dni_behaviour_is_unchanged(self):
+        self.assertEqual(self._list_ids(), self.all_ids)
+
+    def test_blank_dni_is_ignored(self):
+        self.assertEqual(self._list_ids(dni=""), self.all_ids)
+        self.assertEqual(self._list_ids(dni=" - . "), self.all_ids)
+
+    def test_previous_holder_sees_only_their_readings(self):
+        """L'antic titular veu les seves lectures (DNI desat sense normalitzar),
+        però no les prefactures, les factures futures ni les del nou titular."""
+        self.assertEqual(self._list_ids(dni="00000001-r"), [self.old_reading.id])
+
+    def test_current_holder_sees_only_their_readings(self):
+        self.assertEqual(self._list_ids(dni=self.NEW_HOLDER), [self.new_reading.id])
+
+    def test_payer_different_from_holder_sees_their_readings(self):
+        self.assertEqual(self._list_ids(dni=self.PAYER), [self.new_reading.id])
+
+    def test_dni_without_invoices_in_contract_returns_empty_list(self):
+        response = self.client.get(
+            reverse("consumptions-ov"),
+            {"contract_token": self.TOKEN, "dni": self.STRANGER},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["count"], 0)
+        self.assertEqual(response.data["results"], [])
+
+    def test_dni_never_reaches_other_contracts(self):
+        self.assertNotIn(self.other_reading.id, self._list_ids(dni=self.OLD_HOLDER))
+
+    def test_period_comes_from_person_invoice(self):
+        response = self.client.get(
+            reverse("consumptions-ov"),
+            {"contract_token": self.TOKEN, "dni": self.OLD_HOLDER},
+        )
+
+        self.assertEqual(response.data["results"][0]["period"], "2025-2T")
+
+    def test_reading_in_invoices_of_two_people_takes_each_period(self):
+        """Una lectura facturada en dues factures de persones diferents surt un
+        sol cop per a cadascuna, amb el període de la seva factura."""
+        old_invoice = self._invoice(
+            "DNI-INV-SHARED-OLD",
+            self.contract,
+            date(2025, 3, 28),
+            customer=self.OLD_HOLDER,
+        )
+        new_invoice = self._invoice(
+            "DNI-INV-SHARED-NEW",
+            self.contract,
+            date(2025, 10, 28),
+            customer=self.NEW_HOLDER,
+        )
+        shared = self._reading(self.contract, date(2025, 3, 31), old_invoice)
+        new_invoice.readings.add(shared)
+
+        for dni, period in (
+            (self.OLD_HOLDER, "2025-1T"),
+            (self.NEW_HOLDER, "2025-4T"),
+        ):
+            response = self.client.get(
+                reverse("consumptions-ov"),
+                {"contract_token": self.TOKEN, "dni": dni},
+            )
+            rows = [row for row in response.data["results"] if row["id"] == shared.id]
+            self.assertEqual(len(rows), 1, dni)
+            self.assertEqual(rows[0]["period"], period, dni)
+
+    def test_single_download_with_dni(self):
+        response = self._single(self.old_reading, dni=self.OLD_HOLDER)
+        self.assertEqual(self._csv_ids(response), {self.old_reading.id})
+
+        response = self._single(self.new_reading, dni=self.OLD_HOLDER)
+        self.assertEqual(response.status_code, 404)
+
+        response = self._single(self.new_reading, dni="")
+        self.assertEqual(self._csv_ids(response), {self.new_reading.id})
+
+    def test_bulk_download_with_dni(self):
+        self.assertEqual(
+            self._csv_ids(self._bulk(dni=self.OLD_HOLDER)), {self.old_reading.id}
+        )
+        self.assertEqual(
+            self._csv_ids(
+                self._bulk(
+                    dni=self.PAYER,
+                    reading_ids=[self.old_reading.id, self.new_reading.id],
+                )
+            ),
+            {self.new_reading.id},
+        )
+        self.assertEqual(self._csv_ids(self._bulk(dni="")), set(self.all_ids))
+        self.assertEqual(self._csv_ids(self._bulk(dni=None)), set(self.all_ids))
+
+
 class SepaDocumentUploadTests(TestCase):
     """Phase 2: `upload-sepa-signed` desa el mandat al gestor documental i el
     vincula a la forma de pagament del contracte."""

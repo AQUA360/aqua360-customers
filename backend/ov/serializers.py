@@ -1864,6 +1864,9 @@ class ConsumptionDownloadRequestSerializer(serializers.Serializer):
     `ConsumptionDownloadRequest` del documento OpenAPI."""
 
     contract_token = serializers.CharField(required=True)
+    # Opcional: només les lectures facturades a aquesta persona (titular o
+    # pagadora). Buit o nul, com si no hi fos.
+    dni = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     reading_ids = serializers.ListField(
         child=serializers.IntegerField(), required=False, allow_empty=True
     )

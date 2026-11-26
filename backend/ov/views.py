@@ -941,33 +941,73 @@ def _contract_readings(contract):
     return queryset
 
 
-def _contract_billed_readings(queryset, contract):
+def _ov_optional_dni(value):
+    """DNI opcional dels endpoints de consums, normalitzat com a
+    `/ov/person-invoices/`. Buit (o només separadors) torna `None`: llavors
+    no es filtra per persona i tot funciona com sense el paràmetre."""
+    return _normalize_person_dni(value) or None
+
+
+def _person_contract_invoices(contract, dni):
+    """Factures de `contract` on la persona amb `dni` (ja normalitzat) és
+    titular o pagadora, amb el criteri de `/ov/person-invoices/`: segons les
+    dades congelades a la factura, sense prefactures ni factures amb data
+    futura. Si la factura no té pagador, el pagador és el titular, que ja hi
+    entra per `customer_token_final`.
+
+    Els DNI de la factura es normalitzen també aquí perquè es copien tal com
+    són a la fitxa de la persona o al compte bancari, que no sempre estan
+    normalitzats. Només afecta les factures d'un contracte, que són poques.
+    """
+    return (
+        exclude_future_invoices(Invoice.objects.filter(contract=contract))
+        .exclude(status__token="1")  # excloem les prefactures
+        .annotate(
+            ov_customer_dni=_normalized_dni_expression("customer_token_final"),
+            ov_payer_dni=_normalized_dni_expression("payer_token_final"),
+        )
+        .filter(Q(ov_customer_dni=dni) | Q(ov_payer_dni=dni))
+    )
+
+
+def _contract_billed_readings(queryset, contract, dni=None):
     """Restrict `queryset` to readings billed in an invoice of `contract`.
 
     A reading must belong to the contract and be linked to one of its own
     invoices; inconsistent links to another contract's invoices are ignored.
     Only the contract's invoices are prefetched, so the `period` never comes
     from another contract's invoice.
+
+    With `dni` (already normalized), only the contract's invoices where that
+    person is holder or payer count, both for the filter and for the
+    `period` (see `_person_contract_invoices`). Without it the behaviour is
+    unchanged.
     """
+    if dni:
+        invoices = _person_contract_invoices(contract, dni)
+        queryset = queryset.filter(invoices__in=invoices.values("pk"))
+    else:
+        invoices = Invoice.objects.filter(contract=contract)
+        queryset = queryset.filter(invoices__contract=contract)
     return (
-        queryset.filter(invoices__contract=contract)
-        .distinct()
+        queryset.distinct()
         .select_related("previous_reading")
-        .prefetch_related(
-            Prefetch("invoices", queryset=Invoice.objects.filter(contract=contract))
-        )
+        .prefetch_related(Prefetch("invoices", queryset=invoices))
         .order_by("-reading_date", "-id")
     )
 
 
 class ConsumptionHistoryOVView(APIView):
-    """GET /ov/consumptions/?contract_token=<token>[&date_from=&date_to=&page=&page_size=]
+    """GET /ov/consumptions/?contract_token=<token>[&dni=&date_from=&date_to=&page=&page_size=]
 
     Historial de consumos facturados del contrato en nomenclatura HF
     (`{any}-{q}T`). Solo incluye lecturas del propio contrato y de su periodo
     de vigencia (nunca las de contratos anteriores o posteriores del mismo
-    punto de suministro o contador). Devuelve el envoltorio estándar DRF
-    `{count, next, previous, results}` (esquema `ConsumptionHistoryResponse`).
+    punto de suministro o contador). Con `dni`, solo las lecturas facturadas
+    en facturas del contrato donde esa persona es titular o pagadora (mismo
+    criterio que `/ov/person-invoices/`); sin `dni` o vacío, todas. Devuelve
+    el envoltorio estándar DRF `{count, next, previous, results}` (esquema
+    `ConsumptionHistoryResponse`).
     """
 
     permission_classes = [IsAuthenticated]
@@ -1002,8 +1042,12 @@ class ConsumptionHistoryOVView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Només consums facturats del propi contracte i del seu període.
-        queryset = _contract_billed_readings(_contract_readings(contract), contract)
+        # Només consums facturats del propi contracte i del seu període; amb
+        # DNI, només els de les factures d'aquella persona.
+        dni = _ov_optional_dni(request.query_params.get("dni"))
+        queryset = _contract_billed_readings(
+            _contract_readings(contract), contract, dni
+        )
         if date_from:
             queryset = queryset.filter(reading_date__gte=date_from)
         if date_to:
@@ -1067,12 +1111,13 @@ def _download_response(payload, content_type, filename):
 
 
 class ConsumptionDownloadOVView(APIView):
-    """GET /ov/consumption/{id}/download/?contract_token=<token>[&format=pdf|csv]
+    """GET /ov/consumption/{id}/download/?contract_token=<token>[&dni=<DNI>][&format=pdf|csv]
 
     Descarga el fichero de una única lectura del historial de consumos. El `id`
     es el `Reading.id` expuesto por `GET /ov/consumptions/`; una lectura de
-    otro contrato o fuera del periodo del contrato devuelve 404. CSV real; PDF es
-    un stub mientras no se implemente la maquetación.
+    otro contrato o fuera del periodo del contrato devuelve 404, y con `dni`
+    también una lectura no facturada a esa persona. CSV real; PDF es un stub
+    mientras no se implemente la maquetación.
     """
 
     permission_classes = [IsAuthenticated]
@@ -1100,7 +1145,9 @@ class ConsumptionDownloadOVView(APIView):
             )
 
         reading = _contract_billed_readings(
-            _contract_readings(contract).filter(pk=id), contract
+            _contract_readings(contract).filter(pk=id),
+            contract,
+            _ov_optional_dni(request.query_params.get("dni")),
         ).first()
 
         if not reading:
@@ -1127,8 +1174,9 @@ class ConsumptionsDownloadOVView(APIView):
     `reading_ids` (filas marcadas) o, si no se indican, todo el conjunto
     filtrado por `date_from`/`date_to` (botón «Seleccionar todo»). Solo se
     incluyen lecturas del propio contrato y de su periodo de vigencia; un id
-    de otro contrato se trata como desconocido (400). CSV real;
-    PDF y ZIP son stubs.
+    de otro contrato se trata como desconocido (400). Con `dni`, solo las
+    lecturas facturadas a esa persona (las demás se omiten, como las no
+    facturadas). CSV real; PDF y ZIP son stubs.
     """
 
     permission_classes = [IsAuthenticated]
@@ -1175,8 +1223,11 @@ class ConsumptionsDownloadOVView(APIView):
             if data.get("date_to"):
                 queryset = queryset.filter(reading_date__lte=data["date_to"])
 
-        # Només consums facturats: les lectures no facturades s'ometen del fitxer
-        queryset = _contract_billed_readings(queryset, contract)
+        # Només consums facturats: les lectures no facturades (o, amb DNI, no
+        # facturades a aquella persona) s'ometen del fitxer
+        queryset = _contract_billed_readings(
+            queryset, contract, _ov_optional_dni(data.get("dni"))
+        )
 
         if export_format == "csv":
             payload = _consumptions_csv(queryset)
