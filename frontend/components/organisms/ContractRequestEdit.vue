@@ -464,9 +464,31 @@ const openValidationErrorsModal = (errors) => {
   showValidationModal.value = true;
 };
 
+// En entrar al darrer pas d'una sol·licitud oberta, el backend regenera el codi de
+// contracte només si han canviat les dades que el determinen (p. ex. companyia o ús,
+// segons la personalització del client). Sense personalització no fa res.
+const syncTokenOnFinalStep = async () => {
+  if (!request.value?.id || isFinalized.value) return;
+  try {
+    const res = await $ContractRequestApiService.syncToken(request.value.id);
+    if (res?.changed && res.token) {
+      request.value = { ...request.value, token: res.token };
+      toast.info(t('contract_block.contract_token_updated', { old: res.previous_token || '-', new: res.token }));
+      emit('refresh', false);
+    }
+  } catch (error) {
+    console.error('Error syncing contract request token:', error);
+  }
+};
+
+const enterFinalStep = async () => {
+  await syncTokenOnFinalStep();
+  await runValidation();
+};
+
 watch(currentStep, (newStep) => {
   if (newStep === 6) {
-    runValidation();
+    enterFinalStep();
   }
 });
 
@@ -755,7 +777,7 @@ onMounted(async () => {
   setUrlStep();
   getData();
   if (currentStep.value === 6) {
-    runValidation();
+    enterFinalStep();
   }
 });
 

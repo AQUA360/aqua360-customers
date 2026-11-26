@@ -294,6 +294,18 @@ export default defineNuxtPlugin(nuxtApp => {
     }
   }
 
+  // Regenera i desa el token només si les dades que el determinen han canviat
+  // (segons la personalització del client). Retorna { token, previous_token, changed }.
+  const syncToken = async (id) => {
+    const apiUrl = `${apiHost}${entity}${id}/sync-token/`;
+    try {
+      const response = await $apiManager.fetch(apiUrl, 'POST', {}, { 'Content-Type': 'application/json' })
+      return response;
+    } catch (error) {
+      throw error;
+    }
+  }
+
   const apiService = {
     getAll,
     exportData,
@@ -309,7 +321,8 @@ export default defineNuxtPlugin(nuxtApp => {
     saveFile,
     updateCaliber,
     validateData,
-    regenerateToken
+    regenerateToken,
+    syncToken
   };
 
   nuxtApp.provide(provideName, apiService);
