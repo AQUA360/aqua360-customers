@@ -717,8 +717,8 @@ const handleRefactor = async () => {
             ${t('billing_block.payment').toLowerCase()}` }}
           </DropdownOption>
           <!-- Accions dels pagaments de la factura, agrupades perquè no calgui obrir la regió del pagament -->
-          <div v-if="hasPaymentActions">
-            <hr class="my-2" />
+          <template v-if="hasPaymentActions">
+            <li role="separator" aria-hidden="true"><hr class="my-2" /></li>
             <DropdownOption
               v-if="canManualPay"
               :disabled="allow_changes || !Number(data.left_to_pay) || !(data.total_payments > 0)"
@@ -742,8 +742,8 @@ const handleRefactor = async () => {
               <Icon name="fa6-solid:flag" class="display-inline mr-2" />
               {{ t('billing_block.unmark_for_remittance') }}
             </DropdownOption>
-            <hr class="my-2" />
-          </div>
+            <li role="separator" aria-hidden="true"><hr class="my-2" /></li>
+          </template>
           <!-- Pagada: el mètode no es pot canviar sense fer-ne abans el retorn (el moviment comptable no canviaria) -->
           <DropdownOption v-if="data.status?.token != status_canceled_token" :disabled="allow_changes ||
           data.status?.token == status_paid_token"
