@@ -646,11 +646,20 @@ const onDigitalPersonContact = (contact) => {
   closeAllRegions();
 };
 
-/** Un contacte esborrat des del selector deixa d'estar seleccionat (correu, telèfons i SMS). */
+/**
+ * Un contacte esborrat des del selector deixa d'estar seleccionat (correu, telèfons i SMS) i
+ * desapareix de totes les persones carregades: una mateixa persona pot tenir diversos rols
+ * (titular, llogater...) i cada rol en porta una còpia pròpia.
+ */
 const onPersonContactDeleted = (contact) => {
   const deletedId = Number(resolveId(contact));
   if (!deletedId) return;
   const isDeleted = (item) => Number(resolveId(item)) === deletedId;
+  [holder.value, owner.value, tenant.value, ...representatives.value].forEach((person) => {
+    if (Array.isArray(person?.contacts)) {
+      person.contacts = person.contacts.filter((item) => !isDeleted(item));
+    }
+  });
   if (selectedDigitalPersonContact.value && isDeleted(selectedDigitalPersonContact.value)) {
     selectedDigitalPersonContact.value = null;
   }
