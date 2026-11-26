@@ -7,6 +7,11 @@ DOCUMENT_SIGN_ENABLED_TOKEN = 'DOCUMENT_SIGN_ENABLED'
 # que també poden usar el mateix id com a referència.
 DOCUMENT_SIGN_REFERENCE_PREFIX = 'docsign-'
 
+# Prefixos de l'`external_document_id` dels documents que acompanyen el contracte a la
+# mateixa sessió (el contracte usa l'id nu del DocumentSign).
+DOCUMENT_SIGN_SEPA_ID_PREFIX = 'sepa-'
+DOCUMENT_SIGN_INVOICE_ID_PREFIX = 'invoice-'
+
 
 def is_document_sign_enabled():
     """
