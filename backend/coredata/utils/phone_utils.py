@@ -1,5 +1,8 @@
 import re
 
+from django.db.models import Value
+from django.db.models.functions import Replace
+
 # Pla de numeració espanyol: els mòbils són 6xx xxx xxx i 71x-74x xxx xxx; els
 # fixos comencen per 8 o 9. La resta (70x numeració personal, 80x/90x tarifació
 # especial...) no rep SMS.
@@ -73,3 +76,32 @@ def non_mobile_sms_phones(contact_ids, current_ids=()):
         for contact in PersonContact.objects.filter(id__in=new_ids)
         if not is_mobile_phone(contact.phone)
     ]
+
+
+# Caràcters que es fan servir per escriure un telèfon i que no són dígits.
+PHONE_SEPARATORS = (' ', '-', '.', '(', ')', '/', '+')
+
+
+def phone_search_digits(value):
+    """Dígits que cal buscar per trobar un telèfon, l'hagin escrit com l'hagin escrit.
+
+    Treu els separadors i, si porta el prefix espanyol (+34 o 0034), també el
+    prefix, perquè «+34 612 34 56 78» trobi «612345678» i a l'inrevés.
+    Retorna '' si no queda cap dígit.
+    """
+    normalized = normalize_phone(value)
+    if normalized.startswith('+' + SPANISH_PREFIX):
+        return normalized[len(SPANISH_PREFIX) + 1:]
+    return normalized.lstrip('+')
+
+
+def phone_digits_expression(field):
+    """Expressió de base de dades amb el telèfon del camp sense separadors ni '+'.
+
+    Serveix per comparar-lo amb phone_search_digits: el telèfon desat amb
+    prefix (34... o 0034...) també conté els dígits buscats.
+    """
+    expression = field
+    for separator in PHONE_SEPARATORS:
+        expression = Replace(expression, Value(separator), Value(''))
+    return expression

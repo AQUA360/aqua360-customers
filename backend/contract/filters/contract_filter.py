@@ -1,8 +1,9 @@
 from django_filters import rest_framework as filters
 from contract.models import Contract
-from coredata.models import ConfigProject
+from coredata.models import ConfigProject, PersonContact
+from coredata.utils.phone_utils import phone_digits_expression, phone_search_digits
 from service.models import SupplyPoint
-from django.db.models import Q, Count, F , Value , Case, When, IntegerField
+from django.db.models import Q, Count, F , Value , Case, When, IntegerField, Exists, OuterRef
 from django.db.models.functions import Concat, Replace
 from django.db import models
 from functools import reduce
@@ -17,6 +18,7 @@ class ContractFilter(filters.FilterSet):
     search_all_address = filters.CharFilter(method='filter_all_address')
     search_by_address = filters.CharFilter(method='filter_address')
     search_email = filters.CharFilter(method='filter_email')
+    search_phone = filters.CharFilter(method='filter_phone')
     search_iban = filters.CharFilter(method='filter_iban')
     search_meter = filters.CharFilter(method='filter_meter')
     search_by_token = filters.CharFilter(method='search_token')
@@ -392,6 +394,20 @@ class ContractFilter(filters.FilterSet):
             return queryset
         value = unquote(value)
         return queryset.filter(holder__contacts__email__icontains=value).distinct()
+
+    def filter_phone(self, queryset, name, value):
+        """Contractes el titular dels quals té algun contacte amb aquest telèfon.
+
+        Com el filtre d'email, mira els contactes del titular. No té en compte
+        espais, guions, punts ni el prefix espanyol, ni en el valor buscat ni en el desat.
+        """
+        digits = phone_search_digits(unquote(value or ''))
+        if not digits:
+            return queryset
+        contacts = PersonContact.objects.annotate(
+            _phone_digits=phone_digits_expression('phone')
+        ).filter(person=OuterRef('holder'), _phone_digits__contains=digits)
+        return queryset.filter(Exists(contacts))
 
     def filter_iban(self, queryset, name, value):
         if not value:
