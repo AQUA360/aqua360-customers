@@ -81,11 +81,21 @@ def serialize_contract_show_price_rates(contract):
 
 
 class ContractObservationSerializer(serializers.ModelSerializer):
-    user = UserMinimalSerializer(required=False, allow_null=True)
+    user = UserMinimalSerializer(read_only=True)
     class Meta:
         model = ContractObservation
         fields = '__all__'
-        
+        read_only_fields = ['status', 'status_name', 'is_active', 'created_at', 'updated_at']
+
+    def update(self, instance, validated_data):
+        # En modificar no es pot canviar de contracte.
+        validated_data.pop('contract', None)
+        # Les observacions automàtiques (sense autor o de canvi d'estat) no es poden reescriure.
+        is_automatic = instance.user_id is None or bool(instance.status_name)
+        if is_automatic and 'observation' in validated_data and validated_data['observation'] != instance.observation:
+            raise serializers.ValidationError({'observation': _('Automatic observations cannot be edited.')})
+        return super().update(instance, validated_data)
+
 class ContractLogSerializer(serializers.ModelSerializer):
     user = UserMinimalSerializer(read_only=True)
     source = serializers.SerializerMethodField()

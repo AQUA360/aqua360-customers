@@ -435,6 +435,8 @@ export default {
     write_note: 'Escriu un nou avís'
   },
   common:   {
+    mark_important: "Marcar com a important",
+    unmark_important: "Desmarcar com a important",
     doe_not_expire: 'No caduca',
     expires_in: 'Caduca en',
     restart: 'Reiniciar',
