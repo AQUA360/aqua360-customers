@@ -818,6 +818,35 @@ class DocumentSignJointDocumentsTest(TestCase):
         self.assertEqual(self.document_sign.sepa_file, self.sepa_file)
         self.assertEqual(self.document_sign.status, DocumentSign.STATUS_SENDED)
 
+    def test_unreadable_invoice_pdf_is_regenerated(self):
+        from django.http import Http404
+
+        regenerated = Document.objects.create(
+            entity_id=1, service="hdd", document_name="factura-nova.pdf"
+        )
+        self.mocks["invoice_pdf"].side_effect = (
+            lambda invoice, find_existing=False: self.invoice_file.id if find_existing else regenerated.id
+        )
+
+        def download(document):
+            if document == self.invoice_file:
+                raise Http404
+            return io.BytesIO(b"%PDF")
+
+        self.mocks["download"].side_effect = download
+        self._send()
+
+        names = [name for name, _, _ in self.create_session.call_args.kwargs["documents"]]
+        self.assertEqual(names[-1], "factura-nova.pdf")
+
+    def test_unreadable_contract_is_a_signing_error(self):
+        from django.http import Http404
+
+        self.mocks["download"].side_effect = Http404
+        with self.assertRaises(SigningApiError):
+            self._send()
+        self.create_session.assert_not_called()
+
     def test_no_sepa_when_payment_is_not_direct_debit(self):
         from billing.models import PaymentType
 

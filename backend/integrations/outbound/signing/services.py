@@ -3,6 +3,7 @@ import base64
 import requests
 from django.conf import settings
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.http import Http404
 from django.utils.dateparse import parse_datetime
 
 from contract.models import Contract, ContractRequest
@@ -233,7 +234,10 @@ def _ensure_document_sign_contract_file(document_sign):
 
 
 def _document_bytes(document):
-    content = download_document(document)
+    try:
+        content = download_document(document)
+    except Http404:
+        content = None
     if not content:
         raise SigningApiError(f"No s'ha pogut descarregar el document (id={document.id})")
     try:
@@ -301,6 +305,16 @@ def _document_sign_invoice_document(document_sign):
         raise SigningApiError("La factura no correspon a la sol·licitud del contracte")
 
     document_id = generate_invoice_pdf(invoice, find_existing=True)
+    document = Document.objects.filter(id=document_id).first() if document_id else None
+    if document:
+        try:
+            _document_bytes(document)
+            return document
+        except SigningApiError:
+            # El PDF desat no es pot llegir (fitxer perdut o mogut): es torna a generar.
+            pass
+
+    document_id = generate_invoice_pdf(invoice)
     document = Document.objects.filter(id=document_id).first() if document_id else None
     if not document:
         raise SigningApiError("No s'ha pogut generar el PDF de la factura")
