@@ -1884,6 +1884,7 @@ export default {
     search_email_info: 'Cerca per email',
     search_iban_info: 'Cerca per IBAN',
     search_meter_info: 'Cercar per codi de comptador',
+    search_phone_info: 'Cercar per telèfon',
     search_by_token: 'Cerca per identificador contracte',
     mng_contracts: 'Gestió de contractes',
     current_situation: 'Situació actual',

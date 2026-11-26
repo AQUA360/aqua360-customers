@@ -1875,6 +1875,7 @@ export default {
     search_email_info: 'Search by email',
     search_iban_info: 'Search by IBAN',
     search_meter_info: 'Search by meter code',
+    search_phone_info: 'Search by phone',
     search_by_token: 'Search by contract identifier',
     mng_contracts: 'Contract management',
     current_situation: 'Current situation',

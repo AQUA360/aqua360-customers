@@ -37,6 +37,7 @@ const searchByAddress = ref('');// Track which search input is active
 const searchEmailInput = ref('');
 const searchIbanInput = ref('');
 const searchMeterInput = ref('');
+const searchPhoneInput = ref('');
 
 const openIndexDropdown = ref(false);
 
@@ -100,6 +101,7 @@ const showAddressSearch = ref(false);
 const showEmailSearch = ref(false);
 const showIbanSearch = ref(false);
 const showMeterSearch = ref(false);
+const showPhoneSearch = ref(false);
 const isFilterShown = ref([]);
 const filtersExtra = ref([]);
 
@@ -151,7 +153,8 @@ const getData = async (searchQuery = '', searchAllAddress = '', filters = [], pa
       use_types.value, categories.value, [], debt_management.value, false,
       comm_types.value, searchAllAddress, payment_types.value, [], searchByAddressQuery, totalPersonsMinQuery,
       companies.value, null, null, block_billing.value, has_debt.value, searchEmailQuery, searchIbanQuery, searchMeterQuery,
-      has_positive_balance.value, only_pending_termination.value ? 'true' : null, has_virtual_office.value
+      has_positive_balance.value, only_pending_termination.value ? 'true' : null, has_virtual_office.value,
+      searchPhoneInput.value
     );
 
     items.value = data.results;
@@ -160,7 +163,7 @@ const getData = async (searchQuery = '', searchAllAddress = '', filters = [], pa
       totalPages: Math.ceil(data.count / pagination.value.perPage),
       previous: data.previous,
       next: data.next,
-      isFiltered: String(searchQuery).trim() !== '' || String(searchAllAddress).trim() !== '' || String(searchByAddressQuery).trim() !== '' || String(searchEmailQuery).trim() !== '' || String(searchIbanQuery).trim() !== ''
+      isFiltered: String(searchQuery).trim() !== '' || String(searchAllAddress).trim() !== '' || String(searchByAddressQuery).trim() !== '' || String(searchEmailQuery).trim() !== '' || String(searchIbanQuery).trim() !== '' || String(searchPhoneInput.value).trim() !== ''
     });
 
     if (blockSearch.value) {
@@ -305,7 +308,7 @@ const toggleAddressFilter = () => {
   // If we are hiding the address search and there are no extra filters, close the whole extra filters area
   if (showAddressSearch.value) {
     showAddressSearch.value = false;
-    if (!isFilterShown.value.length && !showEmailSearch.value && !showIbanSearch.value && !showMeterSearch.value) {
+    if (!isFilterShown.value.length && !showEmailSearch.value && !showIbanSearch.value && !showMeterSearch.value && !showPhoneSearch.value) {
       isFilterOpen.value = false;
       return;
     }
@@ -321,7 +324,7 @@ const toggleEmailFilter = () => {
     showEmailSearch.value = false;
     searchEmailInput.value = '';
     handleSearch();
-    if (!isFilterShown.value.length && !showAddressSearch.value && !showIbanSearch.value && !showMeterSearch.value) {
+    if (!isFilterShown.value.length && !showAddressSearch.value && !showIbanSearch.value && !showMeterSearch.value && !showPhoneSearch.value) {
       isFilterOpen.value = false;
       return;
     }
@@ -336,7 +339,7 @@ const toggleIbanFilter = () => {
     showIbanSearch.value = false;
     searchIbanInput.value = '';
     handleSearch();
-    if (!isFilterShown.value.length && !showAddressSearch.value && !showEmailSearch.value && !showMeterSearch.value) {
+    if (!isFilterShown.value.length && !showAddressSearch.value && !showEmailSearch.value && !showMeterSearch.value && !showPhoneSearch.value) {
       isFilterOpen.value = false;
       return;
     }
@@ -351,12 +354,27 @@ const toggleMeterFilter = () => {
     showMeterSearch.value = false;
     searchMeterInput.value = '';
     handleSearch();
-    if (!isFilterShown.value.length && !showAddressSearch.value && !showEmailSearch.value && !showIbanSearch.value) {
+    if (!isFilterShown.value.length && !showAddressSearch.value && !showEmailSearch.value && !showIbanSearch.value && !showPhoneSearch.value) {
       isFilterOpen.value = false;
       return;
     }
   } else {
     showMeterSearch.value = true;
+    isFilterOpen.value = true;
+  }
+}
+
+const togglePhoneFilter = () => {
+  if (showPhoneSearch.value) {
+    showPhoneSearch.value = false;
+    searchPhoneInput.value = '';
+    handleSearch();
+    if (!isFilterShown.value.length && !showAddressSearch.value && !showEmailSearch.value && !showIbanSearch.value && !showMeterSearch.value) {
+      isFilterOpen.value = false;
+      return;
+    }
+  } else {
+    showPhoneSearch.value = true;
     isFilterOpen.value = true;
   }
 }
@@ -610,12 +628,14 @@ const resetFilters = () => {
   searchEmailInput.value = '';
   searchIbanInput.value = '';
   searchMeterInput.value = '';
+  searchPhoneInput.value = '';
   isFilterShown.value = [];
   isFilterOpen.value = false;
   showAddressSearch.value = false;
   showEmailSearch.value = false;
   showIbanSearch.value = false;
   showMeterSearch.value = false;
+  showPhoneSearch.value = false;
   getData();
 };
 
@@ -729,6 +749,8 @@ const saveSearchState = () => {
     showIbanSearch: showIbanSearch.value,
     searchMeterInput: searchMeterInput.value,
     showMeterSearch: showMeterSearch.value,
+    searchPhoneInput: searchPhoneInput.value,
+    showPhoneSearch: showPhoneSearch.value,
   };
   sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 };
@@ -795,6 +817,8 @@ const loadSearchState = () => {
       if (parsed.showIbanSearch !== undefined) showIbanSearch.value = parsed.showIbanSearch;
       if (parsed.searchMeterInput !== undefined) searchMeterInput.value = parsed.searchMeterInput;
       if (parsed.showMeterSearch !== undefined) showMeterSearch.value = parsed.showMeterSearch;
+      if (parsed.searchPhoneInput !== undefined) searchPhoneInput.value = parsed.searchPhoneInput;
+      if (parsed.showPhoneSearch !== undefined) showPhoneSearch.value = parsed.showPhoneSearch;
     } catch (e) {
       console.error('Error parsing search state', e);
     }
@@ -895,7 +919,8 @@ watch(
     has_virtual_office.value, selected_has_virtual_office.value,
     only_pending_termination.value,
     searchEmailInput.value, searchIbanInput.value, showEmailSearch.value, showIbanSearch.value,
-    searchMeterInput.value, showMeterSearch.value
+    searchMeterInput.value, showMeterSearch.value,
+    searchPhoneInput.value, showPhoneSearch.value
   ],
   () => {
     saveSearchState();
@@ -1003,7 +1028,8 @@ const exportExcel = async () => {
       searchMeterInput.value,
       has_positive_balance.value,
       only_pending_termination.value ? 'true' : null,
-      has_virtual_office.value
+      has_virtual_office.value,
+      searchPhoneInput.value
     );
 
     if (response && response.task_id) {
@@ -1189,6 +1215,13 @@ watch(() => route.query, async () => {
           :title="$t('contract_block.search_meter_info')">
           <span class="text-slate-500"><Icon name="fa6-solid:gauge" />+</span>
         </button>
+        <button id="filterPhone" name="form_filter" type="button"
+          class="px-2 py-1 hover:bg-slate-300 rounded"
+          :class="{ 'bg-slate-300': showPhoneSearch }"
+          @click="togglePhoneFilter" :disabled="blockSearch"
+          :title="$t('contract_block.search_phone_info')">
+          <span class="text-slate-500"><Icon name="fa6-solid:phone" />+</span>
+        </button>
       </span>
 
       <span>
@@ -1223,6 +1256,13 @@ watch(() => route.query, async () => {
         <Icon name="fa6-solid:gauge" class="text-slate-500" />
         <input v-model="searchMeterInput" @input="handleSearch" id="searchMeterInput" type="text" name="search"
           :placeholder="$t('contract_block.search_meter_info')" :disabled="blockSearch"
+          class="w-full p-1 rounded-md focus:outline-none focus-visible:border-0 " autocomplete="off" />
+      </span>
+
+      <span v-if="showPhoneSearch" class="input-group flex flex-start items-center gap-2 w-60">
+        <Icon name="fa6-solid:phone" class="text-slate-500" />
+        <input v-model="searchPhoneInput" @input="handleSearch" id="searchPhoneInput" type="text" name="search"
+          :placeholder="$t('contract_block.search_phone_info')" :disabled="blockSearch"
           class="w-full p-1 rounded-md focus:outline-none focus-visible:border-0 " autocomplete="off" />
       </span>
 
