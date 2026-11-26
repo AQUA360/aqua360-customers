@@ -2113,6 +2113,8 @@ export default {
     initial_reading: 'Lectura inicial',
     termination_requested: 'Baixa sol·licitada',
     pending_termination: 'Pendent de donar de baixa',
+    only_pending_termination: 'Només pendents de baixa',
+    pending_termination_filter_hint: 'Mostra només els contractes dels estats marcats que tenen una sol·licitud de baixa oberta. No es pot combinar amb «Baixa».',
     mark_as_initial_reading: "Marcar com a lectura inicial",
     mark_as_initial_short: "Marcar com a inicial",
     choose_existing_reading: "Triar una altra lectura del comptador",

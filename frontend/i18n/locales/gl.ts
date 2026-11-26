@@ -2104,6 +2104,8 @@ export default {
     initial_reading: 'Lectura inicial',
     termination_requested: 'Baixa solicitada',
     pending_termination: 'Pendente de dar de baixa',
+    only_pending_termination: 'Só pendentes de baixa',
+    pending_termination_filter_hint: 'Mostra só os contratos dos estados marcados que teñen unha solicitude de baixa aberta. Non se pode combinar con «Baixa».',
     mark_as_initial_reading: "Marcar como lectura inicial",
     mark_as_initial_short: "Marcar como inicial",
     choose_existing_reading: "Escoller outra lectura do contador",

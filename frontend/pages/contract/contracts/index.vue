@@ -64,6 +64,7 @@ const filter_has_virtual_office = ref([]);
 const selected_has_virtual_office = ref([]);
 const has_virtual_office = ref(null);
 const only_pending_termination = ref(false);
+const terminatedStatusToken = ref(null);
 
 const variables = ref([]);
 const bonifications = ref([]);
@@ -225,8 +226,12 @@ const loadSelectData = async () => {
 const getFilterStatus = async () => {
   error.value = null;
   try {
-    const data = await $ContractApiService.getFilterStatus();
+    const [data, terminatedToken] = await Promise.all([
+      $ContractApiService.getFilterStatus(),
+      $ConfigProjectApiService.get('contract_terminated_status').catch(() => null),
+    ]);
     filter_status.value = data;
+    terminatedStatusToken.value = terminatedToken;
   } catch (err) {
     console.error(err)
     console.log('Contract active status filter could not be established...')
@@ -379,6 +384,27 @@ const togglePhoneFilter = () => toggleSearchFilter('phone');
 const handleFilterChange = () => {
   pagination.value.page = 1;
   handleSearch();
+}
+
+// «Baixa» i «Pendent de donar de baixa» són excloents: un contracte de baixa ja no té cap
+// baixa pendent, i el filtre de pendents restringeix els estats marcats (no en suma un altre).
+const terminatedStatusId = computed(() =>
+  filter_status.value.find(s => s.token === terminatedStatusToken.value)?.id ?? null
+);
+
+const handleStatusChange = (event) => {
+  const changedId = Number(event.target.value);
+  if (event.target.checked && changedId === Number(terminatedStatusId.value)) {
+    only_pending_termination.value = false;
+  }
+  handleFilterChange();
+}
+
+const handlePendingTerminationChange = () => {
+  if (only_pending_termination.value && terminatedStatusId.value !== null) {
+    selectedFilters.value = selectedFilters.value.filter(id => Number(id) !== Number(terminatedStatusId.value));
+  }
+  handleFilterChange();
 }
 
 const handleVariableChange = (event) => {
@@ -1174,14 +1200,21 @@ watch(() => route.query, async () => {
       <span class="flex gap-3" v-if="filter_status.length">
         <label v-for="status in filter_status" :key="status.id"
           class="text-slate-800 text-base flex items-center gap-1">
-          <input type="checkbox" v-model="selectedFilters" :value="status.id" @change="handleFilterChange" :disabled="blockSearch" /> {{
+          <input type="checkbox" v-model="selectedFilters" :value="status.id" @change="handleStatusChange" :disabled="blockSearch" /> {{
             status.name }}
         </label>
-        <label class="text-slate-800 text-base flex items-center gap-1">
-          <input type="checkbox" v-model="only_pending_termination" @change="handleFilterChange" :disabled="blockSearch" />
-          {{ t('contract_block.pending_termination') }}
-        </label>
       </span>
+
+      <label v-if="filter_status.length" :title="t('contract_block.pending_termination_filter_hint')"
+        class="inline-flex items-center gap-1.5 px-2 py-1 rounded border text-base select-none cursor-pointer transition-colors"
+        :class="only_pending_termination
+          ? 'bg-amber-50 text-amber-700 border-amber-300 font-medium'
+          : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'">
+        <input type="checkbox" v-model="only_pending_termination" @change="handlePendingTerminationChange" :disabled="blockSearch"
+          class="sr-only" />
+        <Icon name="fa6-solid:triangle-exclamation" :class="only_pending_termination ? 'text-amber-600' : 'text-slate-400'" />
+        {{ t('contract_block.only_pending_termination') }}
+      </label>
 
       <span class="flex items-center gap-1">
         <button id="filterShow" name="form_filter" type="button" class="px-2 py-1 hover:bg-slate-300 rounded"
