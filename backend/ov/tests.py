@@ -1769,6 +1769,36 @@ class ConsumptionPersonDniFilterTests(TestCase):
 
         self.assertEqual(response.data["results"][0]["period"], "2025-2T")
 
+    def test_reading_in_invoices_of_two_people_takes_each_period(self):
+        """Una lectura facturada en dues factures de persones diferents surt un
+        sol cop per a cadascuna, amb el període de la seva factura."""
+        old_invoice = self._invoice(
+            "DNI-INV-SHARED-OLD",
+            self.contract,
+            date(2025, 3, 28),
+            customer=self.OLD_HOLDER,
+        )
+        new_invoice = self._invoice(
+            "DNI-INV-SHARED-NEW",
+            self.contract,
+            date(2025, 10, 28),
+            customer=self.NEW_HOLDER,
+        )
+        shared = self._reading(self.contract, date(2025, 3, 31), old_invoice)
+        new_invoice.readings.add(shared)
+
+        for dni, period in (
+            (self.OLD_HOLDER, "2025-1T"),
+            (self.NEW_HOLDER, "2025-4T"),
+        ):
+            response = self.client.get(
+                reverse("consumptions-ov"),
+                {"contract_token": self.TOKEN, "dni": dni},
+            )
+            rows = [row for row in response.data["results"] if row["id"] == shared.id]
+            self.assertEqual(len(rows), 1, dni)
+            self.assertEqual(rows[0]["period"], period, dni)
+
     def test_single_download_with_dni(self):
         response = self._single(self.old_reading, dni=self.OLD_HOLDER)
         self.assertEqual(self._csv_ids(response), {self.old_reading.id})
