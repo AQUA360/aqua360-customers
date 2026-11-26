@@ -5,7 +5,7 @@
     "fields": {
       "created_at": "2025-11-05T15:28:06.571Z",
       "updated_at": "2025-11-05T15:28:06.571Z",
-      "token": "canvi_titular",
+      "token": "change_of_owner",
       "name": "CAMBIO DE TITULAR",
       "position": 0,
       "type": [
@@ -95,9 +95,7 @@
       "position": 5,
       "type": [
         1,
-        15,
-        16,
-        17
+        5
       ]
     }
   },

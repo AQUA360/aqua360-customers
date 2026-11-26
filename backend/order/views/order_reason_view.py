@@ -7,10 +7,10 @@ from ..models import OrderReason
 from ..serializers.value_objects_serializer import OrderReasonSerializer
 from order.permissions import OrderPermission
 class OrderReasonViewSet(viewsets.ModelViewSet):
-    queryset = OrderReason.objects.all().order_by('position')
+    queryset = OrderReason.objects.prefetch_related('type').order_by('position')
     serializer_class = OrderReasonSerializer
     permission_classes = [IsAuthenticated, OrderPermission]
-    search_fields = ['token', ]
+    search_fields = ['token', 'name']
     
     @action(detail=False, methods=['post'], url_path='update-positions')
     def update_positions(self, request):
