@@ -483,12 +483,16 @@ class GenerateInvoiceBudgetView(APIView):
             else:
                 origin = None
                 origin_id = selected_custom.get("origin")
-                if origin_id:
+                if origin_id is not None:
+                    # Un 400 no desfà la transacció: sense el rollback, el pressupost
+                    # que s'està regenerant (redo_budget) ja s'hauria esborrat.
                     try:
                         origin = ProductOrigin.objects.get(id=origin_id)
                     except (ProductOrigin.DoesNotExist, ValueError, TypeError):
+                        transaction.set_rollback(True)
                         return Response({'error': 'L\'origen seleccionat no existeix.'}, status=status.HTTP_400_BAD_REQUEST)
                     if origin.token == ConfigProject.objects.get(token='origin_reading_token').value:
+                        transaction.set_rollback(True)
                         return Response({'error': 'L\'origen d\'aigua només es pot fer servir en la facturació per lectures.'}, status=status.HTTP_400_BAD_REQUEST)
                 invoice = generate_empty_invoice(contract, None, person, title, payment_data, exploitation, billing=billing, billing_batch=billing_batch, origin=origin)
 

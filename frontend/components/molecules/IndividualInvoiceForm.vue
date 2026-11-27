@@ -281,6 +281,8 @@ onMounted(async () => {
 
 watch(() =>props.selectedCustom, () => {
   getCustomInvoiceType();
+  // Quan el pare canvia de contracte o persona, el selectedCustom nou no porta origen.
+  applyDefaultOrigin();
 }, { deep: true, immediate: true });
 
 </script>
