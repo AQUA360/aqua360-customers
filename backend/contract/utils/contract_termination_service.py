@@ -173,13 +173,20 @@ def release_termination_draft_orders(termination_request):
 
     Les ordres que ja estan en marxa (Enviada, En Curs, Per validar...) no es
     toquen: el seu estat el porten l'operari o el GMAO. El canvi queda a
-    l'historial de l'ordre com a fet per la baixa, no per l'usuari.
+    l'historial de l'ordre com a fet per la baixa, no per l'usuari. Una baixa
+    cancel·lada o finalitzada no allibera res.
     """
     from order.models import Order, OrderStatus
 
-    def config_value(token, default):
+    def config_value(token, default=None):
         return ConfigProject.objects.filter(token=token).values_list('value', flat=True).first() or default
 
+    closed_tokens = {
+        config_value('contract_termination_cancelled_token'),
+        config_value('contract_termination_completed_token'),
+    } - {None}
+    if termination_request.status and termination_request.status.token in closed_tokens:
+        return
     pending_status = OrderStatus.objects.filter(token=config_value('order_status_pending_token', '1')).first()
     if not pending_status:
         return

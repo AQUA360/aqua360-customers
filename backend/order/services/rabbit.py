@@ -591,21 +591,22 @@ def _gmao_status_key(status):
     )
 
 
-def publish_order_status_changed(order, previous_status, reason=None):
+def publish_order_status_changed(order_token, status, previous_status, reason=None):
     """
     Publica un esdeveniment quan l'app canvia l'estat d'una Order, amb la
     mateixa clau que fa servir el GMAO per avisar-nos dels seus canvis.
 
     Args:
-        order: Instància del model Order (ja amb l'estat nou)
-        previous_status: OrderStatus anterior
+        order_token: token de l'Order
+        status: OrderStatus nou (el de la transició, no el de l'ordre en publicar)
+        previous_status: OrderStatus anterior (pot ser None)
         reason: motiu si el canvi és automàtic (p. ex. per una baixa)
     """
     payload = {
-        "order_token": order.token,
-        "status_token": order.status.token if order.status else None,
-        "status_name": order.status.name if order.status else None,
-        "gmao_status": _gmao_status_key(order.status),
+        "order_token": order_token,
+        "status_token": status.token if status else None,
+        "status_name": status.name if status else None,
+        "gmao_status": _gmao_status_key(status),
         "previous_status_token": previous_status.token if previous_status else None,
         "previous_status_name": previous_status.name if previous_status else None,
         "reason": reason,

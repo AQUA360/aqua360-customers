@@ -77,9 +77,10 @@ def detect_status_change(sender, instance, **kwargs):
             observation=reason or f"Status changed from {prev_name} to {curr_name}",
             user=None if reason else current_user,
         )
-        # Estat anterior, per avisar el GMAO un cop desat. No es neteja a cada desada:
+        # Transició (anterior, nou), per avisar el GMAO un cop desat. Es desa com a
+        # parella perquè l'estat anterior pot ser nul. No es neteja a cada desada:
         # after_order_save torna a desar l'ordre abans que s'enviï l'avís.
-        instance._status_changed_from = previous.status
+        instance._status_change = (previous.status, instance.status)
 
        
 
@@ -246,19 +247,23 @@ def publish_order_status_changed_event(sender, instance, created, **kwargs):
     """
     from django.conf import settings
 
-    previous_status = getattr(instance, "_status_changed_from", None)
-    instance._status_changed_from = None
-    if created or previous_status is None or getattr(instance, "_from_gmao", False):
+    status_change = getattr(instance, "_status_change", None)
+    instance._status_change = None
+    if created or status_change is None or getattr(instance, "_from_gmao", False):
         return
     if not settings.RABBITMQ_ENABLED:
         return
 
     from .services.rabbit import publish_order_status_changed
+    # Es captura ara: si l'ordre torna a canviar d'estat abans del commit,
+    # cada avís ha de portar la seva transició, no l'estat final.
+    previous_status, status = status_change
+    order_token = instance.token
     reason = getattr(instance, "_status_change_reason", None)
 
     def send():
         try:
-            publish_order_status_changed(instance, previous_status, reason)
+            publish_order_status_changed(order_token, status, previous_status, reason)
         except Exception:
             logger.exception("Error publishing RabbitMQ status change for order %s", instance.pk)
 

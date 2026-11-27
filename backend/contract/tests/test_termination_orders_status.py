@@ -97,12 +97,51 @@ class TerminationOrdersStatusTest(TestCase):
             termination.status = self.ct_pending
             termination.save()
 
-        publish.assert_called_once()
-        order, previous_status, reason = publish.call_args.args
-        self.assertEqual(order.pk, draft.pk)
-        self.assertEqual(order.status, self.os_pending)
-        self.assertEqual(previous_status, self.os_draft)
-        self.assertEqual(reason, 'Canvi automàtic per la baixa BX-4')
+        publish.assert_called_once_with(
+            draft.token, self.os_pending, self.os_draft, 'Canvi automàtic per la baixa BX-4'
+        )
+
+    @override_settings(RABBITMQ_ENABLED=True)
+    def test_status_change_from_no_status_is_published(self):
+        with patch('order.services.rabbit.publish_order_created'):
+            termination = self._termination('7', self.ct_draft)
+            order = self._order('ORD-7', None, termination)
+
+        with patch('order.services.rabbit.publish_order_status_changed') as publish, \
+                self.captureOnCommitCallbacks(execute=True):
+            termination.status = self.ct_pending
+            termination.save()
+
+        publish.assert_called_once_with(
+            order.token, self.os_pending, None, 'Canvi automàtic per la baixa BX-7'
+        )
+
+    @override_settings(RABBITMQ_ENABLED=True)
+    def test_each_status_change_publishes_its_own_transition(self):
+        with patch('order.services.rabbit.publish_order_created'):
+            order = self._order('ORD-8', self.os_draft, None)
+
+        with patch('order.services.rabbit.publish_order_status_changed') as publish, \
+                self.captureOnCommitCallbacks(execute=True):
+            order.status = self.os_pending
+            order.save()
+            order.status = self.os_in_progress
+            order.save()
+
+        self.assertEqual(
+            [call.args[:3] for call in publish.call_args_list],
+            [('ORD-8', self.os_pending, self.os_draft), ('ORD-8', self.os_in_progress, self.os_pending)],
+        )
+
+    def test_closed_termination_does_not_release_draft_orders(self):
+        from contract.utils.contract_termination_service import release_termination_draft_orders
+        termination = self._termination('9', self.ct_cancelled)
+        draft = self._order('ORD-9', self.os_draft, termination)
+
+        release_termination_draft_orders(termination)
+
+        draft.refresh_from_db()
+        self.assertEqual(draft.status, self.os_draft)
 
     @override_settings(RABBITMQ_ENABLED=True)
     def test_status_change_from_gmao_is_not_published_back(self):
