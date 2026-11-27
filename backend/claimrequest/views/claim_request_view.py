@@ -24,11 +24,12 @@ from ..serializers.claim_request_list_serializer import ClaimRequestListSerializ
 from ..serializers.claim_request_save_serializer import ClaimRequestSaveSerializer
 from ..serializers.claim_request_payment_serializer import ContractWithClaimPaymentsSerializer
 from claimrequest.tasks import generate_claim_expenses
+from claimrequest.permissions import CanChangeClaimRequest, ClaimRequestModelPermission
 
 class ClaimRequestViewSet(viewsets.ModelViewSet):
   queryset = ClaimRequest.objects.all().order_by('-created_at','due_date', 'status')
   serializer_class = ClaimRequestSerializer
-  permission_classes = [IsAuthenticated, DjangoModelPermissions]
+  permission_classes = [IsAuthenticated, ClaimRequestModelPermission]
   filter_backends = [DjangoFilterBackend, OrderingFilter]
   filterset_class = ClaimRequestFilter
   
@@ -214,7 +215,7 @@ class ClaimRequestViewSet(viewsets.ModelViewSet):
 # Permet filtrar per is_juridic
 
 class ClaimRequestContractsViewSet(viewsets.ViewSet):
-    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    permission_classes = [IsAuthenticated, ClaimRequestModelPermission]
     queryset = ClaimRequest.objects.all().order_by('-created_at')
     lookup_field = 'id'
     
@@ -280,7 +281,7 @@ class MarkContractsVulnerableSerializer(serializers.Serializer):
     )
 
 class MarkContractsVulnerableViewSet(views.APIView):
-    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    permission_classes = [IsAuthenticated, CanChangeClaimRequest]
     queryset = ClaimRequest.objects.all().order_by('-created_at')
     def get(self, request, *args, **kwargs):
         return Response({"message": "Aquesta vista només accepta mètodes POST"}, status=status.HTTP_405_METHOD_NOT_ALLOWED)

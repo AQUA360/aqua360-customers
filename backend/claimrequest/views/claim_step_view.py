@@ -19,6 +19,7 @@ from ..serializers import (
     ClaimRequestStepSerializer
 )
 from claimrequest.permissions import ClaimRequestPermission
+from claimrequest.permissions import ClaimRequestModelPermission
 class ClaimRequestStepTemplateViewSet(viewsets.ModelViewSet):
     queryset = ClaimRequestStepTemplate.objects.all().order_by('position')
     serializer_class = ClaimRequestStepTemplateSerializer
@@ -41,7 +42,7 @@ class ClaimRequestStepTemplateViewSet(viewsets.ModelViewSet):
 class ClaimRequestStepViewSet(viewsets.ModelViewSet):
     queryset = ClaimRequestStep.objects.all().order_by('-created_at')   
     serializer_class = ClaimRequestStepSerializer
-    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    permission_classes = [IsAuthenticated, ClaimRequestModelPermission]
     filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
     search_fields = ['token','name']
     ordering_fields = ['token','name', 'duration','position']
