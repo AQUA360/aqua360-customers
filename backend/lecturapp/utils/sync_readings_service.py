@@ -11,6 +11,7 @@ import sys
 from datetime import datetime
 
 from django.core.files.base import ContentFile
+from django.db.models import Q
 
 from billing.utils.reading_service import check_billing_period
 
@@ -212,9 +213,13 @@ def process_sync_reading_row(
     fields_to_update = [f.strip() for f in changes_raw.split(',') if f.strip()]
 
     if r.get('previous_reading_id'):
+        # Només una lectura d'aquest comptador (o dels seus punts): la lectura anterior
+        # que envia l'app es pot acabar marcant com a control, i no pot ser d'un altre.
         try:
-            previous_reading = Reading.objects.get(id=int(r.get('previous_reading_id')))
-        except Reading.DoesNotExist:
+            previous_reading = Reading.objects.filter(
+                Q(meter=meter) | Q(supply_point__meter=meter),
+            ).distinct().get(id=int(r.get('previous_reading_id')))
+        except (Reading.DoesNotExist, ValueError, TypeError):
             previous_reading = None
     else:
         previous_reading = None
@@ -346,7 +351,7 @@ def process_sync_reading_row(
         supply_point = None
         supply_token = r.get('supply_token')
         if supply_token:
-            supply_point = SupplyPoint.objects.filter(token=supply_token).first()
+            supply_point = SupplyPoint.objects.filter(token=supply_token, meter=meter).first()
         if not supply_point:
             supply_point = SupplyPoint.objects.filter(meter=meter).first()
         if supply_point and not dry_run:
@@ -413,10 +418,13 @@ def process_sync_reading_row(
             return 'skipped', meter_id, f'No supply_token and no supply point for meter {meter_id}'
         supply_token = supply_point.token
 
-    try:
-        supply_point = SupplyPoint.objects.get(token=supply_token)
-    except SupplyPoint.DoesNotExist:
-        supply_point = SupplyPoint.objects.filter(meter=meter).first()
+    # El punt ha de ser d'aquest comptador: no es creen lectures a punts d'altres comptadors
+    supply_point = (
+        SupplyPoint.objects.filter(token=supply_token, meter=meter).first()
+        or SupplyPoint.objects.filter(meter=meter).first()
+    )
+    if supply_point is None:
+        return 'skipped', meter_id, f'No supply point for meter {meter_id}'
 
     targets = _get_reading_targets(meter, supply_point, contract_active_token)
 

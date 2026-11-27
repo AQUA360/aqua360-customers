@@ -23,10 +23,16 @@ from coredata.models import ConfigProject
 from service.models import Meter, SupplyPoint, SupplyPointPlacement
 from service.utils.route_scope import effective_route_position
 from .serializers import RouteAppSerializer, ReadingBatchAppSerializer
-from .tasks import process_reading_batch_routes_detailed
+from .tasks import LECTURAPP_ROUTES_TASK_KIND, process_reading_batch_routes_detailed
 
 from .models import ReadingOperator, Token
 from .utils.sync_readings_service import process_sync_reading_row
+from .utils.batch_scope_service import (
+    get_open_reading_batch,
+    is_reading_batch_open,
+    meter_in_reading_batch,
+    open_reading_batches,
+)
 from .serializers import (
     ReadingOperatorSerializer,
     ReadingOperatorCreateSerializer,
@@ -212,14 +218,11 @@ def validate_token(request):
 def reading_batches(request):
     """Get all reading batches - OPTIMIZED"""
 
-    batch_status_finish_token = ConfigProject.objects.get(token='batch_status_finish_token').value
-    batch_status_cancel_token = ConfigProject.objects.get(token='batch_status_cancel_token').value
-    batch_status_billed_token = ConfigProject.objects.get(token='batch_status_billed_token').value
-    
+    # Només lots oberts (actius i no finalitzats, cancel·lats ni facturats).
     # Simple queryset - counts are calculated in the serializer to avoid expensive annotations
-    reading_batches = ReadingBatch.objects.exclude(
-        status__token__in=[batch_status_finish_token, batch_status_cancel_token, batch_status_billed_token]
-    ).select_related('status').prefetch_related('routes', 'readings').order_by('-created_at')[:20]
+    reading_batches = open_reading_batches().select_related('status').prefetch_related(
+        'routes', 'readings'
+    ).order_by('-created_at')[:20]
     
     serializer = ReadingBatchAppSerializer(reading_batches, many=True)
     data = serializer.data
@@ -230,9 +233,10 @@ def reading_batches(request):
 def reading_batch_routes(request, reading_batch_id):
     """Get all reading batches - OPTIMIZED"""
     
-    # Use select_related and prefetch_related to optimize query
+    # Use select_related and prefetch_related to optimize query.
+    # Un lot tancat o inexistent respon 404, com si no hi fos.
     reading_batch = get_object_or_404(
-        ReadingBatch.objects.prefetch_related(
+        open_reading_batches().prefetch_related(
             # RouteAppSerializer només fa servir les posicions prefetchades; les
             # finques i punts de cada posició es calculen per ruta efectiva.
             'routes__positions',
@@ -331,6 +335,9 @@ def reading_batch_routes_detailed(request, reading_batch_id):
     # les anteriors els tractarien com a comptadors per llegir.
     include_disabled_meters = request.GET.get('include_disabled_meters') in ('1', 'true')
 
+    if not get_open_reading_batch(reading_batch_id):
+        return JsonResponse({'error': 'Reading batch not found'}, status=404)
+
     # Start the Celery task
     task = process_reading_batch_routes_detailed.delay(
         reading_batch_id, include_disabled_meters=include_disabled_meters)
@@ -372,6 +379,10 @@ def reading_batch_routes_detailed_status(request, task_id):
             })
         elif task.state == 'SUCCESS':
             result = task.result
+            # Només resultats de la tasca de rutes del Lecturapp: per aquí no es poden
+            # llegir els resultats d'altres tasques de Celery.
+            if not isinstance(result, dict) or result.get('kind') != LECTURAPP_ROUTES_TASK_KIND:
+                return JsonResponse({'status': 'error', 'message': 'Task not found'}, status=404)
             if result.get('status') == 'completed':
                 return JsonResponse({
                     'status': 'completed',
@@ -394,9 +405,10 @@ def reading_batch_routes_detailed_status(request, task_id):
                     }
                 }, status=500)
         elif task.state == 'FAILURE':
+            logger.warning("Lecturapp: la tasca %s ha fallat: %s", task_id, task.info)
             return JsonResponse({
                 'status': 'error',
-                'message': str(task.info),
+                'message': 'Task failed',
                 'progress': {
                     'current': 0,
                     'total': 100,
@@ -431,13 +443,24 @@ def sync_readings(request, reading_batch_id):
     """Sync reading app data to server"""
     
     reading_batch = get_object_or_404(ReadingBatch, id=reading_batch_id)
-    
+
     operator = get_authenticated_operator(request)
-    print(f"Operator: {operator}")
-    print(f"Reading batch: {reading_batch}")
-    
+
+    # Un lot finalitzat, cancel·lat, facturat o esborrat ja no admet lectures de l'app
+    if not is_reading_batch_open(reading_batch):
+        logger.warning(
+            "Lecturapp: l'operari %s ha intentat sincronitzar lectures al lot tancat %s",
+            operator.pk if operator else None, reading_batch.pk,
+        )
+        return JsonResponse({
+            'success': False,
+            'message': 'Reading batch is closed',
+            'batch_id': reading_batch_id,
+        }, status=409)
+
     contract_active_token = ConfigProject.objects.get(token='contract_active_token').value
     meter_ids = []
+    rejected_meter_ids = []
     
     # Parse the request body as JSON
     try:
@@ -450,6 +473,16 @@ def sync_readings(request, reading_batch_id):
                 print(f"-----------------------------------------")
                 print(f"Reading Meter: {r.get('id')} - {r.get('code')}")
                 print(f"Fields to update: {(r.get('changes_to_save') or '').split(',')}")
+
+                # Només comptadors del lot: la resta es rebutgen sense tocar res
+                meter = Meter.objects.filter(id=r.get('id')).first() if str(r.get('id') or '').isdigit() else None
+                if meter is not None and not meter_in_reading_batch(meter, reading_batch):
+                    logger.warning(
+                        "Lecturapp: l'operari %s ha enviat una lectura del comptador %s, que no és del lot %s",
+                        operator.pk if operator else None, meter.pk, reading_batch.pk,
+                    )
+                    rejected_meter_ids.append(meter.pk)
+                    continue
 
                 action, meter_id, message = process_sync_reading_row(
                     r,
@@ -480,6 +513,7 @@ def sync_readings(request, reading_batch_id):
         'readings_count': processed_count,
         'batch_id': reading_batch_id,
         'operator_id': operator.id if operator else None,
-        'meter_ids': meter_ids
+        'meter_ids': meter_ids,
+        'rejected_meter_ids': rejected_meter_ids,
     })
     

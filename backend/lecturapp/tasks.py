@@ -1,3 +1,4 @@
+import logging
 import random
 from celery import shared_task
 from celery_progress.backend import ProgressRecorder
@@ -9,6 +10,12 @@ from service.models import SupplyPoint
 from service.utils.route_scope import effective_route_position, effective_route_select_related, routes_supply_points_q
 from coredata.models import ConfigProject
 from .serializers import RouteAppDetailSerializer, MeterAppSerializer, active_supply_point_q
+
+logger = logging.getLogger(__name__)
+
+# Marca dels resultats d'aquesta tasca: la vista d'estat només retorna resultats que la
+# porten, perquè l'app no pugui llegir per aquí els resultats d'altres tasques de Celery.
+LECTURAPP_ROUTES_TASK_KIND = 'lecturapp_routes_detailed'
 
 
 def meter_included_for_batch(meter, include_telecontrol, include_manual):
@@ -220,6 +227,7 @@ def process_reading_batch_routes_detailed(self, reading_batch_id, include_disabl
             progress_recorder.set_progress(100, 100, "Processing completed")
             
             return {
+                'kind': LECTURAPP_ROUTES_TASK_KIND,
                 'status': 'completed',
                 'data': serialized_data,
                 'message': f'Successfully processed fix meters route with {len(final_positions)} positions'
@@ -287,15 +295,18 @@ def process_reading_batch_routes_detailed(self, reading_batch_id, include_disabl
         progress_recorder.set_progress(100, 100, "Processing completed")
         
         return {
+            'kind': LECTURAPP_ROUTES_TASK_KIND,
             'status': 'completed',
             'data': serialized_data,
             'message': f'Successfully processed {len(serialized_data)} routes'
         }
         
     except Exception as e:
-        progress_recorder.set_progress(0, 100, f"Error: {str(e)}")
-        
+        logger.exception("Lecturapp: error preparant les rutes del lot %s", reading_batch_id)
+        progress_recorder.set_progress(0, 100, "Error")
+
         return {
+            'kind': LECTURAPP_ROUTES_TASK_KIND,
             'status': 'error',
-            'message': str(e)
+            'message': 'Error processing reading batch routes',
         } 
