@@ -1819,6 +1819,9 @@ export default {
     invalid_account_alert_title: 'Aviso: domiciliación anulada por devolución SEPA con cuenta inválida.',
     invalid_account_alert_detail: 'Método cambiado a Pago Bancario. Pendiente de revisar los datos bancarios.',
     invalid_account_alert_previous_iban: 'IBAN anterior',
+    remittance_blocked_alert_title: 'Aviso: facturas que no se domicilian por deuda pendiente.',
+    remittance_blocked_alert_detail: 'El proceso de facturación las ha pasado a Pago Bancario porque el contrato tenía facturas pendientes de cobro.',
+    remittance_blocked_alert_count: 'Facturas pendientes no domiciliadas',
     invoices_view: 'Vista de las facturas',
     invoices_view_periods: 'Por periodos',
     invoices_view_list: 'Todas',
@@ -2324,6 +2327,11 @@ export default {
   },
 
   billing_block: {
+    payment_method_alert_invalid_account_title: 'Aviso: método de pago cambiado por una devolución SEPA con cuenta inválida.',
+    payment_method_alert_invalid_account_detail: 'La factura ya no se domicilia. Hay que revisar los datos bancarios.',
+    payment_method_alert_blocked_title: 'Aviso: esta factura no se domicilia.',
+    payment_method_alert_blocked_detail: 'Al facturarla, el contrato tenía facturas pendientes de cobro y ha pasado a Pago Bancario.',
+    payment_method_alert_previous: 'Antes',
     relation_rectified_by: 'Abonada por',
     relation_rectifies: 'Abona',
     relation_refactors: 'Refacturación de',

@@ -8,6 +8,7 @@ import H1Region from '~/components/atoms/H1Region.vue';
 import OptionsDropdown from '~/components/molecules/OptionsDropdown.vue';
 import DropdownOption from '~/components/atoms/DropdownOption.vue';
 import InvoiceDetail from '../molecules/InvoiceDetail.vue';
+import InvoicePaymentMethodAlert from '../molecules/InvoicePaymentMethodAlert.vue';
 import ContractRegion from './ContractRegion.vue';
 import ContractRequestRegion from './ContractRequestRegion.vue';
 import ExploitationRegion from './ExploitationRegion.vue';
@@ -863,6 +864,7 @@ const handleRefactor = async () => {
       </div>
 
       <div v-if="data" id="item_data" :data-rel=id>
+        <InvoicePaymentMethodAlert :alert="data.payment_method_alert" />
         <InvoiceDetail @show-detail="showDetail" :id="invoiceId" :data="data" :isSubRegion="isSubRegion"
           :isBudget="isBudget" :commitmentDeposit="commitmentDeposit"></InvoiceDetail>
         <AtomsTabs class="py-2">

@@ -1819,6 +1819,9 @@ export default {
     invalid_account_alert_title: 'Avís: domiciliació anul·lada per retorn SEPA amb compte invàlid.',
     invalid_account_alert_detail: 'Mètode canviat a Pagament Bancari. Pendent de revisar les dades bancàries.',
     invalid_account_alert_previous_iban: 'IBAN anterior',
+    remittance_blocked_alert_title: 'Avís: factures que no es domicilien per deute pendent.',
+    remittance_blocked_alert_detail: 'El procés de facturació les ha passat a Pagament Bancari perquè el contracte tenia factures pendents de cobrar.',
+    remittance_blocked_alert_count: 'Factures pendents no domiciliades',
     invoices_view: 'Vista de les factures',
     invoices_view_periods: 'Per períodes',
     invoices_view_list: 'Totes',
@@ -2324,6 +2327,11 @@ export default {
   },
 
   billing_block: {
+    payment_method_alert_invalid_account_title: 'Avís: mètode de pagament canviat per un retorn SEPA amb compte invàlid.',
+    payment_method_alert_invalid_account_detail: 'La factura ja no es domicilia. Cal revisar les dades bancàries.',
+    payment_method_alert_blocked_title: 'Avís: aquesta factura no es domicilia.',
+    payment_method_alert_blocked_detail: 'En facturar-la, el contracte tenia factures pendents de cobrar i ha passat a Pagament Bancari.',
+    payment_method_alert_previous: 'Abans',
     relation_rectified_by: 'Abonada per',
     relation_rectifies: 'Abona',
     relation_refactors: 'Refacturació de',

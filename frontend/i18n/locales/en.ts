@@ -1810,6 +1810,9 @@ export default {
     invalid_account_alert_title: 'Warning: direct debit cancelled due to a SEPA return for an invalid account.',
     invalid_account_alert_detail: 'Payment method switched to Bank Payment. Bank details pending review.',
     invalid_account_alert_previous_iban: 'Previous IBAN',
+    remittance_blocked_alert_title: 'Warning: invoices not sent to direct debit due to outstanding debt.',
+    remittance_blocked_alert_detail: 'The billing process switched them to Bank Payment because the contract had unpaid invoices.',
+    remittance_blocked_alert_count: 'Unpaid invoices not sent to direct debit',
     invoices_view: 'Invoices view',
     invoices_view_periods: 'By period',
     invoices_view_list: 'All',
@@ -2315,6 +2318,11 @@ export default {
   },
 
   billing_block: {
+    payment_method_alert_invalid_account_title: 'Warning: payment method changed by a SEPA return for an invalid account.',
+    payment_method_alert_invalid_account_detail: 'The invoice is no longer sent to direct debit. Bank details need to be reviewed.',
+    payment_method_alert_blocked_title: 'Warning: this invoice is not sent to direct debit.',
+    payment_method_alert_blocked_detail: 'When it was billed, the contract had unpaid invoices, so it was switched to Bank Payment.',
+    payment_method_alert_previous: 'Before',
     relation_rectified_by: 'Credited by',
     relation_rectifies: 'Credits',
     relation_refactors: 'Rebilling of',

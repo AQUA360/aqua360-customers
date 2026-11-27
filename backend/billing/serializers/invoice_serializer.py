@@ -402,6 +402,8 @@ class InvoiceFullSerializer(PdfPageCountMixin, serializers.ModelSerializer):
     remittances = serializers.SerializerMethodField()
     joined_payments = serializers.SerializerMethodField()
     remittance_mark = serializers.SerializerMethodField()
+    # Mètode de pagament canviat pel sistema (retorn SEPA o domiciliació bloquejada per deute)
+    payment_method_alert = serializers.SerializerMethodField()
     
     status_token = serializers.CharField(write_only=True, required=False, allow_null=True)
     delete_payments = serializers.BooleanField(write_only=True, required=False, allow_null=True)
@@ -409,6 +411,13 @@ class InvoiceFullSerializer(PdfPageCountMixin, serializers.ModelSerializer):
         model = Invoice
         fields = '__all__'
  
+
+    def get_payment_method_alert(self, obj):
+        """Avís per a la fitxa de la factura; no es calcula en llistes (faria consultes per factura)."""
+        if isinstance(self.parent, serializers.ListSerializer):
+            return None
+        from billing.utils.payment_method_alert_service import invoice_payment_method_alert
+        return invoice_payment_method_alert(obj)
 
     def get_total_payments(self, obj):
         return obj.payments.count()

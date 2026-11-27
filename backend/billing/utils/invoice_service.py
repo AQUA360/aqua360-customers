@@ -1134,6 +1134,7 @@ def generate_consumption_invoice_multiple(
                 previous_payment_type=blocked_from_payment_type.name,
                 current_payment_type=payment_type_instance.name,
                 observation=_("No es domicilia: el contracte té factures pendents de cobrar"),
+                auto_reason=LogInvoiceDataChange.AUTO_REASON_REMITTANCE_BLOCKED,
                 user=None,
                 timestamp=timezone.now(),
             )
@@ -3778,11 +3779,13 @@ def check_existing_token(token, exploitation_token='0'):
 _UNCHANGED = object()
 
 
-def log_invoice_data_change(user, invoice, new_address, new_payment_type, new_payment_bank=_UNCHANGED):
+def log_invoice_data_change(user, invoice, new_address, new_payment_type, new_payment_bank=_UNCHANGED,
+                            auto_reason=None, reject_motive=None):
     """Registra a l'historial de la factura un canvi d'adreça, de mètode de pagament o d'IBAN.
 
     L'IBAN només es registra si qui crida el passa: si el passa buit (el compte es retira),
-    queda l'anterior a l'historial.
+    queda l'anterior a l'historial. `auto_reason` (i `reject_motive`) marquen els canvis que fa
+    el sistema sol, perquè la factura en mostri l'avís.
     """
     bank_given = new_payment_bank is not _UNCHANGED
     new_bank = (new_payment_bank or None) if bank_given else None
@@ -3801,22 +3804,26 @@ def log_invoice_data_change(user, invoice, new_address, new_payment_type, new_pa
         current_iban=new_bank,
         # Amb un IBAN nou o quan es retira el compte, l'anterior queda a l'historial
         previous_iban=previous_bank if (new_bank or bank_changed) else None,
+        auto_reason=auto_reason,
+        reject_motive=reject_motive,
         user=user,
         timestamp=timezone.now()
     )
 
 
 def apply_invoice_payment_method(user, invoice, payment_type, payment_bank_final=None, payment_swift_final=None,
-                                 company_bank=_UNCHANGED):
+                                 company_bank=_UNCHANGED, auto_reason=None, reject_motive=None):
     """Canvia el mètode de pagament d'una factura i dels seus pagaments no cobrats.
 
-    Deixa constància del canvi a l'historial de la factura (`log_invoice_data_change`). No
-    comprova si la factura es pot canviar ni gestiona els senyals de pagaments: ho ha de fer
-    qui la crida. `company_bank` només es toca si es passa explícitament.
+    Deixa constància del canvi a l'historial de la factura (`log_invoice_data_change`), amb el
+    motiu si el canvi el fa el sistema (`auto_reason`). No comprova si la factura es pot canviar
+    ni gestiona els senyals de pagaments: ho ha de fer qui la crida. `company_bank` només es
+    toca si es passa explícitament.
     """
     payment_status_paid_token = ConfigProject.objects.get(token='payment_status_paid_token').value
 
-    log_invoice_data_change(user, invoice, None, payment_type.name, payment_bank_final)
+    log_invoice_data_change(user, invoice, None, payment_type.name, payment_bank_final,
+                            auto_reason=auto_reason, reject_motive=reject_motive)
 
     invoice.payment_bank_final = payment_bank_final
     # El SWIFT ha d'anar sempre amb l'IBAN nou: la remesa el fa servir com a BIC del deutor
