@@ -57,7 +57,6 @@ EXEMPT_VIEWS = {
     'communication.views.sms_callback_view.SmsCallbackView': "callback del proveïdor d'SMS",
     'lecturapp.views.AuthenticationView': "login de l'app de lectures",
     'lecturapp.views.validate_token': "validació del token de l'app de lectures",
-    'lecturapp.views.ReadingOperatorViewSet': "autenticació pròpia de l'app de lectures",
     'billing.views.reader_alert_view.ReaderAlertAppViewSet': "autenticació pròpia de l'app de lectures",
     'notification.views.incident_view.IncidentAppViewSet': "autenticació pròpia de l'app de lectures",
     'service.views.route_position_view.RoutePositionAppViewSet': "autenticació pròpia de l'app de lectures",

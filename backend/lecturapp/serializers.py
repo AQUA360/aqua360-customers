@@ -226,13 +226,6 @@ class ReadingOperatorCreateSerializer(serializers.ModelSerializer):
         validated_data.pop('password_confirm')
         return ReadingOperator.objects.create(**validated_data)
 
-class ReadingOperatorUpdateSerializer(serializers.ModelSerializer):
-    """Serializer for updating ReadingOperator"""
-    
-    class Meta:
-        model = ReadingOperator
-        fields = ['name', 'surname', 'username', 'is_active']
-
 class ReadingOperatorPasswordChangeSerializer(serializers.Serializer):
     """Serializer for changing password"""
     

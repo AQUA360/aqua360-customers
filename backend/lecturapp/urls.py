@@ -9,7 +9,6 @@ from . import cluster_views, views
 
 # Create a router for ViewSets
 router = DefaultRouter()
-router.register(r'operators', views.ReadingOperatorViewSet, basename='reading-operator')
 router.register(r'reader-alerts', ReaderAlertAppViewSet, basename='reader-alert-app')
 router.register(r'supply-placements', SupplyPointPlacementAppViewSet, basename='supply-placement-app')
 router.register(r'positions', RoutePositionAppViewSet, basename='route-position-app')
