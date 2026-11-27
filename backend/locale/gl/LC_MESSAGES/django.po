@@ -5189,3 +5189,15 @@ msgstr "Rúa"
 #: claimrequest/views/claim_request_excel_generate_view.py
 msgid "Pis-porta"
 msgstr "Andar-porta"
+
+#: auth/views.py
+msgid "The current password is not correct."
+msgstr "O contrasinal actual non é correcto."
+
+#: auth/views.py
+msgid "The new password is required."
+msgstr "Hai que indicar o contrasinal novo."
+
+#: auth/views.py
+msgid "The new password must be different from the current one."
+msgstr "O contrasinal novo debe ser distinto do actual."

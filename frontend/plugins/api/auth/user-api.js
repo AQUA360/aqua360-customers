@@ -91,12 +91,38 @@ export default defineNuxtPlugin(nuxtApp => {
         }
     };
   
+    // Canvi de la contrasenya de l'usuari que ha fet login (qualsevol rol); el backend
+    // tanca les altres sessions i conserva l'actual
+    const changeOwnPassword = async (currentPassword, newPassword) => {
+      const apiUrl = `${apiHost}/auth/change-password/`;
+      return $apiManager.fetch(apiUrl, 'POST', {
+        current_password: currentPassword,
+        new_password: newPassword,
+      }, { 'Content-Type': 'application/json' });
+    };
+
+    // Fitxa de l'usuari que ha fet login: consultar i canviar nom, cognoms i correu
+    const getOwnProfile = async () => {
+      return $apiManager.fetch(`${apiHost}/auth/profile/`, 'GET');
+    };
+
+    const updateOwnProfile = async (data) => {
+      return $apiManager.fetch(`${apiHost}/auth/profile/`, 'PATCH', {
+        first_name: data.first_name,
+        last_name: data.last_name,
+        email: data.email,
+      }, { 'Content-Type': 'application/json' });
+    };
+
     const apiService = {
       getAll,
       exportData,
       getDetail,
       save,
-      deleteItem
+      deleteItem,
+      changeOwnPassword,
+      getOwnProfile,
+      updateOwnProfile
     };
   
     nuxtApp.provide(provideName, apiService);

@@ -6585,3 +6585,15 @@ msgstr "Carrer"
 #: claimrequest/views/claim_request_excel_generate_view.py
 msgid "Pis-porta"
 msgstr "Pis-porta"
+
+#: auth/views.py
+msgid "The current password is not correct."
+msgstr "La contrasenya actual no és correcta."
+
+#: auth/views.py
+msgid "The new password is required."
+msgstr "Cal informar la contrasenya nova."
+
+#: auth/views.py
+msgid "The new password must be different from the current one."
+msgstr "La contrasenya nova ha de ser diferent de l'actual."

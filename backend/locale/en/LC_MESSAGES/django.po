@@ -4609,3 +4609,15 @@ msgstr "Street"
 #: claimrequest/views/claim_request_excel_generate_view.py
 msgid "Pis-porta"
 msgstr "Floor-door"
+
+#: auth/views.py
+msgid "The current password is not correct."
+msgstr "The current password is not correct."
+
+#: auth/views.py
+msgid "The new password is required."
+msgstr "The new password is required."
+
+#: auth/views.py
+msgid "The new password must be different from the current one."
+msgstr "The new password must be different from the current one."

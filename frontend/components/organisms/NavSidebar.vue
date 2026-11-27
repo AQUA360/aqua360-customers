@@ -92,7 +92,12 @@ const verifactuEnabled = config.public.verifactuEnabled;
 
 const logout = async () => {
   // Revoca el token al servidor; si falla (p. ex. ja havia caducat), se surt igualment.
+  // Primer es buida la sessió local: així cap petició nova surt amb el token que es revoca,
+  // i les que ja anaven de camí no mostren error (l'api-manager ignora el 401 d'una sessió tancada).
   const authToken = localStorage.getItem('auth_token');
+  localStorage.removeItem('auth_token');
+  localStorage.removeItem('user_username');
+  localStorage.removeItem('exploitation');
   if (authToken) {
     try {
       await $fetch(config.public.apiHost + '/auth/logout/', {
@@ -103,9 +108,6 @@ const logout = async () => {
       console.error(e);
     }
   }
-  localStorage.removeItem('auth_token');
-  localStorage.removeItem('user_username');
-  localStorage.removeItem('exploitation');
   // $router.push('/auth/login');
   return navigateTo('/auth/login')
 };
@@ -775,6 +777,13 @@ onUnmounted(() => {
             <span class="text-xs font-semibold text-slate-700 truncate" :title="username">{{ username }}</span>
           </div>
         </div>
+
+        <!-- Fitxa pròpia (dades i contrasenya): tots els usuaris, sigui quin sigui el rol -->
+        <NuxtLink to="/user/profile" @click="showDropdown = false"
+          class="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 transition-colors">
+          <Icon name="fa6-solid:user-gear" class="w-4 h-4 text-slate-500" />
+          <span>{{ $t('user_group.my_profile') }}</span>
+        </NuxtLink>
 
         <!-- Exit button -->
         <button @click="logout(); showDropdown = false;"

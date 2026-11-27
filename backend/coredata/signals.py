@@ -122,8 +122,13 @@ def user_password_change_pre_save(sender, instance, **kwargs):
 
 @receiver(post_save, sender=User)
 def user_password_change_revoke_tokens(sender, instance, created, **kwargs):
-    """En canviar la contrasenya, es tanquen totes les sessions i el token de l'usuari."""
+    """En canviar la contrasenya, es tanquen totes les sessions i el token de l'usuari.
+
+    Si l'usuari canvia la seva pròpia contrasenya, `_keep_token_key` conserva la sessió
+    des d'on ho fa (les altres es tanquen igualment)."""
     if getattr(instance, "_password_changed", False):
         instance._password_changed = False
+        keep_key = getattr(instance, "_keep_token_key", None)
+        instance._keep_token_key = None
         from coredata.authentication import revoke_user_tokens
-        revoke_user_tokens(instance)
+        revoke_user_tokens(instance, except_key=keep_key)

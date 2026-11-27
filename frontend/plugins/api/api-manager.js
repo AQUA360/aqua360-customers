@@ -13,7 +13,13 @@ export default defineNuxtPlugin(nuxtApp => {
   // Shared 401 handling: clear the expired session and redirect to login.
   // Mirrors NavSidebar.logout() so the auth middleware stops treating the
   // session as valid and no page is left in a loading state.
-  const handleUnauthorized = async (message) => {
+  // `sentToken`: el token amb què s'ha fet la petició. Si la sessió ja no és aquesta (s'ha
+  // tancat amb el logout o s'ha entrat de nou), el 401 és d'una petició que anava de camí:
+  // no es mostra cap error ni es tanca la sessió nova.
+  const handleUnauthorized = async (message, sentToken = undefined) => {
+    if (sentToken !== undefined && (!sentToken || localStorage.getItem('auth_token') !== sentToken)) {
+      return;
+    }
     const currentTime = Date.now();
     if (message && currentTime - last401ToastTime > 2000) {
       toast.error(message);
@@ -105,7 +111,7 @@ export default defineNuxtPlugin(nuxtApp => {
         logError(`${method} ${url}`, error, { body });
 
         if (error?.response?.status === 401 && !isGOTRoute) {
-          await handleUnauthorized(message);
+          await handleUnauthorized(message, authToken);
         } else {
           // Display the error message in a toast notification for non-401 errors
           if (!suppressToast) {
@@ -141,7 +147,7 @@ export default defineNuxtPlugin(nuxtApp => {
         logError(`GET /task-progress/${task_id}`, error);
 
         if (error?.response?.status === 401) {
-          await handleUnauthorized(message);
+          await handleUnauthorized(message, authToken);
         } else {
           toast.error(message);
         }
@@ -174,7 +180,7 @@ export default defineNuxtPlugin(nuxtApp => {
         logError('POST /claim-request/massive-cancel-contract/', error, { data });
 
         if (error?.response?.status === 401) {
-          await handleUnauthorized(message);
+          await handleUnauthorized(message, authToken);
         } else {
           toast.error(message);
         }
@@ -229,7 +235,7 @@ export default defineNuxtPlugin(nuxtApp => {
         logError('GET /auth/permissions/my-permissions/', error);
 
         if (error?.response?.status === 401) {
-          await handleUnauthorized(message);
+          await handleUnauthorized(message, authToken);
         } else {
           toast.error(message);
         }

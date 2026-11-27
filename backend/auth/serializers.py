@@ -271,6 +271,29 @@ class UserMinimalSerializer(serializers.HyperlinkedModelSerializer):
         model = User
         fields = [ 'id', 'first_name', 'last_name', 'username', 'email' ]
 
+class OwnProfileSerializer(serializers.ModelSerializer):
+    """Dades del propi usuari: pot canviar nom, cognoms i correu.
+
+    El nom d'usuari, el rol i el grup només es mostren: els canvia un superusuari des de la
+    gestió d'usuaris (el nom d'usuari decideix qui pot ser superusuari)."""
+    email = serializers.EmailField(required=True, allow_blank=False, max_length=254)
+    role = serializers.SerializerMethodField()
+    group_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = ['id', 'username', 'first_name', 'last_name', 'email', 'role', 'group_name',
+                  'date_joined', 'last_login']
+        read_only_fields = ['id', 'username', 'date_joined', 'last_login']
+
+    def get_role(self, obj):
+        return get_user_role(obj)
+
+    def get_group_name(self, obj):
+        group = obj.groups.first()
+        return group.name if group else None
+
+
 class GroupSerializer(serializers.HyperlinkedModelSerializer):
     permissions = serializers.SerializerMethodField()
     users = serializers.SerializerMethodField()

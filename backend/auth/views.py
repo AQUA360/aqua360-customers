@@ -12,11 +12,13 @@ from axes.handlers.proxy import AxesProxyHandler
 from django.shortcuts import render
 from django.utils.translation import gettext_lazy as _
 from django.contrib.auth.models import Group, User, Permission
+from django.core.exceptions import ValidationError as DjangoValidationError
 
 from auth.filters import UserFilter, GroupFilter
 from auth.roles import CANONICAL_SUPERUSER_USERNAME, get_user_role, is_canonical_superuser, is_customers_account
-from auth.serializers import GroupSerializer, UserSerializer, PermissionSerializer
+from auth.serializers import GroupSerializer, OwnProfileSerializer, UserSerializer, PermissionSerializer
 from auth.permissions import PermissionManager
+from auth.validators import validate_user_password
 from coredata.authentication import issue_token_key
 from coredata.permissions import can_edit_config_project
 
@@ -91,6 +93,54 @@ class LogoutView(APIView):
             request.auth.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
     
+
+class OwnProfileView(generics.RetrieveUpdateAPIView):
+    """Fitxa de l'usuari autenticat (consultar i canviar nom, cognoms i correu).
+
+    Oberta a qualsevol usuari autenticat, sigui quin sigui el seu rol o permisos, i sempre
+    sobre `request.user`: no accepta cap id d'usuari."""
+    serializer_class = OwnProfileSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_object(self):
+        return self.request.user
+
+
+class ChangeOwnPasswordView(APIView):
+    """Canvi de la contrasenya de l'usuari autenticat, sigui quin sigui el seu rol o permisos.
+
+    Només actua sobre `request.user` (no accepta cap id d'usuari): canviar la contrasenya
+    d'un altre usuari es fa des de la gestió d'usuaris, reservada als superusuaris.
+    Demana la contrasenya actual i aplica les mateixes regles que la gestió d'usuaris.
+    En desar, es tanquen les altres sessions de l'usuari i es conserva l'actual.
+    """
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'password_change'
+
+    def post(self, request):
+        user = request.user
+        current_password = request.data.get('current_password') or ''
+        new_password = request.data.get('new_password') or ''
+
+        if not current_password or not user.check_password(current_password):
+            raise ValidationError({'current_password': [_('The current password is not correct.')]})
+        if not new_password:
+            raise ValidationError({'new_password': [_('The new password is required.')]})
+        if new_password == current_password:
+            raise ValidationError({'new_password': [_('The new password must be different from the current one.')]})
+
+        try:
+            validate_user_password(new_password, user, is_canonical_superuser(user))
+        except DjangoValidationError as error:
+            raise ValidationError({'new_password': list(error.messages)})
+
+        user.set_password(new_password)
+        # El senyal de canvi de contrasenya tanca les sessions; es conserva la d'aquesta petició
+        user._keep_token_key = getattr(request.auth, 'key', None)
+        user.save(update_fields=['password'])
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 class UserViewSet(viewsets.ModelViewSet):
     """

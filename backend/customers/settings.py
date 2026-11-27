@@ -484,6 +484,8 @@ REST_FRAMEWORK = {
     # Límit d'intents de login per IP (els scopes s'apliquen amb ScopedRateThrottle)
     "DEFAULT_THROTTLE_RATES": {
         "login": "10/min",
+        # Canvi de la contrasenya pròpia (per usuari): limita endevinar l'actual
+        "password_change": "5/min",
     },
     # Nombre de proxys de confiança davant el backend (Cloudflare + nginx): DRF en deriva
     # la IP real de X-Forwarded-For sense fiar-se d'un valor falsejable pel client.
