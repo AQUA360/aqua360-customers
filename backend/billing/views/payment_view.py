@@ -33,6 +33,7 @@ from contract.models import Contract, PaymentType, PiggyBankMovement
 from coredata.models import ConfigProject, PersonPiggyBankMovement
 from logger.models import LogCommitmentDepositMovement
 import logging
+from billing.permissions import PaymentModelPermission
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +74,7 @@ class PaymentOrderingFilter(OrderingFilter):
 class PaymentViewSet(viewsets.ModelViewSet):
     queryset = Payment.objects.filter(is_active=True)
     serializer_class = PaymentSerializer
-    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    permission_classes = [IsAuthenticated, PaymentModelPermission]
     filterset_class = PaymentFilter
     filter_backends = [DjangoFilterBackend, PaymentOrderingFilter]
 

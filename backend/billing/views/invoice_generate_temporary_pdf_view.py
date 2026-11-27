@@ -10,11 +10,12 @@ from billing.utils.invoice_pdf import generate
 from service.models import Exploitation
 from django.shortcuts import get_object_or_404
 import logging
+from billing.permissions import InvoiceModelPermission
 
 logger = logging.getLogger(__name__)
 
 class InvoiceGenerateTemporaryPDFView(views.APIView):
-    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    permission_classes = [IsAuthenticated, InvoiceModelPermission]
     queryset = Invoice.objects.all().order_by('-created_at')
     def get(self, request, id):
         """Generate a temporary invoice PDF and return its absolute URL.

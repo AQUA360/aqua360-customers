@@ -16,6 +16,7 @@ from billing.serializers.invoice_serializer import InvoiceMinimalListSerializer
 from django.shortcuts import get_object_or_404
 import logging
 from coredata.utils.workbook_utils import workbook_to_bytes
+from billing.permissions import BillingModelPermission
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +41,7 @@ def jump_row(row):
     return row
 
 class BillingPreInvoicesSummaryXLSViewSet(views.APIView):
-    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    permission_classes = [IsAuthenticated, BillingModelPermission]
     queryset = Billing.objects.all().order_by('-created_at')
     @use_default_language
     def get(self, request, id):

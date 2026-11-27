@@ -2,12 +2,12 @@ import logging
 
 from django.http import HttpResponse
 from rest_framework import status
-from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from auth.permissions import PermissionManager
+from billing.permissions import SmartMeteringSettingsPermission
+from coredata.permissions import can_edit_config_project
 from billing.utils.smart_metering_service import (
     build_smart_metering_openapi,
     build_smart_metering_server_curl,
@@ -18,6 +18,7 @@ from billing.utils.smart_metering_service import (
 
 logger = logging.getLogger(__name__)
 
+MASKED_TOKEN = "********"
 _DATE_ERROR_CODES = {"reading_date_required", "reading_date_invalid"}
 
 
@@ -32,23 +33,23 @@ class SmartMeteringSettingsView(APIView):
     """
     Smart Metering connection settings and connectivity probes.
 
-    GET returns the API URL (env) and the ConfigProject authentication token.
+    GET returns the API URL (env) and the ConfigProject authentication token (masked unless the
+    user can change the project configuration).
     POST action ``connectivity`` checks that the host answers.
     POST action ``readings`` returns a sample of one day's readings and does not
     save them.
     """
 
-    permission_classes = [IsAuthenticated]
-
-    def _check_permission(self, request):
-        if not PermissionManager.has_permission(request.user, "view_user"):
-            raise PermissionDenied("You don't have permission to view Smart Metering settings.")
+    permission_classes = [IsAuthenticated, SmartMeteringSettingsPermission]
 
     def get(self, request):
-        self._check_permission(request)
         download = request.query_params.get("download")
         if not download:
-            return Response(get_smart_metering_settings())
+            settings_data = get_smart_metering_settings()
+            token = settings_data.get("authentication_token")
+            if token and not can_edit_config_project(request.user):
+                settings_data["authentication_token"] = MASKED_TOKEN
+            return Response(settings_data)
         try:
             if download == "openapi":
                 connection = get_smart_metering_settings()
@@ -81,7 +82,6 @@ class SmartMeteringSettingsView(APIView):
         return Response({"code": "download_invalid"}, status=status.HTTP_400_BAD_REQUEST)
 
     def post(self, request):
-        self._check_permission(request)
         payload = request.data if isinstance(request.data, dict) else {}
         action = payload.get("action")
         try:

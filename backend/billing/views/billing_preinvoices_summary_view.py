@@ -13,6 +13,7 @@ from django.shortcuts import get_object_or_404
 
 from coredata.utils.other_utils import round_ceil
 import logging
+from billing.permissions import BillingModelPermission
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,7 @@ def highlighted(value):
 
 
 class BillingPreInvoicesSummaryViewSet(views.APIView):
-    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    permission_classes = [IsAuthenticated, BillingModelPermission]
     queryset = Billing.objects.all().order_by('-created_at')
     def get(self, request, id):
         try:

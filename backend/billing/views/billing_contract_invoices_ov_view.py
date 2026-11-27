@@ -8,9 +8,10 @@ from billing.views.invoice_pdf_view import generate_report_invoice_pdf
 from contract.models import Contract
 from billing.serializers.billing_contract_invoices_ov_serializer import BillingContractInvoicesOVSerializer, ContractConsumptionOVSerializer
 from coredata.models import ConfigProject
+from ov.permissions import IsOVUser
 
 class BillingContractInvoicesOVView(APIView):
-    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    permission_classes = [IsAuthenticated, IsOVUser]
     queryset = Contract.objects.all().order_by('-created_at')
     def get(self, request, contract_token):
         if not contract_token:
@@ -23,7 +24,7 @@ class BillingContractInvoicesOVView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
     
 class BillingContractInvoiceOVView(APIView):
-    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    permission_classes = [IsAuthenticated, IsOVUser]
     queryset = Contract.objects.all().order_by('-created_at')
     def get(self, request, contract_token, invoice_token):
         if not contract_token or not invoice_token:
@@ -55,7 +56,7 @@ class BillingContractInvoiceOVView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
     
 class BillingContractInvoiceOVPDFView(APIView):
-    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    permission_classes = [IsAuthenticated, IsOVUser]
     queryset = Contract.objects.all().order_by('-created_at')
     def get(self, request, contract_token, invoice_token):
         context = {'request': request}
@@ -72,7 +73,7 @@ class BillingContractInvoiceOVPDFView(APIView):
         return Response(pdf_base64, status=status.HTTP_200_OK)
 
 class BillingContractInvoicesOVUnpaidView(APIView):
-    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    permission_classes = [IsAuthenticated, IsOVUser]
     queryset = Contract.objects.all().order_by('-created_at')
     def get(self, request, contract_token):
         if not contract_token:
@@ -108,7 +109,7 @@ class BillingContractInvoiceOVPayView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
     
 class ContractConsumptionOVView(APIView):
-    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    permission_classes = [IsAuthenticated, IsOVUser]
     queryset = Contract.objects.all().order_by('-created_at')
     def get(self, request, contract_token):
         if not contract_token:

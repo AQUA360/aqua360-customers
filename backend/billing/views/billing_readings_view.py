@@ -11,9 +11,10 @@ from billing.filter.reading_filter import ReadingFilter
 from billing.models import Billing, Reading
 from billing.serializers.reading_serializer import ReadingByBatchMinimalSerializer
 from django.shortcuts import get_object_or_404
+from billing.permissions import ReadingModelPermission
 
 class BillingReadingsViewSet(generics.ListAPIView):  # Changed to generics.ListAPIView
-    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    permission_classes = [IsAuthenticated, ReadingModelPermission]
     serializer_class = ReadingByBatchMinimalSerializer  # Added serializer_class
     pagination_class = PageNumberPagination  # Added pagination_class
     filter_backends = [DjangoFilterBackend]  # Added filter_backends

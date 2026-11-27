@@ -12,7 +12,7 @@ class TestInvoiceSendGroupedEmailValidation(TestCase):
 
     @classmethod
     def setUpTestData(cls):
-        cls.user = get_user_model().objects.create_user(username='grouped-email', password='x')
+        cls.user = get_user_model().objects.create_superuser(username='grouped-email', password='x')
         # bulk_create: els signals de la factura no intervenen en el que es prova.
         Invoice.objects.bulk_create([
             Invoice(token='F-ACTIVE', serie_final='FC/1'),

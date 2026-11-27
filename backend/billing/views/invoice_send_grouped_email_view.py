@@ -22,6 +22,8 @@ from service.models import Company, CompanyConfig
 
 from ..models import Invoice
 import logging
+from billing.permissions import CanSendInvoiceEmails
+from billing.throttles import InvoiceEmailThrottle, email_payload_error
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +53,8 @@ class InvoiceSendGroupedEmailView(APIView):
     tots els CommunicationFile de la comunicació.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CanSendInvoiceEmails]
+    throttle_classes = [InvoiceEmailThrottle]
 
     def post(self, request, *args, **kwargs):
         # 1. Validar el destinatari
@@ -84,6 +87,10 @@ class InvoiceSendGroupedEmailView(APIView):
                 )
 
         # 2. Validar les factures (sense duplicats, mantenint l'ordre rebut)
+        error = email_payload_error(emails, request.data.get('subject'), request.data.get('body'))
+        if error:
+            return Response({"error": error}, status=status.HTTP_400_BAD_REQUEST)
+
         raw_ids = request.data.get('invoice_ids')
         if not isinstance(raw_ids, list) or not raw_ids:
             return Response(

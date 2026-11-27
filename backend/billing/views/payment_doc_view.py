@@ -23,9 +23,10 @@ import uuid
 import threading
 
 from documentmanager.utils.main_utils import upload_document
+from billing.permissions import CanViewInvoiceOrPaymentDocuments
 
 class PaymentDocDownloadViewSet(APIView):
-  permission_classes = [IsAuthenticated] #Since it's a view that shows a document, no further permissions are needed
+  permission_classes = [IsAuthenticated, CanViewInvoiceOrPaymentDocuments]
   queryset = Invoice.objects.all().order_by('-created_at')
   def get(self, request, id, *args, **kwargs):
     

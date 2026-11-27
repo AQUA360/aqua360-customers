@@ -20,6 +20,7 @@ from documentmanager.utils.sign_certificate_service import sign_pdf
 from service.models import Exploitation
 from service.serializers.company_serializer import CompanySerializer
 from service.serializers.supply_point_serializer import SupplyPointListSerializer
+from auth.permissions import DjangoModelViewPermissions
 
 # El mes ja porta la preposició que toqui a cada idioma («d'octubre», «de octubre», «October»).
 _MONTHS_WITH_PREPOSITION = {
@@ -48,7 +49,7 @@ def localized_long_date(value):
 
 
 class CommitmentDepositPDFDownloadViewSet(APIView):
-  permission_classes = [IsAuthenticated, DjangoModelPermissions]
+  permission_classes = [IsAuthenticated, DjangoModelViewPermissions]
   queryset = CommitmentDeposit.objects.all().order_by('-created_at')
   def get(self, request, id, *args, **kwargs):
     deposit = CommitmentDeposit.objects.get(id=id)

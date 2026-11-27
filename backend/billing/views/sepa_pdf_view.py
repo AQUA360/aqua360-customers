@@ -17,9 +17,10 @@ from service.serializers.company_serializer import CompanySerializer
 
 from documentmanager.utils.main_utils import upload_document
 from billing.views.contract_sepa_pdf_view import _company_from_contract, _contact_info, _debtor_address
+from billing.permissions import CanViewSepaDocuments
 
 class SepaPDFDownloadViewSet(APIView):
-  permission_classes = [IsAuthenticated] #Since it's a view that shows a document, no further permissions are needed
+  permission_classes = [IsAuthenticated, CanViewSepaDocuments]
   queryset = Payment.objects.all().order_by('-created_at')
   def post(self, request, id, *args, **kwargs):
     

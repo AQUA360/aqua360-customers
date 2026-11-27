@@ -23,9 +23,10 @@ from service.utils.exploitation_logo import exploitation_logo_source
 from service.utils.company_bank_service import get_payment_company_bank
 
 from documentmanager.utils.main_utils import upload_document
+from billing.permissions import CanViewPaymentDocuments
 
 class GeneratePaymentDocDownloadViewSet(APIView):
-  permission_classes = [IsAuthenticated] #Since it's a view that shows a document, no further permissions are needed
+  permission_classes = [IsAuthenticated, CanViewPaymentDocuments]
   queryset = Invoice.objects.all().order_by('-created_at')
   def get(self, request, id, *args, **kwargs):
     

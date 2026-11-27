@@ -37,6 +37,7 @@ from billing.views.epayment_document_generate_view import generate_xml
 from statistics.utils.report_service import delete_file_later
 from django.db import transaction
 import logging
+from billing.permissions import InvoiceModelPermission
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +46,7 @@ class InvoiceViewSet(viewsets.ModelViewSet):
   API endpoint that allows reading batches to be viewed or edited.
   """
   queryset = Invoice.objects.all().filter(is_active=True).order_by('-issue_date', '-created_at','status__position')
-  permission_classes = [IsAuthenticated, DjangoModelPermissions]
+  permission_classes = [IsAuthenticated, InvoiceModelPermission]
   filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
   filterset_class = InvoiceFilter
   search_fields = ['token','title_final', 'number', 'contract__token', 'contract_request__token', 'customer_final', 'customer_token_final', 'serie_final', 'payment_bank_final' ]

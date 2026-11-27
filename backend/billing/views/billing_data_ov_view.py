@@ -7,9 +7,10 @@ from billing.models import Billing
 from contract.models import Contract
 from billing.serializers.billing_data_ov_serializer import BillingDataOVSerializer
 from coredata.models import PersonContact
+from ov.permissions import IsOVUser
 
 class BillingDataOVView(APIView):
-    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    permission_classes = [IsAuthenticated, IsOVUser]
     queryset = Contract.objects.all().order_by('-created_at')
     def get(self, request, contract_token):
         if not contract_token:

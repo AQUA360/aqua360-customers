@@ -5,6 +5,7 @@ from rest_framework import status
 
 from billing.tasks import export_reading_batch_supply_points_csv_task
 import logging
+from billing.permissions import CanViewReadingExports
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +15,7 @@ class ReadingBatchSupplyPointsCSVExportView(APIView):
     Exporta en CSV els SupplyPoints de les Routes d'un ReadingBatch,
     amb la lectura del lot associada (si n'hi ha) i els contractes.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CanViewReadingExports]
 
     def get(self, request, *args, **kwargs):
         batch_id = request.query_params.get('batch')

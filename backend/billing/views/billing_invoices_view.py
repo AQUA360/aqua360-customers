@@ -24,12 +24,13 @@ from coredata.utils.pdf_utils import merge_pdfs
 from documentmanager.utils.export_jobs import enqueue_export, export_job_response
 from documentmanager.utils.export_permissions import export_permission_class
 import logging
+from billing.permissions import BillingModelPermission
 
 logger = logging.getLogger(__name__)
 
 
 class BillingInvoicesViewSet(generics.ListAPIView):  # Changed to generics.ListAPIView
-    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    permission_classes = [IsAuthenticated, BillingModelPermission]
     serializer_class = InvoiceMinimalListSerializer  # Added serializer_class
     pagination_class = PageNumberPagination  # Added pagination_class
     filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]  # Added filter_backends
@@ -128,7 +129,7 @@ class BillingInvoicesExportView(BillingInvoicesViewSet):
 
 
 class BillingInvoicesSummaryViewSet(views.APIView):
-    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    permission_classes = [IsAuthenticated, BillingModelPermission]
     queryset = Billing.objects.all().order_by('-created_at')
     def get(self, request, id):
         try:
@@ -198,7 +199,7 @@ class BillingInvoicesSummaryViewSet(views.APIView):
             return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class BillingInvoicesPdfViewSet(views.APIView):
-    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    permission_classes = [IsAuthenticated, BillingModelPermission]
     queryset = Billing.objects.all().order_by('-created_at')
     def get(self, request, id):
         try:

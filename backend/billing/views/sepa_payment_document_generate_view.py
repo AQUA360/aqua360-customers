@@ -35,6 +35,7 @@ from django.db.models.functions import Coalesce
 from faker import Faker
 fake = Faker()
 from rest_framework.pagination import PageNumberPagination
+from billing.permissions import SepaConceptConfigPermission
 
 logger = logging.getLogger(__name__)
 
@@ -984,7 +985,7 @@ class SEPAConceptConfigViewSet(APIView):
     Configuració global del concepte del rebut bancari: quins camps hi surten. La desa per a tots els
     usuaris i la fan servir totes les remeses (GET: consultar; PUT: desar, requereix permís de canvi).
     """
-    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    permission_classes = [IsAuthenticated, SepaConceptConfigPermission]
     queryset = ConfigProject.objects.all()
 
     def get(self, request, *args, **kwargs):
