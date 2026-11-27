@@ -137,7 +137,7 @@
         </p>
     </div>
 
-    {% load i18n %}
+    {% load i18n clause_filters %}
     {% language 'ca' %}
     <div>
         <p>{{ company.address.province.name }}, {{ company.address.city.name }}, {{ request.created_at|date:"d F Y" }}</p>
@@ -162,7 +162,7 @@
     {% if clauses != null%}
     <div class="legal-text">
         {% for clause in clauses %}
-            <p  style="white-space: pre-line;">{{ clause.clause|linebreaks|safe }}</p>
+            <p  style="white-space: pre-line;">{{ clause.clause|clause_html }}</p>
         {% endfor %}
     </div>
     {% endif%}
