@@ -304,6 +304,15 @@ class OwnProfileSerializer(serializers.ModelSerializer):
                     {'current_password': [gettext("The current password is not correct.")]})
         return attrs
 
+    def update(self, instance, validated_data):
+        # Només es desen els camps que s'han canviat: un desament complet podria tornar enrere
+        # canvis fets mentrestant (p. ex. la contrasenya, que també tancaria les sessions)
+        for field, value in validated_data.items():
+            setattr(instance, field, value)
+        if validated_data:
+            instance.save(update_fields=list(validated_data))
+        return instance
+
     def get_role(self, obj):
         return get_user_role(obj)
 

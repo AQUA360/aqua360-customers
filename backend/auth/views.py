@@ -14,6 +14,7 @@ from django.shortcuts import render
 from django.utils.translation import gettext_lazy as _
 from django.contrib.auth.models import Group, User, Permission
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import transaction
 
 from auth.filters import UserFilter, GroupFilter
 from auth.roles import CANONICAL_SUPERUSER_USERNAME, get_user_role, is_canonical_superuser, is_customers_account
@@ -96,20 +97,6 @@ class LogoutView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
     
 
-class PasswordResetIPThrottle(LoginIPThrottle):
-    """Límit per IP de la demanda del correu de recuperació (scope "password_reset")."""
-    scope = 'password_reset'
-
-
-class PasswordResetConfirmIPThrottle(LoginIPThrottle):
-    """Límit per IP de l'enllaç de recuperació (comprovar-lo i desar la contrasenya).
-
-    Separat de la demanda del correu: cada recuperació en fa diverses peticions (comprovar,
-    intents amb contrasenyes rebutjades, desar) i, compartint el límit, una oficina darrere
-    d'una sola IP es quedaria sense recuperacions."""
-    scope = 'password_reset_confirm'
-
-
 def _request_text(request, field):
     """Camp de text del cos de la petició; 400 (no 500) si arriba un número, una llista..."""
     data = request.data if isinstance(request.data, dict) else {}
@@ -122,17 +109,19 @@ def _request_text(request, field):
 class PasswordResetRequestView(APIView):
     """Demana el correu de recuperació de la contrasenya des del login (sense sessió).
 
-    POST {username} → {status: "sent" | "unavailable"}. "unavailable" vol dir que no s'ha pogut
-    enviar (usuari sense correu, empresa sense correu configurat...): la pantalla demana
-    que s'adreci a l'administrador. No es diu el motiu.
+    POST {username} → sempre {status: "sent"}, s'hagi pogut enviar o no (usuari inexistent, sense
+    correu, empresa sense correu configurat...): respondre diferent diria quins usuaris existeixen.
+    El motiu real només queda al log; la pantalla diu que, si no arriba, s'adrecin a l'administrador.
     """
     authentication_classes = []
     permission_classes = [AllowAny]
-    throttle_classes = [PasswordResetIPThrottle]
+    # Límit per IP (LoginIPThrottle llegeix l'scope de `throttle_scope`)
+    throttle_classes = [LoginIPThrottle]
+    throttle_scope = 'password_reset'
 
     def post(self, request):
-        result = password_reset_service.request_password_reset(_request_text(request, 'username'), request)
-        return Response({'status': result}, status=status.HTTP_200_OK)
+        password_reset_service.request_password_reset(_request_text(request, 'username'), request)
+        return Response({'status': password_reset_service.STATUS_SENT}, status=status.HTTP_200_OK)
 
 
 class PasswordResetConfirmView(APIView):
@@ -143,26 +132,34 @@ class PasswordResetConfirmView(APIView):
     """
     authentication_classes = []
     permission_classes = [AllowAny]
-    throttle_classes = [PasswordResetConfirmIPThrottle]
+    # Límit per IP propi, separat de la demanda del correu: cada recuperació en fa diverses
+    # peticions (comprovar l'enllaç, contrasenyes rebutjades, desar) i, compartint-lo, una
+    # oficina darrere d'una sola IP es quedaria sense recuperacions
+    throttle_classes = [LoginIPThrottle]
+    throttle_scope = 'password_reset_confirm'
 
     def post(self, request):
         uid = _request_text(request, 'uid')
         token = _request_text(request, 'token')
         new_password = _request_text(request, 'new_password')
-        user = password_reset_service.get_user_from_reset_token(uid, token)
         if new_password is None:
+            user = password_reset_service.get_user_from_reset_token(uid, token)
             return Response({
                 'valid': user is not None,
                 'strict_rules': bool(user and is_canonical_superuser(user)),
             }, status=status.HTTP_200_OK)
-        if user is None:
-            raise ValidationError({'token': [_('The link is not valid or has expired. Request a new one.')]})
-        try:
-            validate_user_password(new_password, user, is_canonical_superuser(user))
-        except DjangoValidationError as error:
-            raise ValidationError({'new_password': list(error.messages)})
-        user.set_password(new_password)
-        user.save(update_fields=['password'])
+        # Fer servir l'enllaç és atòmic: la fila de l'usuari queda bloquejada fins a desar i una
+        # petició simultània amb el mateix token, en continuar, ja el troba gastat
+        with transaction.atomic():
+            user = password_reset_service.get_user_from_reset_token(uid, token, for_update=True)
+            if user is None:
+                raise ValidationError({'token': [_('The link is not valid or has expired. Request a new one.')]})
+            try:
+                validate_user_password(new_password, user, is_canonical_superuser(user))
+            except DjangoValidationError as error:
+                raise ValidationError({'new_password': list(error.messages)})
+            user.set_password(new_password)
+            user.save(update_fields=['password'])
         # Si l'usuari estava bloquejat per intents fallits, amb la contrasenya nova ja pot entrar
         axes_reset(username=user.username)
         return Response(status=status.HTTP_204_NO_CONTENT)

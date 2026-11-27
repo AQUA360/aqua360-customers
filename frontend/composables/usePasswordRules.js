@@ -8,6 +8,9 @@ const STRENGTH_LEVELS = [
   { key: 'strong', bar: 'bg-green-500', text: 'text-green-600' },
 ];
 
+// Llargada en caràcters (punts de codi), com `len()` del backend: un emoji compta 1, no 2
+const codePointLength = (text) => [...text].length;
+
 /**
  * Requisits i fortalesa d'una contrasenya nova (perfil, recuperació...).
  *
@@ -21,7 +24,7 @@ export function usePasswordRules(password, { strict = false, username = '' } = {
   const rules = computed(() => {
     const pwd = toValue(password) || '';
     const list = [
-      { key: 'min_length', ok: pwd.length >= 8 },
+      { key: 'min_length', ok: codePointLength(pwd) >= 8 },
       { key: 'number', ok: /\p{N}/u.test(pwd) },
     ];
     if (toValue(strict)) {
@@ -39,11 +42,12 @@ export function usePasswordRules(password, { strict = false, username = '' } = {
     const pwd = toValue(password) || '';
     if (!pwd) return null;
     const classes = [/\p{Ll}/u, /\p{Lu}/u, /\p{N}/u, /[^\p{L}\p{N}\s]/u].filter(re => re.test(pwd)).length;
-    let score = [8, 12, 16, 20].filter(min => pwd.length >= min).length + Math.max(classes - 1, 0);
+    const length = codePointLength(pwd);
+    let score = [8, 12, 16, 20].filter(min => length >= min).length + Math.max(classes - 1, 0);
     const name = (toValue(username) || '').toLowerCase();
     if (name.length >= 3 && pwd.toLowerCase().includes(name)) score -= 2;
     // Un sol tipus de caràcter només és feble si és curta (una frase llarga sí que és segura)
-    if ((classes <= 1 && pwd.length < 16) || /^(.)\1*$/u.test(pwd)) score = Math.min(score, 1);
+    if ((classes <= 1 && length < 16) || /^(.)\1*$/u.test(pwd)) score = Math.min(score, 1);
     const level = score <= 1 ? 1 : score <= 3 ? 2 : score === 4 ? 3 : 4;
     return { level, ...STRENGTH_LEVELS[level - 1] };
   });

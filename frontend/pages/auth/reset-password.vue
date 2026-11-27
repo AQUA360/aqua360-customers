@@ -48,7 +48,7 @@ const checkLink = async () => {
     strictRules.value = !!response?.strict_rules;
     state.value = response?.valid ? 'form' : 'invalid';
   } catch (error) {
-    console.error('Error checking password reset link:', error);
+    console.error('Error checking password reset link:', error?.message);
     state.value = 'check_error';
   }
 };
@@ -72,7 +72,8 @@ const save = async () => {
     await confirmRequest({ new_password: newPassword.value });
     state.value = 'done';
   } catch (error) {
-    console.error('Error resetting password:', error);
+    // Només el missatge: l'error porta el cos de la petició (token i contrasenya)
+    console.error('Error resetting password:', error?.message);
     if (error?.data?.token) {
       state.value = 'invalid';
     } else {

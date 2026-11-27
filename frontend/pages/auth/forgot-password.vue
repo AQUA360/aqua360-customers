@@ -1,7 +1,7 @@
 <script setup>
 // Recuperació de la contrasenya (sense sessió): l'usuari escriu el seu nom d'usuari i, si es
-// pot, rep un correu amb un enllaç per triar-ne una de nova. Si no es pot (no té correu,
-// l'empresa no té el correu configurat...), se li demana que s'adreci a l'administrador.
+// pot, rep un correu amb un enllaç per triar-ne una de nova. La resposta és sempre la mateixa
+// (no diu quins usuaris existeixen): si no li arriba el correu, que s'adreci a l'administrador.
 import { ref } from 'vue';
 
 definePageMeta({
@@ -15,7 +15,7 @@ const route = useRoute();
 
 const username = ref(typeof route.query.username === 'string' ? route.query.username : '');
 const loading = ref(false);
-// null | 'sent' | 'unavailable' | 'error'
+// null | 'sent' | 'error'
 const result = ref(null);
 
 const submit = async () => {
@@ -23,12 +23,12 @@ const submit = async () => {
   loading.value = true;
   result.value = null;
   try {
-    const response = await $fetch(config.public.apiHost + '/auth/password-reset/', {
+    await $fetch(config.public.apiHost + '/auth/password-reset/', {
       method: 'POST',
       body: { username: username.value.trim() },
       headers: { 'Accept-Language': locale.value },
     });
-    result.value = response?.status === 'sent' ? 'sent' : 'unavailable';
+    result.value = 'sent';
   } catch (error) {
     console.error('Error requesting password reset:', error);
     result.value = 'error';
@@ -53,13 +53,6 @@ const submit = async () => {
         class="flex items-start gap-3 px-4 py-3 rounded-lg border mb-4 text-sm bg-green-50 border-green-300 text-green-800">
         <Icon name="fa6-solid:envelope-circle-check" class="w-4 h-4 mt-0.5 shrink-0" aria-hidden="true" />
         <span>{{ $t('password_reset.sent') }}</span>
-      </div>
-
-      <!-- No es pot enviar: cal l'administrador -->
-      <div v-else-if="result === 'unavailable'" role="alert"
-        class="flex items-start gap-3 px-4 py-3 rounded-lg border mb-4 text-sm bg-amber-50 border-amber-300 text-amber-800">
-        <Icon name="fa6-solid:triangle-exclamation" class="w-4 h-4 mt-0.5 shrink-0" aria-hidden="true" />
-        <span>{{ $t('password_reset.unavailable') }}</span>
       </div>
 
       <!-- Error de connexió o massa intents -->

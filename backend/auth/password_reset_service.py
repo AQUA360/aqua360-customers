@@ -1,8 +1,10 @@
 """Recuperació de la contrasenya des del login: enllaç per correu amb un token d'un sol ús.
 
 El correu només s'envia si l'usuari existeix, és actiu, no és d'integració i té correu, i si
-l'empresa per defecte té el correu configurat. En qualsevol altre cas la resposta és la mateixa
-(`unavailable`): la pantalla demana que s'adreci a l'administrador.
+l'empresa per defecte té el correu configurat. `request_password_reset` torna el resultat real
+(per al log i els tests), però la vista sempre respon el mateix: així no es pot saber des de
+fora quins usuaris existeixen o tenen correu. La pantalla diu que, si no arriba el correu,
+s'adrecin a l'administrador.
 """
 import logging
 from urllib.parse import urlencode, urlsplit
@@ -121,6 +123,8 @@ def request_password_reset(username, request):
     """Envia el correu de recuperació si es pot; torna STATUS_SENT o STATUS_UNAVAILABLE."""
     user = _find_user((username or '').strip())
     if user is None:
+        # Sense el nom d'usuari: el log no ha de servir de llista d'usuaris provats
+        logger.info("Recuperació de contrasenya no enviada: usuari inexistent, inactiu, sense correu o d'integració")
         return STATUS_UNAVAILABLE
     company = get_recovery_company()
     sender = get_mail_sender(company)
@@ -141,11 +145,15 @@ def request_password_reset(username, request):
     return STATUS_SENT
 
 
-def get_user_from_reset_token(uid, token):
-    """L'usuari si el token és vàlid (no caducat, no fet servir); si no, None."""
+def get_user_from_reset_token(uid, token, for_update=False):
+    """L'usuari si el token és vàlid (no caducat, no fet servir); si no, None.
+
+    `for_update`: bloqueja la fila de l'usuari (cal una transacció) per gastar el token de
+    manera atòmica."""
     try:
         pk = force_str(urlsafe_base64_decode(uid or ''))
-        user = User.objects.get(pk=pk, is_active=True)
+        users = User.objects.select_for_update() if for_update else User.objects
+        user = users.get(pk=pk, is_active=True)
     except (TypeError, ValueError, OverflowError, User.DoesNotExist):
         return None
     if not token or not default_token_generator.check_token(user, token):

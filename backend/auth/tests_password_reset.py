@@ -47,51 +47,55 @@ class PasswordResetRequestTests(TestCase):
         self.assertIn("token=", link)
 
     def test_usuari_inexistent(self):
+        # La resposta és sempre la mateixa (no diu quins usuaris existeixen); el que compta és
+        # si s'envia o no el correu. Igual als tests següents.
         with mock.patch(SEND) as send:
-            self.assertEqual(self.ask("no-existeix").json(), {"status": "unavailable"})
+            self.assertEqual(self.ask("no-existeix").json(), {"status": "sent"})
         send.assert_not_called()
 
     def test_usuari_sense_correu(self):
         self.user.email = ""
         self.user.save()
         with mock.patch(SEND) as send:
-            self.assertEqual(self.ask().json(), {"status": "unavailable"})
+            self.assertEqual(self.ask().json(), {"status": "sent"})
         send.assert_not_called()
 
     def test_usuari_inactiu(self):
         self.user.is_active = False
         self.user.save()
         with mock.patch(SEND) as send:
-            self.assertEqual(self.ask().json(), {"status": "unavailable"})
+            self.assertEqual(self.ask().json(), {"status": "sent"})
         send.assert_not_called()
 
     def test_empresa_sense_correu_configurat(self):
         CompanyConfigEmail.objects.all().update(is_active=False)
         with mock.patch(SEND) as send:
-            self.assertEqual(self.ask().json(), {"status": "unavailable"})
+            self.assertEqual(self.ask().json(), {"status": "sent"})
         send.assert_not_called()
 
     def test_empresa_sense_servidor_smtp(self):
         CompanyConfig.objects.all().update(mail_send_smtp_server=None)
         with mock.patch(SEND) as send:
-            self.assertEqual(self.ask().json(), {"status": "unavailable"})
+            self.assertEqual(self.ask().json(), {"status": "sent"})
         send.assert_not_called()
 
     def test_error_en_enviar(self):
-        with mock.patch(SEND, side_effect=OSError("smtp")):
-            self.assertEqual(self.ask().json(), {"status": "unavailable"})
+        with mock.patch(SEND, side_effect=OSError("smtp")) as send:
+            self.assertEqual(self.ask().json(), {"status": "sent"})
+        send.assert_called_once()
 
     @override_settings(FRONTEND_URL="", CSRF_TRUSTED_ORIGINS=["https://app.example.test"])
     def test_origin_de_confianca(self):
         with mock.patch(SEND) as send:
             self.assertEqual(self.ask(HTTP_ORIGIN="https://app.example.test").json(), {"status": "sent"})
+        send.assert_called_once()
         self.assertTrue(send.call_args.args[3].startswith("https://app.example.test/auth/reset-password?"))
 
     @override_settings(FRONTEND_URL="", CSRF_TRUSTED_ORIGINS=["https://app.example.test"])
     def test_origin_no_de_confianca_no_envia(self):
         # Un enllaç amb el token cap a un altre domini permetria prendre el compte
         with mock.patch(SEND) as send:
-            self.assertEqual(self.ask(HTTP_ORIGIN="https://atacant.example").json(), {"status": "unavailable"})
+            self.assertEqual(self.ask(HTTP_ORIGIN="https://atacant.example").json(), {"status": "sent"})
         send.assert_not_called()
 
     def test_nom_d_usuari_que_no_es_text(self):

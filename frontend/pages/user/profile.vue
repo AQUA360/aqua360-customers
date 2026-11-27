@@ -99,8 +99,8 @@ const save = async () => {
     attemptedSave.value = false;
     toast.success(t('common.correct_save'));
   } catch (error) {
-    // L'api-manager ja mostra l'error del backend
-    console.error(error);
+    // L'api-manager ja mostra l'error del backend. Només el missatge: el cos pot portar la contrasenya
+    console.error('Error saving own profile:', error?.message);
   } finally {
     saving.value = false;
   }
@@ -154,7 +154,8 @@ onMounted(getData);
         <form class="p-5" @submit.prevent="save">
           <h2 class="text-base font-semibold text-slate-800 mb-4">{{ $t('user_group.profile_info') }}</h2>
 
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <!-- Bloquejat mentre es desa: la resposta omple el formulari i esborraria el que s'hi escrivís -->
+          <fieldset :disabled="saving" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label for="profile-first-name" class="block text-sm font-medium text-slate-500 mb-2">{{ $t('common.name') }}</label>
               <input id="profile-first-name" v-model="firstName" type="text" class="input w-full" autocomplete="given-name" maxlength="150" />
@@ -175,7 +176,7 @@ onMounted(getData);
                 :class="{ 'invalid': attemptedSave && !currentPassword }" />
               <p class="mt-1 text-xs text-slate-500">{{ $t('user_group.profile_email_password_help') }}</p>
             </div>
-          </div>
+          </fieldset>
 
           <div class="flex justify-end gap-2 mt-5">
             <button v-if="hasChanges" type="button" class="button-default" :disabled="saving" @click="discard">

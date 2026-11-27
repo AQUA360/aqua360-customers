@@ -27,6 +27,8 @@ const { t } = useI18n();
         :class="rule.ok ? 'text-green-600' : 'text-slate-500'">
         <Icon :name="rule.ok ? 'fa6-solid:circle-check' : 'fa6-regular:circle'" aria-hidden="true" />
         {{ t(`user_group.password_rule.${rule.key}`) }}
+        <!-- L'estat no es pot llegir només pel color ni la icona (lectors de pantalla) -->
+        <span class="sr-only">({{ rule.ok ? t('user_group.password_rule_met') : t('user_group.password_rule_not_met') }})</span>
       </li>
     </ul>
   </div>

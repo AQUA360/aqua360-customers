@@ -89,7 +89,8 @@ const save = async () => {
     open.value = false;
     emit('changed');
   } catch (error) {
-    console.error(error);
+    // Només el missatge: l'error porta el cos de la petició, amb les contrasenyes
+    console.error('Error changing own password:', error?.message);
   } finally {
     saving.value = false;
   }
