@@ -88,7 +88,7 @@ from billing.models import (
 )
 from documentmanager.utils.main_utils import download_document, upload_document
 from order.models import OrderType
-from pricing.models import PriceRate, Product
+from pricing.models import BillingRange, PriceRate, Product
 from service.models import Property, SupplyPoint
 from service.utils.route_scope import effective_route
 from ov.invoice_visibility import exclude_future_invoices
@@ -1801,8 +1801,12 @@ class ContractRequestTypeDictionaryOVView(APIView):
     ordenats alfabèticament per `name`. Per cada tipus retorna `token`,
     `name`, `has_persons` i les tarifes actives associades
     (`registration_tariffs`, `water_tariffs`, `change_of_name_tariffs`, cada
-    una amb `token` i `name`; `[]` si no n'hi ha). El `token` és el que cal
-    enviar com a `procedure_type_token` en sol·licitar un tràmit.
+    una amb `token` i `name`; `[]` si no n'hi ha). Les de contractació i de
+    canvi de nom porten també `type_price` i `price` (com a
+    `/ov/dictionary/procedure-tariffs/`) i el tipus en suma el total a
+    `registration_price` i `change_of_name_price` (`0` sense tarifes, `null`
+    si alguna no té preu fix). El `token` és el que cal enviar com a
+    `procedure_type_token` en sol·licitar un tràmit.
     """
 
     permission_classes = [IsAuthenticated]
@@ -1826,29 +1830,54 @@ class ContractRequestTypeDictionaryOVView(APIView):
             default=F("name"),
         )
 
-        def active_rates(relation, to_attr):
+        def active_rates(relation, to_attr, with_price=False):
             """Prefetch active tariffs from relation into the list named by to_attr,
             ordered by display name and ID."""
-            return Prefetch(
-                relation,
-                queryset=PriceRate.objects.filter(is_active=True)
+            queryset = (
+                PriceRate.objects.filter(is_active=True)
                 .select_related("product")
                 .annotate(display_name=resolved_rate_name)
-                .order_by("display_name", "id"),
-                to_attr=to_attr,
+                .order_by("display_name", "id")
             )
+            if with_price:
+                # Mateixa precàrrega que `/ov/dictionary/procedure-tariffs/`
+                # per calcular el cost sense consultes per tarifa, més els
+                # períodes actius de reserva (`active_billing_ranges`) per a
+                # les tarifes sense `billing_range_active`.
+                line_items = (
+                    "line_item_types__price_interval"
+                    "__price_interval_stretches",
+                    "line_item_types__price_variable"
+                    "__price_variable_interval_stretches",
+                )
+                queryset = queryset.select_related(
+                    "billing_range_active"
+                ).prefetch_related(
+                    *(f"billing_range_active__{path}" for path in line_items),
+                    Prefetch(
+                        "billing_ranges",
+                        queryset=BillingRange.objects.filter(is_active=True)
+                        .order_by("-start")
+                        .prefetch_related(*line_items),
+                        to_attr="active_billing_ranges",
+                    ),
+                )
+            return Prefetch(relation, queryset=queryset, to_attr=to_attr)
 
         request_types = (
             ContractRequestType.objects.filter(is_active=True)
             .order_by("name", "id")
             .prefetch_related(
                 active_rates(
-                    "registration_price_rates", "active_registration_tariffs"
+                    "registration_price_rates",
+                    "active_registration_tariffs",
+                    with_price=True,
                 ),
                 active_rates("price_rates", "active_water_tariffs"),
                 active_rates(
                     "change_of_name_registration_price_rates",
                     "active_change_of_name_tariffs",
+                    with_price=True,
                 ),
             )
         )
