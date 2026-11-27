@@ -99,8 +99,8 @@ class ConfigProjectViewSet(viewsets.ModelViewSet):
 
                 config.value = _normalize_config_value(item['value'])
                 config.save(update_fields=['value', 'updated_at'])
-                # Auditoria: qui ha canviat quina configuració (el valor no es registra: pot ser un secret)
-                logger.info('ConfigProject %s modificat per %s', config.token, request.user.username)
+                # Auditoria: quin registre i qui (ni el valor ni el token: poden ser secrets)
+                logger.info('ConfigProject id=%s modificat per %s', config.pk, request.user.username)
                 updated.append(ConfigProjectSerializer(config, context={'request': request}).data)
 
         if errors and not updated:
