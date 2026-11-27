@@ -62,7 +62,7 @@ jobs:
     outputs:
       sha: ${{ steps.commit.outputs.sha }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ env.CODI }}
 
@@ -79,7 +79,7 @@ jobs:
           - { nom: linux/amd64, arq: amd64, runner: ubuntu-24.04 }
           - { nom: linux/arm64, arq: arm64, runner: ubuntu-24.04-arm }
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.codi.outputs.sha }}
           # Historial i etiquetes complets: `git describe --tags` dona la darrera release de les
