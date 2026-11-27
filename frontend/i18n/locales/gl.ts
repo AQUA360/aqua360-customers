@@ -2751,6 +2751,7 @@ export default {
     company_bank_account: "Conta da empresa",
     person_bank_account: "Conta de domiciliación",
     no_bank_accounts: "Non hai ningunha conta dispoñible.",
+    warning_commitment_term_not_found: "Non se atopou o prazo do compromiso deste recibo: só se cambiou o recibo. Revisa o prazo a man.",
     only_marked_for_remittance: "Só pagos marcados para remesar",
     info_only_marked_for_remittance: "Só se terán en conta os pagos marcados con «Marcar para remesar» desde a ficha do pago.",
     payments_to_remit: 'A remesar',

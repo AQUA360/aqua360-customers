@@ -2751,6 +2751,7 @@ export default {
     company_bank_account: "Company account",
     person_bank_account: "Direct debit account",
     no_bank_accounts: "There are no accounts available.",
+    warning_commitment_term_not_found: "The commitment term of this receipt was not found: only the receipt was changed. Check the term manually.",
     only_marked_for_remittance: "Only payments marked for remittance",
     info_only_marked_for_remittance: "Only payments flagged with «Mark for remittance» from the payment detail will be included.",
     payments_to_remit: 'To remit',

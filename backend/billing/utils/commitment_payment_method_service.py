@@ -111,21 +111,29 @@ def get_available_payment_types():
 def find_guide_commitment(payment):
     """Termini (guia) del compromís d'on surt el rebut.
 
-    No hi ha relació directa: en generar el rebut, el termini li copia el venciment
-    (`add_wallet_payment`), així que es fa coincidir per compromís i venciment, i amb
-    més d'un candidat, també per import.
+    No hi ha relació directa: en generar el rebut, el termini li copia el venciment,
+    l'import i la forma de pagament (`add_wallet_payment`), així que es fa coincidir per
+    compromís i venciment i, amb més d'un candidat, també per import i forma de pagament.
+    Si encara en queden diversos, són terminis iguals (mateix venciment, import i forma):
+    se n'agafa el primer, i el rebut germà trobarà l'altre perquè aquest ja haurà canviat
+    de forma de pagament.
     """
     if not payment.due_date:
         return None
-    candidates = PaymentCommitment.objects.filter(
+    candidates = PaymentCommitment.objects.select_for_update().filter(
         commitment_deposit_id=payment.commitment_deposit_id,
         is_guide=True,
         due_date=payment.due_date,
     ).order_by('id')
-    if candidates.count() > 1:
-        same_amount = candidates.filter(amount=payment.amount)
-        if same_amount.exists():
-            candidates = same_amount
+    for narrower in (
+        {'amount': payment.amount},
+        {'payment_type__token': payment.payment_type_token},
+    ):
+        if candidates.count() <= 1:
+            break
+        narrowed = candidates.filter(**narrower)
+        if narrowed.exists():
+            candidates = narrowed
     return candidates.first()
 
 
@@ -181,6 +189,8 @@ def change_commitment_payment_method(payment_id, payment_type_id, user,
         previous_type = payment.payment_type
         previous_bank = payment.payment_bank
         was_marked = payment.is_marked_for_remittance
+        # El termini es busca abans d'escriure, amb la forma de pagament que tenia el rebut
+        guide = find_guide_commitment(payment)
 
         # `update()` perquè els senyals de pagament no generin moviments ni canvis d'estat
         Payment.objects.filter(id=payment.id).update(
@@ -192,7 +202,6 @@ def change_commitment_payment_method(payment_id, payment_type_id, user,
             updated_at=timezone.now(),
         )
 
-        guide = find_guide_commitment(payment)
         if guide:
             guide.payment_type = payment_type
             guide.payment_bank = person_bank
@@ -218,4 +227,6 @@ def change_commitment_payment_method(payment_id, payment_type_id, user,
         )
 
     payment.refresh_from_db()
+    # Perquè la pantalla avisi si el termini no s'ha pogut actualitzar
+    payment.commitment_term_updated = guide is not None
     return payment

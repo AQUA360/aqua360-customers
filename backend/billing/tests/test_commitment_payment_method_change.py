@@ -186,6 +186,37 @@ class CommitmentPaymentMethodChangeTests(TestCase):
 
         self.assertEqual(self.change(self.cash).status_code, 400)
 
+    def test_twin_terms_are_each_updated_by_their_own_receipt(self):
+        # Dos terminis iguals (mateix venciment, import i forma) amb un rebut cadascun
+        twin = PaymentCommitment.objects.create(
+            token='CP29173', commitment_deposit=self.deposit, is_guide=True, amount=Decimal('100.00'),
+            currently_paid=Decimal('0.00'), due_date=date(2026, 12, 1), status=self.pc_confirmed,
+            payment_type=self.direct_debit, payment_bank=self.holder_bank)
+        twin_payment = Payment.objects.create(
+            token='CP291702', commitment_deposit=self.deposit, contract=self.contract,
+            amount=Decimal('100.00'), status=self.payment_status['1'],
+            payment_type=self.direct_debit.name, payment_type_token='DIRECT_DEBIT',
+            due_date=date(2026, 12, 1))
+
+        self.assertEqual(self.change(self.cash).status_code, 200)
+        self.payment = twin_payment
+        self.assertEqual(self.change(self.bank_transfer, company_bank_id=self.company_bank.id).status_code, 200)
+
+        self.guide.refresh_from_db()
+        twin.refresh_from_db()
+        self.assertEqual({self.guide.payment_type, twin.payment_type}, {self.cash, self.bank_transfer})
+
+    def test_receipt_without_matching_term_changes_and_warns(self):
+        Payment.objects.filter(id=self.payment.id).update(due_date=date(2026, 12, 15))
+
+        response = self.change(self.cash)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.data['commitment_term_updated'])
+        self.guide.refresh_from_db()
+        self.assertEqual(self.guide.payment_type, self.direct_debit)
+        self.assertIn('termini', LogPaymentStatusChange.objects.get(object=self.payment).observation)
+
     def test_options_list_methods_and_banks(self):
         response = self.client.get(reverse('payment-commitment-payment-method-options', args=[self.payment.id]))
 

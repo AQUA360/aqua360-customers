@@ -69,12 +69,16 @@ const save = async () => {
   saving.value = true;
   saveError.value = null;
   try {
-    await $PaymentApiService.changeCommitmentPaymentMethod(props.id, {
+    const result = await $PaymentApiService.changeCommitmentPaymentMethod(props.id, {
       payment_type_id: selectedPaymentType.value,
       company_bank_id: isTransfer.value ? selectedCompanyBank.value : null,
       person_bank_id: isDirectDebit.value ? selectedPersonBank.value : null,
     });
     toast.success(t('common.correct_save'));
+    // Rebut canviat però sense termini identificat (p. ex. se n'ha canviat el venciment)
+    if (result && result.commitment_term_updated === false) {
+      toast.warning(t('billing_block.warning_commitment_term_not_found'), { timeout: false });
+    }
     emit('changed');
   } catch (err) {
     console.error(err);

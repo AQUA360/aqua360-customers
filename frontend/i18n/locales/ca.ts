@@ -2811,6 +2811,7 @@ export default {
     company_bank_account: "Compte de l'empresa",
     person_bank_account: "Compte de domiciliació",
     no_bank_accounts: "No hi ha cap compte disponible.",
+    warning_commitment_term_not_found: "No s'ha trobat el termini del compromís d'aquest rebut: s'ha canviat només el rebut. Revisa el termini a mà.",
     only_marked_for_remittance: "Només pagaments marcats per remesar",
     info_only_marked_for_remittance: "Només es tindran en compte els pagaments marcats amb «Marcar per remesar» des de la fitxa del pagament.",
     payments_to_remit: 'A remesar',

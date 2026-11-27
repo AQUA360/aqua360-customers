@@ -897,6 +897,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
             'payment_type': payment.payment_type,
             'payment_type_token': payment.payment_type_token,
             'payment_bank': payment.payment_bank,
+            'commitment_term_updated': payment.commitment_term_updated,
         }, status=status.HTTP_200_OK)
 
     def get_permissions(self):
