@@ -2786,11 +2786,50 @@ def sepa_signed_filename(value):
     return name
 
 
+# Màxim de paquets per contractació: evita llistes desmesurades.
+PROCEDURE_TYPE_TOKENS_MAX = 20
+
+
+class ProcedureTypeTokensField(serializers.Field):
+    """Llista de tokens de tipus de sol·licitud (paquets).
+
+    Accepta una llista de tokens o, per compatibilitat amb les integracions
+    que enviaven un sol paquet, un token sol. Torna la llista sense blancs ni
+    repetits, en l'ordre rebut: el primer és el tipus de la sol·licitud.
+    """
+
+    default_error_messages = {
+        "invalid": "Must be a procedure type token or a list of them.",
+        "empty": "At least one procedure type is required.",
+        "too_many": "No more than {max} procedure types are allowed.",
+    }
+
+    def to_internal_value(self, data):
+        values = [data] if isinstance(data, str) else data
+        if not isinstance(values, list) or not all(
+            isinstance(value, str) and len(value) <= 255 for value in values
+        ):
+            self.fail("invalid")
+        tokens = list(
+            dict.fromkeys(value.strip() for value in values if value.strip())
+        )
+        if not tokens:
+            self.fail("empty")
+        if len(tokens) > PROCEDURE_TYPE_TOKENS_MAX:
+            self.fail("too_many", max=PROCEDURE_TYPE_TOKENS_MAX)
+        return tokens
+
+    def to_representation(self, value):
+        return value
+
+
 class ContractProcedureRequestSerializer(ProcedureNewHolderSerializer):
     """Sol·licitud d'alta de contracte enviada per l'OV.
 
-    El `tariff_token` és la tarifa que l'OV ha mostrat i cobrat a l'abonat, i
-    és la font de veritat de la tarifa de la sol·licitud (`ContractRequest`).
+    `procedure_type_token` és la llista de paquets de la contractació (o un
+    sol token); el primer és el tipus de la sol·licitud. Les tarifes
+    periòdiques surten dels paquets: no hi ha camp de tarifa, i si l'OV encara
+    envia `tariff_token` s'ignora com qualsevol camp desconegut.
 
     Si `holder_dni` no existeix, els camps `holder_*` permeten crear el
     titular (vegeu `ProcedureNewHolderSerializer`).
@@ -2801,8 +2840,7 @@ class ContractProcedureRequestSerializer(ProcedureNewHolderSerializer):
     supply_point_token = serializers.CharField(
         max_length=255, required=False, allow_blank=True, allow_null=True
     )
-    procedure_type_token = serializers.CharField(max_length=255)
-    tariff_token = serializers.CharField(max_length=255)
+    procedure_type_token = ProcedureTypeTokensField()
     payment_type_token = serializers.CharField(max_length=255)
     iban = serializers.CharField(
         max_length=34, required=False, allow_blank=True, allow_null=True

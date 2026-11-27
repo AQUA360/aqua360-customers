@@ -5132,6 +5132,12 @@ class ContractProcedureOVTests(TestCase):
                 defaults={"name": "Industrial", "is_active": False},
             )
         )
+        cls.type_without_tariffs, _ = (
+            ContractRequestType.objects.update_or_create(
+                token="agricultural",
+                defaults={"name": "Agrícola", "is_active": True},
+            )
+        )
 
         cls.payment_type, _ = PaymentType.objects.update_or_create(
             token="DIRECT_DEBIT", defaults={"name": "Domiciliació bancària"}
@@ -5153,9 +5159,11 @@ class ContractProcedureOVTests(TestCase):
             token="OT-ALTA", name="Alta"
         )
 
-        # El tipus té una altra tarifa enllaçada: la triada per l'OV ha de
-        # guanyar igualment (Option 2a).
-        cls.procedure_type.price_rates.set([cls.type_tariff])
+        # Paquet amb dues tarifes periòdiques actives i una d'inactiva: la
+        # sol·licitud rep les dues actives.
+        cls.procedure_type.price_rates.set(
+            [cls.tariff, cls.type_tariff, cls.inactive_tariff]
+        )
         cls.procedure_type.registration_price_rates.set([cls.type_tariff])
         cls.procedure_type.order_types.set([cls.order_type])
 
@@ -5210,7 +5218,6 @@ class ContractProcedureOVTests(TestCase):
             "holder_dni": "12345678A",
             "property_token": "PROP-1",
             "procedure_type_token": "domestic",
-            "tariff_token": "TR-CHOSEN",
             "payment_type_token": "DIRECT_DEBIT",
             "iban": "ES91 2100 0418 4502 0005 1332",
             "iban_holder_name": "Anna Prova",
@@ -5263,7 +5270,7 @@ class ContractProcedureOVTests(TestCase):
             "ES912100********00051332",
         )
 
-    def test_chosen_tariff_wins_over_procedure_type_tariffs(self):
+    def test_assigns_every_active_periodic_tariff_of_the_type(self):
         response = self._post()
 
         self.assertEqual(response.status_code, 201)
@@ -5273,17 +5280,155 @@ class ContractProcedureOVTests(TestCase):
                 "price_rate", "supply_point"
             )
         )
-        self.assertEqual(len(contract_price_rates), 1)
         self.assertEqual(
-            contract_price_rates[0].price_rate, self.tariff
+            {cpr.price_rate for cpr in contract_price_rates},
+            {self.tariff, self.type_tariff},
+        )
+        self.assertEqual(len(contract_price_rates), 2)
+        for cpr in contract_price_rates:
+            self.assertEqual(cpr.supply_point, self.supply_point)
+            self.assertTrue(cpr.is_active)
+
+    def test_tariff_token_is_ignored(self):
+        # Les integracions que encara l'envien no fallen, però no compta.
+        response = self._post(tariff_token="TR-UNKNOWN")
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(
+            {
+                cpr.price_rate
+                for cpr in self._created_request(response).price_rates.all()
+            },
+            {self.tariff, self.type_tariff},
+        )
+
+    def _second_package(self, tariff_product=None):
+        """Paquet addicional amb una tarifa periòdica, una de contractació i
+        una ordre pròpies."""
+        package = ContractRequestType.objects.create(
+            token="sewer", name="Clavegueram", is_active=True
+        )
+        tariff = PriceRate.objects.create(
+            token="TR-SEWER",
+            name="Clavegueram",
+            is_active=True,
+            product=tariff_product,
+        )
+        registration = PriceRate.objects.create(
+            token="TR-SEWER-REG", name="Escomesa", is_active=True
+        )
+        order_type = OrderType.objects.create(token="OT-SEWER", name="Obra")
+        package.price_rates.set([tariff])
+        package.registration_price_rates.set([registration])
+        package.order_types.set([order_type])
+        return package, tariff, registration, order_type
+
+    def test_several_packages_get_the_union_of_their_tariffs(self):
+        package, tariff, registration, order_type = self._second_package()
+
+        response = self._post(procedure_type_token=["domestic", "sewer"])
+
+        self.assertEqual(response.status_code, 201)
+        request_obj = self._created_request(response)
+        self.assertEqual(request_obj.type, self.procedure_type)
+        self.assertEqual(response.data["type"]["token"], "domestic")
+        self.assertEqual(
+            {cpr.price_rate for cpr in request_obj.price_rates.all()},
+            {self.tariff, self.type_tariff, tariff},
         )
         self.assertEqual(
-            contract_price_rates[0].supply_point, self.supply_point
+            set(request_obj.registration_price_rates.all()),
+            {self.type_tariff, registration},
         )
-        self.assertNotIn(
-            self.type_tariff,
-            [cpr.price_rate for cpr in contract_price_rates],
+        self.assertEqual(
+            set(request_obj.order_types.all()),
+            {self.order_type, order_type},
         )
+
+    def test_first_package_is_the_request_type(self):
+        self._second_package()
+
+        response = self._post(procedure_type_token=["sewer", "domestic"])
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(
+            self._created_request(response).type.token, "sewer"
+        )
+
+    def test_shared_tariff_between_packages_is_assigned_once(self):
+        package, _, _, _ = self._second_package()
+        package.price_rates.add(self.tariff)
+
+        response = self._post(
+            procedure_type_token=["domestic", "sewer", "domestic"]
+        )
+
+        self.assertEqual(response.status_code, 201)
+        rates = list(self._created_request(response).price_rates.all())
+        self.assertEqual(len(rates), 3)
+
+    def test_different_tariffs_of_the_same_product_return_400(self):
+        product = Product.objects.create(token="WATER", name="Aigua")
+        PriceRate.objects.filter(pk=self.tariff.pk).update(product=product)
+        self._second_package(tariff_product=product)
+        count = ContractRequest.objects.count()
+
+        response = self._post(procedure_type_token=["domestic", "sewer"])
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.data,
+            {
+                "error": (
+                    "Procedure types have different tariffs for the same "
+                    "product"
+                ),
+                "products": ["WATER"],
+            },
+        )
+        self.assertEqual(ContractRequest.objects.count(), count)
+
+    def test_package_without_tariffs_is_allowed_with_another_package(self):
+        response = self._post(
+            procedure_type_token=["agricultural", "domestic"]
+        )
+
+        self.assertEqual(response.status_code, 201)
+        request_obj = self._created_request(response)
+        self.assertEqual(request_obj.type, self.type_without_tariffs)
+        self.assertEqual(
+            {cpr.price_rate for cpr in request_obj.price_rates.all()},
+            {self.tariff, self.type_tariff},
+        )
+
+    def test_unknown_or_inactive_package_in_list_returns_404(self):
+        for tokens in (["domestic", "unknown"], ["domestic", "industrial"]):
+            with self.subTest(tokens=tokens):
+                response = self._post(procedure_type_token=tokens)
+                self.assertEqual(response.status_code, 404)
+                self.assertEqual(
+                    response.data, {"error": "Procedure type not found"}
+                )
+
+    def test_invalid_procedure_type_token_returns_400(self):
+        for value in ([], [""], [1], {"token": "domestic"}, 1, ["x" * 256]):
+            with self.subTest(value=value):
+                response = self._post(procedure_type_token=value)
+                self.assertEqual(response.status_code, 400)
+                self.assertIn("procedure_type_token", response.data)
+
+    def test_type_without_active_periodic_tariffs_returns_400(self):
+        self.type_without_tariffs.price_rates.set([self.inactive_tariff])
+        count = ContractRequest.objects.count()
+
+        response = self._post(procedure_type_token="agricultural")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.data,
+            {"error": "Procedure type has no active periodic tariffs"},
+        )
+        self.assertEqual(ContractRequest.objects.count(), count)
 
     def test_reuses_an_active_contract_price_rate_when_duplicates_exist(self):
         inactive = ContractPriceRate.objects.create(
@@ -5300,10 +5445,13 @@ class ContractProcedureOVTests(TestCase):
         response = self._post()
 
         self.assertEqual(response.status_code, 201)
-        chosen = self._created_request(response).price_rates.get()
+        chosen = self._created_request(response).price_rates.get(
+            price_rate=self.tariff
+        )
         self.assertIn(chosen, active_rates)
         self.assertTrue(chosen.is_active)
-        self.assertEqual(ContractPriceRate.objects.count(), count)
+        # Només es crea la de l'altra tarifa del paquet.
+        self.assertEqual(ContractPriceRate.objects.count(), count + 1)
         inactive.refresh_from_db()
         self.assertFalse(inactive.is_active)
 
@@ -5316,12 +5464,15 @@ class ContractProcedureOVTests(TestCase):
         response = self._post()
 
         self.assertEqual(response.status_code, 201)
-        chosen = self._created_request(response).price_rates.get()
+        chosen = self._created_request(response).price_rates.get(
+            price_rate=self.tariff
+        )
         self.assertNotEqual(chosen.pk, inactive.pk)
         self.assertTrue(chosen.is_active)
         self.assertEqual(chosen.supply_point, self.supply_point)
         self.assertEqual(chosen.price_rate, self.tariff)
-        self.assertEqual(ContractPriceRate.objects.count(), count + 1)
+        # La de la tarifa triada i la de l'altra tarifa del paquet.
+        self.assertEqual(ContractPriceRate.objects.count(), count + 2)
         inactive.refresh_from_db()
         self.assertFalse(inactive.is_active)
 
@@ -5693,15 +5844,6 @@ class ContractProcedureOVTests(TestCase):
                     response.data, {"error": "Procedure type not found"}
                 )
 
-    def test_unknown_or_inactive_tariff_returns_404(self):
-        for tariff_token in ("TR-UNKNOWN", "TR-OFF"):
-            with self.subTest(tariff_token=tariff_token):
-                response = self._post(tariff_token=tariff_token)
-                self.assertEqual(response.status_code, 404)
-                self.assertEqual(
-                    response.data, {"error": "Tariff not found"}
-                )
-
     def test_unknown_payment_type_returns_404(self):
         response = self._post(payment_type_token="UNKNOWN")
 
@@ -5715,7 +5857,6 @@ class ContractProcedureOVTests(TestCase):
             "holder_dni",
             "property_token",
             "procedure_type_token",
-            "tariff_token",
             "payment_type_token",
         ):
             for value in ("", "   "):
@@ -5761,7 +5902,6 @@ class ContractProcedureOVTests(TestCase):
                 "holder_dni": "12345678A",
                 "property_token": "PROP-1",
                 "procedure_type_token": "domestic",
-                "tariff_token": "TR-CHOSEN",
                 "payment_type_token": "DIRECT_DEBIT",
             },
             format="json",
@@ -5819,7 +5959,7 @@ class ContractProcedureSepaSignedOVTests(TestCase):
         ContractRequestStatus.objects.update_or_create(
             token="1", defaults={"name": "Esborrany", "is_default": True}
         )
-        ContractRequestType.objects.update_or_create(
+        procedure_type, _ = ContractRequestType.objects.update_or_create(
             token="domestic", defaults={"name": "Domèstic", "is_active": True}
         )
         PaymentType.objects.update_or_create(
@@ -5828,7 +5968,9 @@ class ContractProcedureSepaSignedOVTests(TestCase):
         PaymentType.objects.update_or_create(
             token="CASH", defaults={"name": "Efectiu"}
         )
-        PriceRate.objects.create(token="TR-CHOSEN", name="Tarifa", is_active=True)
+        procedure_type.price_rates.set(
+            [PriceRate.objects.create(token="TR-CHOSEN", name="Tarifa", is_active=True)]
+        )
         cls.holder = Person.objects.create(
             token="12345678A", name="Anna", surname="Prova"
         )
@@ -5846,7 +5988,6 @@ class ContractProcedureSepaSignedOVTests(TestCase):
             "holder_dni": "12345678A",
             "property_token": "PROP-1",
             "procedure_type_token": "domestic",
-            "tariff_token": "TR-CHOSEN",
             "payment_type_token": "DIRECT_DEBIT",
             "iban": "ES91 2100 0418 4502 0005 1332",
             "iban_holder_name": "Anna Prova",
