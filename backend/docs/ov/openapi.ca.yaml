@@ -2320,11 +2320,22 @@ paths:
         completi les dades que falten (comptador, data d'alta, adreça de
         facturació, ...) i la finalitzi amb el flux existent.
 
-        La tarifa (`tariff_token`) és la que l'Oficina Virtual ha mostrat i
-        cobrat a l'abonat, per la qual cosa és la font de veritat de la sol·licitud.
-        No es dedueix del tipus de tràmit: `ContractRequestType.price_rates` és
-        una relació M2M que pot contenir zero, una o diverses tarifes i no
-        està relacionada amb el catàleg de tarifes actives que exposa l'OV.
+        **Tarifes periòdiques.** Surten del tipus de tràmit (paquet,
+        `procedure_type_token`), com a la pantalla d'atenció al client: la
+        sol·licitud rep totes les tarifes periòdiques actives del paquet (les
+        `water_tariffs` de `/ov/dictionary/contract-request-types/`), una per
+        punt de subministrament, i el contracte que se'n creï les factura
+        totes. Ja no hi ha camp de tarifa: si encara s'envia `tariff_token`,
+        s'ignora.
+
+        **Diversos paquets.** `procedure_type_token` és una llista de paquets
+        (un token sol també s'accepta). La sol·licitud rep la unió de les
+        tarifes periòdiques, de les de contractació i de les ordres de tots,
+        sense repetir-ne cap, i el seu tipus és el primer paquet de la llista.
+        Retorna `400` si entre tots no hi ha cap tarifa periòdica activa, o si
+        dos paquets porten tarifes diferents d'un mateix producte (es
+        facturaria dues vegades el mateix concepte; `products` en diu els
+        productes). Un paquet desconegut o inactiu retorna `404`.
 
         Si el DNI correspon a una persona existent, n'hi ha prou d'enviar
         `holder_dni` i els camps `holder_*` s'ignoren. Si no existeix, es crea
@@ -2332,7 +2343,8 @@ paths:
         de la mateixa transacció, i llavors `holder_name`, `holder_surname`
         (tret de persona jurídica), `holder_phone` i `holder_email` són
         obligatoris. S'exigeix que la propietat existeixi i tingui un punt de
-        subministrament, i que el tipus de tràmit i la tarifa estiguin actius. Si el pagament és per domiciliació
+        subministrament, i que els paquets estiguin actius i que, entre tots, tinguin alguna tarifa
+        periòdica activa (n'hi ha prou que en tingui un). Si el pagament és per domiciliació
         (`DIRECT_DEBIT`) s'exigeixen les dades bancàries. Si la propietat té
         més d'un punt de subministrament actiu s'ha d'enviar `supply_point_token`.
 
@@ -2363,7 +2375,6 @@ paths:
                   property_token: PROV-0001
                   supply_point_token: "1234/1234"
                   procedure_type_token: domestic
-                  tariff_token: TD-2.0TD
                   payment_type_token: DIRECT_DEBIT
                   iban: ES9121000418450200051332
                   iban_holder_name: Nombre Titular
@@ -2377,8 +2388,7 @@ paths:
                   holder_dni: "12345678A"
                   property_token: PROV-0001
                   supply_point_token: "1234/1234"
-                  procedure_type_token: domestic
-                  tariff_token: TD-2.0TD
+                  procedure_type_token: [domestic, sewer_connection]
                   payment_type_token: DIRECT_DEBIT
                   iban: ES9121000418450200051332
                   iban_holder_name: Nombre Titular
@@ -2414,7 +2424,9 @@ paths:
             Camps obligatoris absents o invàlids, dades personals
             absents o invàlides quan el DNI no existeix (titular nou),
             dades bancàries incompletes per a domiciliació, propietat amb
-            diversos punts de subministrament sense `supply_point_token`, o mandat
+            diversos punts de subministrament sense `supply_point_token`, paquets
+            sense cap tarifa periòdica activa entre tots, paquets amb tarifes
+            diferents d'un mateix producte, o mandat
             SEPA (`sepa_signed`) que no és base64 vàlid, no és un PDF o
             s'envia amb una forma de pagament que no és domiciliació.
           content:
@@ -2440,13 +2452,19 @@ paths:
                   value:
                     sepa_signed:
                       - The SEPA mandate is only allowed for direct debit.
+                paqueteSinTarifas:
+                  value: {error: Procedure type has no active periodic tariffs}
+                tarifasMismoProducto:
+                  value:
+                    error: Procedure types have different tariffs for the same product
+                    products: [WATER]
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
           description: |
-            No existeix la propietat, el punt de subministrament, el tipus de tràmit,
-            la tarifa o la forma de pagament indicats. Els tipus i tarifes
-            inactius també retornen `404`. Un DNI inexistent no retorna
+            No existeix la propietat, el punt de subministrament, el tipus de tràmit
+            o la forma de pagament indicats. Els tipus inactius també retornen
+            `404`. Un DNI inexistent no retorna
             `404`: es crea el titular (vegeu els camps `holder_*`).
           content:
             application/json:
@@ -2459,8 +2477,6 @@ paths:
                   value: {error: Supply point not found}
                 procedureType:
                   value: {error: Procedure type not found}
-                tariff:
-                  value: {error: Tariff not found}
                 paymentType:
                   value: {error: Payment type not found}
         "409":
@@ -4641,7 +4657,6 @@ components:
         - holder_dni
         - property_token
         - procedure_type_token
-        - tariff_token
         - payment_type_token
       properties:
         holder_dni:
@@ -4708,15 +4723,20 @@ components:
             si la propietat té més d'un punt de subministrament actiu.
           example: "1234/1234"
         procedure_type_token:
-          type: string
-          description: Tipus de sol·licitud de contracte (`ContractRequestType.token`)
-          example: domestic
-        tariff_token:
-          type: string
           description: |
-            Tarifa que l'OV ha mostrat i cobrat (`PriceRate.token`). És la
-            font de veritat de la tarifa de la sol·licitud.
-          example: TD-2.0TD
+            Paquets de la contractació (`ContractRequestType.token`), en una
+            llista de com a màxim 20; el primer és el tipus de la sol·licitud.
+            Per compatibilitat, també s'accepta un sol token com a text.
+          oneOf:
+            - type: array
+              minItems: 1
+              maxItems: 20
+              items:
+                type: string
+                maxLength: 255
+            - type: string
+              maxLength: 255
+          example: [domestic, sewer_connection]
         payment_type_token:
           type: string
           description: Forma de pagament (`PaymentType.token`)

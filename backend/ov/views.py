@@ -25,6 +25,7 @@ from django.utils.dateparse import parse_date
 from django.utils.translation import gettext as _
 import base64
 import csv
+from collections import defaultdict
 import re
 import zipfile
 import logging
@@ -86,6 +87,7 @@ from billing.models import (
     Reading,
 )
 from documentmanager.utils.main_utils import download_document, upload_document
+from order.models import OrderType
 from pricing.models import BillingRange, PriceRate, Product
 from service.models import Property, SupplyPoint
 from service.utils.route_scope import effective_route
@@ -3288,13 +3290,16 @@ class ContractProcedureOVView(APIView):
     (meter, registration date, billing address, ...) and finalizes it through
     the existing flow.
 
-    The tariff (`tariff_token`) is the one the Virtual Office showed and
-    charged to the customer, so it is authoritative for the request. We do not
-    let the procedure type derive it: `ContractRequestType.price_rates` is an
-    M2M that may hold zero, one or many tariffs and is unrelated to the active
-    tariff catalogue the OV exposes, so deriving it would risk billing
-    mismatches. `registration_price_rates` and `order_types` remain
-    type-driven, which is the correct behaviour for them.
+    Tariffs are type-driven, as in the back-office screen: the request gets
+    every active periodic tariff of the procedure type (package,
+    `ContractRequestType.price_rates`, exposed by the OV dictionary as
+    `water_tariffs`), plus its `registration_price_rates` and `order_types`.
+    `procedure_type_token` may list several packages: the request gets the
+    union of all of them and its `type` is the first one. The contract created
+    from the request copies the tariffs and bills one line per periodic
+    tariff, so a request with only one of them would bill incompletely.
+    Packages without any active periodic tariff, or two different tariffs of
+    the same product, are rejected (400).
     """
 
     permission_classes = [IsAuthenticated]
@@ -3381,22 +3386,64 @@ class ContractProcedureOVView(APIView):
             )
         supply_point = supply_points[0]
 
-        procedure_type = ContractRequestType.objects.filter(
-            token=data["procedure_type_token"], is_active=True
-        ).first()
-        if procedure_type is None:
+        # Paquets de la contractació, en l'ordre rebut: el primer és el tipus
+        # de la sol·licitud.
+        procedure_type_tokens = data["procedure_type_token"]
+        procedure_types_by_token = {
+            procedure_type.token: procedure_type
+            for procedure_type in ContractRequestType.objects.filter(
+                token__in=procedure_type_tokens, is_active=True
+            )
+        }
+        if len(procedure_types_by_token) != len(procedure_type_tokens):
             return Response(
                 {"error": "Procedure type not found"},
                 status=status.HTTP_404_NOT_FOUND,
             )
+        procedure_types = [
+            procedure_types_by_token[token] for token in procedure_type_tokens
+        ]
+        procedure_type = procedure_types[0]
 
-        tariff = PriceRate.objects.filter(
-            token=data["tariff_token"], is_active=True
-        ).first()
-        if tariff is None:
+        # Totes les tarifes periòdiques actives dels paquets, com a la
+        # pantalla: el contracte en factura una línia per tarifa.
+        tariffs = list(
+            PriceRate.objects.filter(
+                contract_request_type_price_rates__in=procedure_types,
+                is_active=True,
+            )
+            .select_related("product")
+            .distinct()
+            .order_by("id")
+        )
+        if not tariffs:
             return Response(
-                {"error": "Tariff not found"},
-                status=status.HTTP_404_NOT_FOUND,
+                {"error": "Procedure type has no active periodic tariffs"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        # Dues tarifes del mateix producte facturarien dues vegades el
+        # mateix concepte.
+        tariffs_by_product = defaultdict(list)
+        for tariff in tariffs:
+            if tariff.product_id is not None:
+                tariffs_by_product[tariff.product_id].append(tariff)
+        conflicting_products = sorted(
+            {
+                rates[0].product.token or rates[0].product.name or ""
+                for rates in tariffs_by_product.values()
+                if len(rates) > 1
+            }
+        )
+        if conflicting_products:
+            return Response(
+                {
+                    "error": (
+                        "Procedure types have different tariffs for the "
+                        "same product"
+                    ),
+                    "products": conflicting_products,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         payment_type = PaymentType.objects.filter(
@@ -3485,19 +3532,30 @@ class ContractProcedureOVView(APIView):
             )
             contract_request.supply_points.set([supply_point])
 
-            contract_price_rate = ContractPriceRate.objects.filter(
-                supply_point=supply_point, price_rate=tariff, is_active=True
-            ).first()
-            if contract_price_rate is None:
-                contract_price_rate = ContractPriceRate.objects.create(
+            contract_price_rates = []
+            for tariff in tariffs:
+                contract_price_rate = ContractPriceRate.objects.filter(
                     supply_point=supply_point, price_rate=tariff, is_active=True
-                )
-            contract_request.price_rates.set([contract_price_rate])
+                ).first()
+                if contract_price_rate is None:
+                    contract_price_rate = ContractPriceRate.objects.create(
+                        supply_point=supply_point,
+                        price_rate=tariff,
+                        is_active=True,
+                    )
+                contract_price_rates.append(contract_price_rate)
+            contract_request.price_rates.set(contract_price_rates)
             contract_request.registration_price_rates.set(
-                procedure_type.registration_price_rates.all()
+                PriceRate.objects.filter(
+                    contract_request_type_registration_price_rates__in=(
+                        procedure_types
+                    )
+                ).distinct()
             )
             contract_request.order_types.set(
-                procedure_type.order_types.all()
+                OrderType.objects.filter(
+                    contractrequesttype__in=procedure_types
+                ).distinct()
             )
 
             LogContractRequestStatus.objects.create(
