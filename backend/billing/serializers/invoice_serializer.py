@@ -16,7 +16,7 @@ from contract.serializers.contract_serializer import ContractMinimalSerializer, 
 from statistics.serializers import BillingConsumptionSerializer
 from verifactu.serializers.verifactu_serializer import VerifactuNotificationSerializer
 
-from billing.utils.invoice_service import change_status_logger, get_totals
+from billing.utils.invoice_service import change_status_logger, get_totals, log_invoice_data_change
 from billing.utils.invoice_list_queryset import invoice_list_config_tokens
 from billing.utils.invoice_period import (
     invoice_billing_cycles, invoice_payment_states, invoice_payment_summaries, invoice_relations_map,
@@ -402,6 +402,8 @@ class InvoiceFullSerializer(PdfPageCountMixin, serializers.ModelSerializer):
     remittances = serializers.SerializerMethodField()
     joined_payments = serializers.SerializerMethodField()
     remittance_mark = serializers.SerializerMethodField()
+    # Mètode de pagament canviat pel sistema (retorn SEPA o domiciliació bloquejada per deute)
+    payment_method_alert = serializers.SerializerMethodField()
     
     status_token = serializers.CharField(write_only=True, required=False, allow_null=True)
     delete_payments = serializers.BooleanField(write_only=True, required=False, allow_null=True)
@@ -409,6 +411,13 @@ class InvoiceFullSerializer(PdfPageCountMixin, serializers.ModelSerializer):
         model = Invoice
         fields = '__all__'
  
+
+    def get_payment_method_alert(self, obj):
+        """Avís per a la fitxa de la factura; no es calcula en llistes (faria consultes per factura)."""
+        if isinstance(self.parent, serializers.ListSerializer):
+            return None
+        from billing.utils.payment_method_alert_service import invoice_payment_method_alert
+        return invoice_payment_method_alert(obj)
 
     def get_total_payments(self, obj):
         return obj.payments.count()
@@ -598,6 +607,13 @@ class InvoiceFullSerializer(PdfPageCountMixin, serializers.ModelSerializer):
         payments = instance.payments.all()
         
         do_confirm = False
+        
+        # Un canvi de mètode de pagament per aquí també ha de quedar a l'historial: si no, l'avís
+        # d'un canvi anterior del sistema podria tornar a sortir (payment_method_alert_service).
+        # Abans de l'anul·lació, que retorna sense passar pel final
+        new_payment_type = validated_data.get('payment_type_final')
+        if 'payment_type_final' in validated_data and new_payment_type != instance.payment_type_final:
+            log_invoice_data_change(user, instance, None, new_payment_type)
         
         if status_token:
             cancelled_token = ConfigProject.objects.get(token='invoice_status_cancelled_token').value

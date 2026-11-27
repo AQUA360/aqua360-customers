@@ -12,7 +12,10 @@ from lecturapp.models import ReadingOperator
 from django.core.files.base import ContentFile
 
 from documentmanager.utils.main_utils import upload_document
-from service.models import Cluster, ClusterDocumentationFile, ClusterNozzle, Property, SupplyPoint
+from billing.models import ReadingBatch
+from service.models import (
+    Cluster, ClusterDocumentationFile, ClusterNozzle, Property, Route, RoutePosition, SupplyPoint,
+)
 
 STORAGE = tempfile.mkdtemp()
 SERVICES = {**settings.DOCUMENT_MANAGER_SERVICES, 'connection': 'hdd'}
@@ -44,7 +47,11 @@ class LecturappClusterPhotosTests(TestCase):
     def setUp(self):
         operator = ReadingOperator.objects.create(name='Op', surname='Test', username='op-bateries', password='x')
         self.headers = {'HTTP_X_APP_TOKEN': operator.generate_token().token}
-        self.property = Property.objects.create(name='Finca')
+        # La finca és a la ruta d'un lot obert: l'app només veu bateries de finques de lots oberts
+        position = RoutePosition.objects.create(route=Route.objects.create(name='R-bateries'), position=1)
+        self.property = Property.objects.create(name='Finca', route_position=position)
+        self.batch = ReadingBatch.objects.create(token='LOT-BATERIES', name='Lot')
+        self.batch.routes.add(position.route)
         # Bateria lligada a la finca a través d'un punt de subministrament
         self.cluster = Cluster.objects.create(token='BAT-1', nb_nozzles=4)
         nozzle = ClusterNozzle.objects.create(cluster=self.cluster, token='B1', row=1, col=2)
@@ -53,7 +60,8 @@ class LecturappClusterPhotosTests(TestCase):
         self.direct_cluster = Cluster.objects.create(token='BAT-2', property=self.property)
         # Bateries que no han de sortir
         Cluster.objects.create(token='BAT-INACTIVA', property=self.property, is_active=False)
-        Cluster.objects.create(token='BAT-ALTRA', property=Property.objects.create(name='Altra'))
+        self.other_property = Property.objects.create(name='Altra')
+        self.other_cluster = Cluster.objects.create(token='BAT-ALTRA', property=self.other_property)
 
     def _upload(self, cluster, photo):
         return self.client.post(
@@ -124,3 +132,17 @@ class LecturappClusterPhotosTests(TestCase):
         with self.settings(DATA_UPLOAD_MAX_MEMORY_SIZE=1000):
             response = self._upload(self.cluster, jpeg_base64())
         self.assertEqual(response.status_code, 413)
+
+    def test_no_dona_bateries_de_finques_fora_dels_lots_oberts(self):
+        response = self.client.get(f'/lecturapp/properties/{self.other_property.id}/clusters/', **self.headers)
+        self.assertEqual(response.status_code, 404)
+
+    def test_no_puja_fotos_a_bateries_fora_dels_lots_oberts(self):
+        self.assertEqual(self._upload(self.other_cluster, jpeg_base64()).status_code, 404)
+        self.assertFalse(ClusterDocumentationFile.objects.filter(cluster=self.other_cluster).exists())
+
+    def test_amb_el_lot_tancat_la_finca_ja_no_es_veu(self):
+        self.batch.is_active = False
+        self.batch.save(update_fields=['is_active'])
+        response = self.client.get(f'/lecturapp/properties/{self.property.id}/clusters/', **self.headers)
+        self.assertEqual(response.status_code, 404)

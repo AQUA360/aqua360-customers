@@ -213,6 +213,8 @@ class ContractSerializer(serializers.ModelSerializer):
     blocking_incident = serializers.SerializerMethodField()
     # Domiciliació anul·lada per un retorn SEPA de compte invàlid, pendent de revisar
     invalid_account_payment_alert = serializers.SerializerMethodField()
+    # Factures pendents que el procés de facturació no ha domiciliat per deute (block_remittance_if_unpaid)
+    remittance_blocked_alert = serializers.SerializerMethodField()
     debt_amount = serializers.SerializerMethodField()
     total_debt_payments = serializers.SerializerMethodField()
     total_in_commitment_deposits = serializers.SerializerMethodField()
@@ -403,6 +405,11 @@ class ContractSerializer(serializers.ModelSerializer):
         """Avís de domiciliació anul·lada per un retorn SEPA de compte invàlid, o None."""
         from billing.utils.sepa_invalid_account_service import invalid_account_payment_alert
         return invalid_account_payment_alert(obj)
+
+    def get_remittance_blocked_alert(self, obj):
+        """Avís de factures que no es domicilien perquè el contracte deu diners, o None."""
+        from billing.utils.payment_method_alert_service import contract_remittance_blocked_alert
+        return contract_remittance_blocked_alert(obj)
 
     def get_blocking_incident(self, obj):
         from notification.utils.incident_utils import blocking_incident

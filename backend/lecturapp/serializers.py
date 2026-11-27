@@ -353,7 +353,9 @@ class ReadingBatchAppSerializer(serializers.ModelSerializer):
             return main_meters
     
     def get_num_readings(self, obj):
-        return obj.readings.filter(copied_from__isnull=True).count()
+        # Comptadors llegits del lot (un comptador amb diversos contractes té
+        # una lectura per contracte)
+        return obj.readings.filter(copied_from__isnull=True).values('meter_id').distinct().count()
     
 # ROUTE POSITIONS
     
@@ -496,7 +498,7 @@ class PropertyAppDetailedSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         representation = super().to_representation(instance)
         
-        batch_readings = self.context.get('batch_readings', [])
+        batch_readings_by_meter = self.context.get('batch_readings_by_meter', {})
 
         # Només compten els comptadors que es poden llegir en aquesta posició
         meter_ids = {
@@ -504,12 +506,9 @@ class PropertyAppDetailedSerializer(serializers.ModelSerializer):
         }
 
         representation['num_meters'] = len(meter_ids)
-        
-        # Use pre-fetched batch readings for counting
-        if batch_readings:
-            representation['num_readings'] = sum(1 for reading in batch_readings if reading.meter_id in meter_ids)
-        else:
-            representation['num_readings'] = 0
+        # Comptadors llegits, no lectures: un comptador amb diversos contractes
+        # té una lectura per contracte
+        representation['num_readings'] = len(meter_ids & batch_readings_by_meter.keys())
         
         representation['latitude'] = instance.latitude if instance.latitude else 0
         representation['longitude'] = instance.longitude if instance.longitude else 0
@@ -552,8 +551,8 @@ class PropertyAppSerializer(serializers.ModelSerializer):
         token_meter_status_no_meter = ConfigProject.objects.get(token='token_meter_status_no_meter').value
         exclude_telecontrol = not self.context.get('include_telecontrol', False)
         
-        num_readings = 0
-        num_meters = 0
+        meter_ids = set()
+        read_meter_ids = set()
         
         supply_points = _property_supply_points(instance, self.context)
         if exclude_telecontrol:
@@ -561,18 +560,18 @@ class PropertyAppSerializer(serializers.ModelSerializer):
         else:
             supply_points = supply_points.distinct()
         
-        # Count supply points and readings using pre-fetched data (excluding meters with status token '-1')
+        # Comptadors diferents (un comptador pot ser a més d'un punt), sense
+        # els de token '-1' ni sense comptador, i quants tenen lectura al lot
+        batch_meter_ids = {reading.meter_id for reading in batch_readings}
         for supply_point in supply_points:
             if supply_point.meter:
-                # Only count meter if status token is neither no_meter nor inactive '-1'
                 if supply_point.meter.status and supply_point.meter.status.token not in [token_meter_status_no_meter, '-1']:
-                    num_meters += 1
-                # Check if meter has reading in batch
-                if any(reading.meter_id == supply_point.meter.id for reading in batch_readings):
-                    num_readings += 1
+                    meter_ids.add(supply_point.meter_id)
+                if supply_point.meter_id in batch_meter_ids:
+                    read_meter_ids.add(supply_point.meter_id)
                      
-        representation['num_meters'] = num_meters
-        representation['num_readings'] = num_readings
+        representation['num_meters'] = len(meter_ids)
+        representation['num_readings'] = len(read_meter_ids)
         
         representation['latitude'] = instance.latitude if instance.latitude else 0
         representation['longitude'] = instance.longitude if instance.longitude else 0
@@ -703,7 +702,10 @@ class MeterAppSerializer(serializers.ModelSerializer):
         
         # For last reading, we still need to query as it's not in the batch
         if batch_reading:
-            reading = Reading.objects.exclude(id=batch_reading.id).filter(meter=instance).order_by('-reading_date','-created_at').first()
+            # Sense la lectura del lot ni les seves còpies (altres contractes)
+            reading = Reading.objects.exclude(
+                Q(id=batch_reading.id) | Q(copied_from_id=batch_reading.id)
+            ).filter(meter=instance).order_by('-reading_date','-created_at').first()
         else:
             reading = Reading.objects.filter(meter=instance).order_by('-reading_date','-created_at').first()
         if reading:

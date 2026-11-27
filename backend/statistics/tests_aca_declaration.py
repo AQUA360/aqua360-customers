@@ -290,10 +290,51 @@ class AcaVolumeTests(TestCase):
     def test_domestic_use_billed_as_industrial_counts_volume_once(self):
         volumes = self.volumes(
             self.invoice('FC/I', 'D', 7, [(self.general, 7, 0.1, None), (self.specific, 7, 0.2, None)]),
-            self.invoice('FC/L', 'L', 9, [(self.domestic, 9, 0.5, 1)]),
         )
-        self.assertEqual(set(volumes), {'FC/I'})
         self.assertEqual((volumes['FC/I'].tariff_type, volumes['FC/I'].billed), ('I', Decimal('7')))
+
+    def test_alta_counts_as_industrial(self):
+        # El FACTDETA declara l'alta a part; a la Declaració ACA compta com a industrial
+        volumes = self.volumes(
+            self.invoice('FC/L', 'L', 9, [(self.general, 9, 0.1, None), (self.specific, 9, 0.2, None)]),
+        )
+        self.assertEqual(
+            (volumes['FC/L'].tariff_type, volumes['FC/L'].consumed, volumes['FC/L'].billed),
+            ('I', Decimal('9'), Decimal('9')),
+        )
+
+    def test_alta_effective_use_is_industrial(self):
+        from statistics.utils.report_billing_service import _aca_effective_use_annotation, _invoice_effective_use_aca
+
+        invoice, _ = self.invoice('FC/L', 'L', 9, [(self.general, 9, 0.1, None)])
+        uses = set(InvoiceLineItem.objects.filter(invoice=invoice).annotate(
+            effective_use_aca=_aca_effective_use_annotation(),
+        ).values_list('effective_use_aca', flat=True))
+        self.assertEqual(uses, {'I'})
+        self.assertEqual(_invoice_effective_use_aca(invoice), 'I')
+
+    def test_effective_use_falls_back_to_termination_contract(self):
+        from contract.models import Contract, ContractTerminationRequest
+        from statistics.utils.report_billing_service import _aca_effective_use_annotation, _invoice_effective_use_aca
+
+        ConfigProject.objects.update_or_create(token='contract_terminated_status', defaults={'value': 'BAIXA'})
+        expected = {}
+        for number, contract_use, used_aca, use in (
+            ('FC/BL', 'L', None, 'I'), ('FC/BD', 'D', None, 'D'), ('FC/BS', 'L', 'D', 'D'),
+        ):
+            invoice, _ = self.invoice(number, used_aca, 9, [(self.general, 9, 0.1, None)])
+            termination = ContractTerminationRequest.objects.create(
+                contract=Contract.objects.create(token=f'C-{number}', use_aca=contract_use),
+            )
+            Invoice.objects.filter(id=invoice.id).update(contract_termination=termination)
+            invoice.refresh_from_db()
+            # Sense contracte a la factura, mana el de la baixa (com als volums); l'ús desat, primer
+            self.assertEqual(_invoice_effective_use_aca(invoice), use)
+            expected[invoice.id] = use
+        uses = dict(InvoiceLineItem.objects.filter(invoice_id__in=expected).annotate(
+            effective_use_aca=_aca_effective_use_annotation(),
+        ).values_list('invoice_id', 'effective_use_aca'))
+        self.assertEqual(uses, expected)
 
     def test_invoices_sheet_uses_summary_volumes(self):
         import openpyxl

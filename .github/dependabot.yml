@@ -4,4 +4,9 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 5
+    # Totes les actualitzacions d'accions en una sola PR, per revisar-les i fusionar-les juntes
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    open-pull-requests-limit: 1
