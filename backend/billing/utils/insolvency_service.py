@@ -488,11 +488,15 @@ def change_invoices_delinquency_status(process, invoice_ids, target, user):
                 fields['irrecoverable_date'] = today
             # update(): sense els senyals de desar la factura, com la gestió de morositat
             Invoice.objects.filter(pk=invoice.pk).update(**fields)
+        # Es bloquegen també els cobraments: un cobrament pagat entremig (remeses, banc) no es pot
+        # sobreescriure. Només la taula de cobraments: l'estat és nul·lable (join extern).
         payments = list(
-            Payment.objects.filter(invoice_id__in=ids)
+            Payment.objects.select_for_update(of=('self',))
+            .filter(invoice_id__in=ids)
             .exclude(status__token__in=settled_payment_tokens)
             .exclude(status=payment_status)
             .select_related('status')
+            .order_by('id')
         )
         for payment in payments:
             log_payment_status(payment, payment_status, user, today)

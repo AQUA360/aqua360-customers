@@ -57,12 +57,16 @@ const invoiceGrid = computed(() => (canChangeInvoiceStatus.value
   ? 'grid-cols-[2rem,1.2fr,1fr,1fr,1fr,1fr]'
   : 'grid-cols-[1.2fr,1fr,1fr,1fr,1fr]'));
 
+// Una sola operació alhora (canvi d'estat, pujada o tancament): totes substitueixen el detall amb
+// la resposta, i una resposta antiga no pot tapar un canvi ja confirmat
+const busy = computed(() => changingStatus.value || uploading.value || closing.value);
+
 const toggleAllInvoices = () => {
   selectedInvoiceIds.value = allSelected.value ? [] : selectableInvoices.value.map((invoice) => invoice.id);
 };
 
 const changeInvoiceStatus = async (target) => {
-  if (!canApplyTarget(target) || changingStatus.value) return;
+  if (!canApplyTarget(target) || busy.value) return;
   const n = selectedInvoices.value.length;
   if (!confirm(t(`insolvency.confirm_invoice_status.${target}`, { n }))) return;
   const currentId = props.id;
@@ -111,7 +115,7 @@ const openClose = () => {
 };
 
 const closeProcess = async () => {
-  if (invalidCloseDate.value || closing.value) return;
+  if (invalidCloseDate.value || busy.value) return;
   if (!confirm(t('insolvency.confirm_close'))) return;
   const currentId = props.id;
   closing.value = true;
@@ -133,10 +137,16 @@ const closeProcess = async () => {
 
 const uploadDocument = async (event) => {
   const file = event.target.files?.[0];
-  if (!file) return;
+  if (!file || busy.value) {
+    event.target.value = '';
+    return;
+  }
+  const currentId = props.id;
   uploading.value = true;
   try {
-    data.value = await $InsolvencyProcessApiService.uploadDocument(props.id, file);
+    const result = await $InsolvencyProcessApiService.uploadDocument(currentId, file);
+    if (currentId !== props.id) return;
+    data.value = result;
     toast.success(t('common.doc_correct_upload'));
   } catch (err) {
     console.error(err);
@@ -195,7 +205,7 @@ watch(() => props.id, getData);
           <div class="ml-auto flex gap-2">
             <button type="button" class="button-default-xs text-sm" @click="showClose = false">{{ t('insolvency.cancel') }}</button>
             <button type="button" class="button-primary !px-2.5 !py-1 text-sm flex items-center gap-1"
-              :disabled="invalidCloseDate || closing" @click="closeProcess">
+              :disabled="invalidCloseDate || busy" @click="closeProcess">
               <Icon :name="closing ? 'fa6-solid:spinner' : 'fa6-solid:lock'" :class="{ 'animate-spin': closing }" />
               {{ t('insolvency.confirm_close_button') }}
             </button>
@@ -234,12 +244,12 @@ watch(() => props.id, getData);
         <div v-if="canChangeInvoiceStatus && selectableInvoices.length" class="flex flex-wrap items-center gap-2">
           <span class="text-xs text-slate-500">{{ t('insolvency.selected_invoices', { n: selectedInvoices.length }) }}</span>
           <button type="button" class="button-default-xs text-xs flex items-center gap-1"
-            :disabled="!canApplyTarget('endowment') || changingStatus" @click="changeInvoiceStatus('endowment')">
+            :disabled="!canApplyTarget('endowment') || busy" @click="changeInvoiceStatus('endowment')">
             <Icon :name="changingStatus ? 'fa6-solid:spinner' : 'fa6-solid:triangle-exclamation'" :class="{ 'animate-spin': changingStatus }" />
             {{ t('insolvency.to_endowment') }}
           </button>
           <button type="button" class="button-default-xs text-xs flex items-center gap-1"
-            :disabled="!canApplyTarget('irrecoverable') || changingStatus" @click="changeInvoiceStatus('irrecoverable')">
+            :disabled="!canApplyTarget('irrecoverable') || busy" @click="changeInvoiceStatus('irrecoverable')">
             <Icon :name="changingStatus ? 'fa6-solid:spinner' : 'fa6-solid:ban'" :class="{ 'animate-spin': changingStatus }" />
             {{ t('insolvency.to_irrecoverable') }}
           </button>
@@ -251,7 +261,7 @@ watch(() => props.id, getData);
       <div v-if="data.invoices.length" class="rounded-md border border-gray-300 divide-y bg-white">
         <div class="grid divide-x text-sm leading-4" :class="invoiceGrid">
           <span v-if="canChangeInvoiceStatus" class="p-2 flex items-center justify-center">
-            <input type="checkbox" :checked="allSelected" :disabled="!selectableInvoices.length || changingStatus"
+            <input type="checkbox" :checked="allSelected" :disabled="!selectableInvoices.length || busy"
               :title="t('insolvency.select_all')" @change="toggleAllInvoices" />
           </span>
           <span class="p-2 pl-3 text-slate-600">{{ t('invoice') }}</span>
@@ -264,7 +274,7 @@ watch(() => props.id, getData);
           class="grid divide-x text-sm leading-4" :class="invoiceGrid">
           <span v-if="canChangeInvoiceStatus" class="p-2 flex items-center justify-center">
             <input v-if="invoice.delinquency_targets?.length" v-model="selectedInvoiceIds" type="checkbox"
-              :value="invoice.id" :disabled="changingStatus" />
+              :value="invoice.id" :disabled="busy" />
           </span>
           <span class="footering text-slate-800 p-2">{{ invoice.serie_final || '-' }}</span>
           <span class="footering text-slate-500 p-2">{{ formatDate(invoice.issue_date) }}</span>
@@ -308,12 +318,12 @@ watch(() => props.id, getData);
       <div class="mt-4 mb-1 flex items-center justify-between">
         <h2 class="font-semibold text-slate-700">{{ t('insolvency.documents') }} ({{ data.documents.length }})</h2>
         <template v-if="permissions?.can_add">
-          <button type="button" class="button-primary !px-2.5 !py-1 text-xs flex items-center" :disabled="uploading"
+          <button type="button" class="button-primary !px-2.5 !py-1 text-xs flex items-center" :disabled="busy"
             @click="fileInput?.click()">
             <Icon :name="uploading ? 'fa6-solid:spinner' : 'fa6-solid:plus'" :class="{ 'animate-spin': uploading }" />
             <span class="ml-1">{{ t('insolvency.upload_document') }}</span>
           </button>
-          <input ref="fileInput" type="file" class="hidden" @change="uploadDocument" />
+          <input ref="fileInput" type="file" class="hidden" :disabled="busy" @change="uploadDocument" />
         </template>
       </div>
       <ul v-if="data.documents.length" class="rounded-md border border-gray-300 divide-y bg-white text-sm">
