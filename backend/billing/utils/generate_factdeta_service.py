@@ -418,6 +418,8 @@ TARIFF_TYPES = ('D', 'I', 'Q', 'M', 'A', 'E', 'G', 'X')
 # Exempts i mesurament directe: només es declara el volum consumit
 CONSUMPTION_ONLY_TARIFF_TYPES = ('E', 'G', 'X', 'M')
 ALTA_USE_ACA = 'L'
+# A la Declaració ACA l'alta es continua declarant com a industrial
+DECLARATION_ALTA_USE_ACA = 'I'
 AGRICULTURAL_USE_ACA = 'G'
 LEAK_QUANTITY_TOKEN = 'diferencia_fuita'
 VULNERABLE_LEVEL = 2
@@ -954,14 +956,14 @@ def is_alta_invoice(invoice):
     return bool(contract and contract.use_aca == ALTA_USE_ACA)
 
 
-def factdeta_invoice_canon(invoice, aca_lines, config, context):
+def factdeta_invoice_canon(invoice, aca_lines, config, context, use_aca=None):
     """Tipus de tarifa, cànon (volums i imports) i volum consumit d'una factura tal com es declaren.
     `config` ha de portar part_fixa_token i tarifa_social_token; `context`, el de
-    _load_factdeta_baixa_context."""
+    _load_factdeta_baixa_context. `use_aca` substitueix l'ús ACA de la factura."""
     contract = _invoice_contract(invoice)
     is_fire = bool(contract and contract.id in context.fire_contract_ids)
     variable_lines = [line for line in aca_lines if not _is_part_fixa(line, config.part_fixa_token)]
-    use_aca = invoice.used_aca or (contract.use_aca if contract else None)
+    use_aca = use_aca or invoice.used_aca or (contract.use_aca if contract else None)
     tariff_type = get_factdeta_declared_tariff_type(use_aca, aca_lines, variable_lines, is_fire)
     social_line_ids = {line.id for line in variable_lines if _has_social_adjustment(line, config.tarifa_social_token)}
     canon = compute_factdeta_canon(tariff_type, aca_lines, config.part_fixa_token)
@@ -983,13 +985,14 @@ def factdeta_invoice_canon(invoice, aca_lines, config, context):
 def factdeta_invoice_volumes(invoices, lines_by_invoice, part_fixa_token, tarifa_social_token):
     """Volums (m³) de cada factura amb el mateix càlcul que el FACTDETA en baixa, per a la Declaració ACA:
     tipus de tarifa, consumit (el real de la factura), facturat, trams domèstics sense i amb tarifa social
-    (la fuita, al primer tram) i tarifa social 0. No hi entren les factures d'alta."""
+    (la fuita, al primer tram) i tarifa social 0. Les factures d'alta, que el FACTDETA declara a part,
+    a la Declaració ACA hi compten com a industrials."""
     config = SimpleNamespace(part_fixa_token=part_fixa_token, tarifa_social_token=tarifa_social_token)
-    invoices = [invoice for invoice in invoices if not is_alta_invoice(invoice)]
     context = _load_factdeta_baixa_context(config, invoices)
     volumes = []
     for invoice in invoices:
-        data = factdeta_invoice_canon(invoice, lines_by_invoice.get(invoice.id, []), config, context)
+        use_aca = DECLARATION_ALTA_USE_ACA if is_alta_invoice(invoice) else None
+        data = factdeta_invoice_canon(invoice, lines_by_invoice.get(invoice.id, []), config, context, use_aca)
         trams = {False: [ZERO] * DOMESTIC_TRAMS, True: [ZERO] * DOMESTIC_TRAMS}
         social_zero = ZERO
         if data.tariff_type == 'D':

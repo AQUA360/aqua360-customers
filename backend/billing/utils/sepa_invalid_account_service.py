@@ -36,6 +36,7 @@ from billing.utils.invoice_service import apply_invoice_payment_method
 from billing.utils.payment_service import disconnect_payment_signals, reconnect_payment_signals
 from contract.models import Contract, ContractDataChange, PaymentType
 from coredata.models import ConfigProject, PersonBank
+from logger.models import LogInvoiceDataChange
 
 logger = logging.getLogger(__name__)
 
@@ -247,7 +248,9 @@ def handle_invalid_account_return(payment, motive, iban, user=None, tokens=None)
         disconnect_payment_signals()
         try:
             for invoice in invoices:
-                apply_invoice_payment_method(user, invoice, bank_payment, None, None)
+                apply_invoice_payment_method(
+                    user, invoice, bank_payment, None, None,
+                    auto_reason=LogInvoiceDataChange.AUTO_REASON_INVALID_ACCOUNT_RETURN, reject_motive=motive)
         finally:
             reconnect_payment_signals()
 

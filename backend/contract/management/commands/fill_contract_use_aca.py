@@ -53,6 +53,18 @@ def _build_fill_result(
     }
 
 
+def _match_use_aca(token_to_use_aca, price_rate_token):
+    """use_aca de la tarifa: primer el token de configuració igual al de la tarifa (la pantalla de
+    Config ACA desa els tokens sencers) i, si no n'hi ha cap, el primer que hi és contingut."""
+    for token_key, use_aca in token_to_use_aca:
+        if token_key == price_rate_token:
+            return use_aca
+    for token_key, use_aca in token_to_use_aca:
+        if token_key in price_rate_token:
+            return use_aca
+    return None
+
+
 def fill_contract_use_aca(update_all_contracts=False, dry_run=False, single_contract_id=None):
     if not is_aca_org():
         logger.warning('No s\'actualitzarà use_aca')
@@ -76,15 +88,16 @@ def fill_contract_use_aca(update_all_contracts=False, dry_run=False, single_cont
     agricultural_use_type_ids = set(ContractUseType.objects.filter(
         token__in=split_config_tokens(get_config_value(ACA_AGRICULTURAL_USE_TYPE_CONFIG_TOKEN)),
     ).values_list('id', flat=True))
-    # Diccionari de mapeig de tokens a valors use_aca. Els tokens buits es descarten:
+    # Mapeig de tokens a valors use_aca. Els tokens buits es descarten:
     # un "" coincideix amb qualsevol tarifa (`"" in token`) i marcava tots els contractes.
-    token_to_use_aca = {
-        **{token: 'A' for token in contract_use_aca_mun_tokens},
-        **{token: 'D' for token in contract_use_aca_dom_tokens},
-        **{token: 'I' for token in contract_use_aca_ind_tokens},
-        **{token: 'Q' for token in contract_use_aca_gan_tokens},
-        **{token: 'L' for token in contract_use_aca_alta_tokens},
-    }
+    # L'ALTA va primer: les seves tarifes també poden casar amb els tokens d'industrial.
+    token_to_use_aca = [
+        *((token, 'L') for token in contract_use_aca_alta_tokens),
+        *((token, 'A') for token in contract_use_aca_mun_tokens),
+        *((token, 'D') for token in contract_use_aca_dom_tokens),
+        *((token, 'I') for token in contract_use_aca_ind_tokens),
+        *((token, 'Q') for token in contract_use_aca_gan_tokens),
+    ]
     
     # Obtenir tots els contractes actius
     contracts = Contract.objects.filter(is_active=True)
@@ -144,12 +157,8 @@ def fill_contract_use_aca(update_all_contracts=False, dry_run=False, single_cont
                     canon_token = token
                     
                     if token:
-                        # Buscar el valor use_aca corresponent
-                        for token_key, use_aca in token_to_use_aca.items():
-                            if token_key in token:
-                                use_aca_value = use_aca
-                                break
-                        
+                        use_aca_value = _match_use_aca(token_to_use_aca, token)
+
                         # Si hem trobat un valor, sortir del bucle
                         if use_aca_value:
                             break

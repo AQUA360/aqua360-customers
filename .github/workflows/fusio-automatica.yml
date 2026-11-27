@@ -3,6 +3,10 @@
 # releases es fusionen a mà. Les PR en esborrany i les que vénen d'un fork no la tenen. Es pot
 # desactivar a cada PR amb «Disable auto-merge».
 #
+# Les PR de Dependabot tampoc la tenen: GitHub no els dona els secrets del repositori (en tenen
+# un d'apart), així que FUSIO_TOKEN hi arriba buit i el job fallava a totes. A més, una
+# actualització d'accions de GitHub s'ha de mirar abans de fusionar-la.
+#
 # Fa servir el token FUSIO_TOKEN (un token d'usuari), no el GITHUB_TOKEN de l'acció: GitHub no
 # engega cap workflow per un push fet amb el GITHUB_TOKEN, i la fusió es feia amb ell. Sense
 # FUSIO_TOKEN, develop no passava les proves ni construïa les imatges després de fusionar.
@@ -22,7 +26,10 @@ permissions:
 
 jobs:
   activa:
-    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
+    if: >-
+      github.event.pull_request.draft == false
+      && github.event.pull_request.head.repo.full_name == github.repository
+      && github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Activar la fusió automàtica
