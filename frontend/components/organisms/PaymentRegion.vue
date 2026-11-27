@@ -12,6 +12,7 @@ import InvoiceRegion from './InvoiceRegion.vue';
 import OptionsDropdown from '~/components/molecules/OptionsDropdown.vue';
 import DropdownOption from '~/components/atoms/DropdownOption.vue';
 import ChangeStatus from '../molecules/ChangeStatus.vue';
+import ChangeCommitmentPaymentMethod from '../molecules/ChangeCommitmentPaymentMethod.vue';
 import CommitmentDepositRegion from './CommitmentDepositRegion.vue';
 import SEPAManagementViewDocument from './SEPAManagementViewDocument.vue';
 import ContractRegion from './ContractRegion.vue';
@@ -114,6 +115,7 @@ const getData = async (load = true) => {
   pending.value = load;
   error.value = null;
   statusPaidToken.value = await $ConfigProjectApiService.get('payment_status_paid_token');
+  statusPendingToken.value = await $ConfigProjectApiService.get('payment_status_pending_token');
   statusCommitmentToken.value = await $ConfigProjectApiService.get('payment_status_commitment_token');
   statusExpiredToken.value = await $ConfigProjectApiService.get('payment_status_expired_token');
   statusIrrecoverableToken.value = await $ConfigProjectApiService.get('payment_status_irrecoverable_token');
@@ -368,6 +370,25 @@ const includePayment = async function () {
 // No es pot marcar un pagament que ja és en una remesa pendent d'enviar.
 const inPendingRemittance = computed(() => !!data.value?.remittances?.some(remittance => !remittance.sent_at));
 
+// Canvi de forma de pagament dels rebuts pendents d'un compromís (no de factura); el servidor
+// ho torna a validar i, si no es pot, n'explica el motiu.
+const statusPendingToken = ref(null)
+const canChangeCommitmentPaymentMethod = computed(() =>
+  !!data.value?.commitment_deposit && !data.value?.invoice
+  && data.value?.status?.token === statusPendingToken.value
+  && !inPendingRemittance.value
+);
+
+const openChangeCommitmentPaymentMethod = () => {
+  showDetail('ChangeCommitmentPaymentMethod', props.id);
+}
+
+const handleCommitmentPaymentMethodChanged = () => {
+  closeSubRegion();
+  getData(false);
+  emit('changed');
+}
+
 const toggleMarkedForRemittance = async function () {
   const marked = !data.value.is_marked_for_remittance
   if (!confirm(t(marked ? "confirmation_text_block.confirm_mark_for_remittance" : "confirmation_text_block.confirm_unmark_for_remittance"))) return
@@ -550,6 +571,12 @@ watch(selectedPaymentDate, () => {
               <Icon name="fa6-solid:flag" class="display-inline mr-2" />
               {{ data.is_marked_for_remittance ? t('billing_block.unmark_for_remittance') : t('billing_block.mark_for_remittance') }}
             </DropdownOption>
+            <DropdownOption v-if="canChangeCommitmentPaymentMethod" :disabled="!allow_payment"
+              :name="t('billing_block.change_commitment_payment_method')"
+              @click="openChangeCommitmentPaymentMethod">
+              <Icon name="fa6-solid:wallet" class="display-inline mr-2" />
+              {{ t('billing_block.change_commitment_payment_method') }}
+            </DropdownOption>
             <DropdownOption v-if="!mustSaveToPiggyBank" :disabled="!allow_payment"
               :name="t('billing_block.single_pay')"
               @click="openLiquidateMethod"></DropdownOption>
@@ -717,6 +744,8 @@ watch(selectedPaymentDate, () => {
           <ChangeStatus v-if="showRegionDetailComponent === 'ChangeStatus'" entity="payment" parent_entity="payment"
             :id="props.id" :status="data.status?.id" module="billing" :reasonToken="statusIrrecoverableToken"
             @changed="handleStatusChanged" />
+          <ChangeCommitmentPaymentMethod v-if="showRegionDetailComponent === 'ChangeCommitmentPaymentMethod'"
+            :id="props.id" @changed="handleCommitmentPaymentMethodChanged" />
         </div>
       </div>
     </Teleport>
