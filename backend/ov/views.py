@@ -86,7 +86,7 @@ from billing.models import (
     Reading,
 )
 from documentmanager.utils.main_utils import download_document, upload_document
-from pricing.models import PriceRate, Product
+from pricing.models import BillingRange, PriceRate, Product
 from service.models import Property, SupplyPoint
 from service.utils.route_scope import effective_route
 from ov.invoice_visibility import exclude_future_invoices
@@ -1825,14 +1825,26 @@ class ContractRequestTypeDictionaryOVView(APIView):
             )
             if with_price:
                 # Mateixa precàrrega que `/ov/dictionary/procedure-tariffs/`
-                # per calcular el cost sense consultes per tarifa.
+                # per calcular el cost sense consultes per tarifa, més els
+                # períodes actius de reserva (`active_billing_ranges`) per a
+                # les tarifes sense `billing_range_active`.
+                line_items = (
+                    "line_item_types__price_interval"
+                    "__price_interval_stretches",
+                    "line_item_types__price_variable"
+                    "__price_variable_interval_stretches",
+                )
                 queryset = queryset.select_related(
                     "billing_range_active"
                 ).prefetch_related(
-                    "billing_range_active__line_item_types__price_interval"
-                    "__price_interval_stretches",
-                    "billing_range_active__line_item_types__price_variable"
-                    "__price_variable_interval_stretches",
+                    *(f"billing_range_active__{path}" for path in line_items),
+                    Prefetch(
+                        "billing_ranges",
+                        queryset=BillingRange.objects.filter(is_active=True)
+                        .order_by("-start")
+                        .prefetch_related(*line_items),
+                        to_attr="active_billing_ranges",
+                    ),
                 )
             return Prefetch(relation, queryset=queryset, to_attr=to_attr)
 

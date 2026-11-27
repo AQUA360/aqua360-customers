@@ -2835,13 +2835,36 @@ class DictionaryEndpointsTests(TestCase):
         extra = ContractRequestType.objects.create(
             token="dict-test-c", name="Gamma tipus", is_active=True
         )
-        extra.registration_price_rates.set(
-            PriceRate.objects.filter(token="dict-rate-reg")
+        # Una tarifa amb període actiu, una sense període seleccionat i una
+        # sense cap període: el càlcul del preu no ha de fer més consultes.
+        fallback_rate = PriceRate.objects.create(
+            token="dict-rate-fallback", name="Reserva", is_active=True
         )
+        fallback_range = BillingRange.objects.create(
+            price_rate=fallback_rate, start=date(2026, 1, 1), is_active=True
+        )
+        LineItemType.objects.create(
+            billing_range=fallback_range,
+            token="dict-rate-fallback-lit",
+            name="Concepte reserva",
+            price=7.5,
+        )
+        extra.registration_price_rates.set(
+            PriceRate.objects.filter(
+                token__in=["dict-rate-reg", "dict-rate-general"]
+            )
+        )
+        extra.change_of_name_registration_price_rates.set([fallback_rate])
         with CaptureQueriesContext(connection) as after:
-            self.client.get(url)
+            response = self.client.get(url)
 
         self.assertEqual(len(before), len(after))
+        added = next(
+            item for item in response.data if item["token"] == "dict-test-c"
+        )
+        # El preu de la tarifa sense període seleccionat surt del període
+        # actiu de reserva.
+        self.assertEqual(added["change_of_name_price"], 7.5)
 
     def test_dictionary_endpoints_require_authentication(self):
         anonymous = APIClient()

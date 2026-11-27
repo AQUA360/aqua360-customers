@@ -2159,11 +2159,17 @@ class ProcedureTariffDictionarySerializer(serializers.Serializer):
     def to_representation(self, instance):
         billing_range = instance.billing_range_active
         if not billing_range:
-            billing_range = (
-                instance.billing_ranges.filter(is_active=True)
-                .order_by("-start")
-                .first()
-            )
+            # Períodes actius precarregats per la vista (més recent primer);
+            # si no hi són, es consulten.
+            prefetched = getattr(instance, "active_billing_ranges", None)
+            if prefetched is not None:
+                billing_range = prefetched[0] if prefetched else None
+            else:
+                billing_range = (
+                    instance.billing_ranges.filter(is_active=True)
+                    .order_by("-start")
+                    .first()
+                )
 
         components = []
         if billing_range:
