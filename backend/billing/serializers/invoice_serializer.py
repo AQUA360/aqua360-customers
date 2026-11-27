@@ -608,6 +608,13 @@ class InvoiceFullSerializer(PdfPageCountMixin, serializers.ModelSerializer):
         
         do_confirm = False
         
+        # Un canvi de mètode de pagament per aquí també ha de quedar a l'historial: si no, l'avís
+        # d'un canvi anterior del sistema podria tornar a sortir (payment_method_alert_service).
+        # Abans de l'anul·lació, que retorna sense passar pel final
+        new_payment_type = validated_data.get('payment_type_final')
+        if 'payment_type_final' in validated_data and new_payment_type != instance.payment_type_final:
+            log_invoice_data_change(user, instance, None, new_payment_type)
+        
         if status_token:
             cancelled_token = ConfigProject.objects.get(token='invoice_status_cancelled_token').value
             dropped_token = ConfigProject.objects.get(token='invoice_status_dropped_token').value
@@ -648,12 +655,6 @@ class InvoiceFullSerializer(PdfPageCountMixin, serializers.ModelSerializer):
             instance.status = status
             if status.token == cancelled_token:
                 notify_cancelled_invoices([instance])
-        
-        # Un canvi de mètode de pagament per aquí també ha de quedar a l'historial: si no, l'avís
-        # d'un canvi anterior del sistema podria tornar a sortir (payment_method_alert_service)
-        new_payment_type = validated_data.get('payment_type_final')
-        if 'payment_type_final' in validated_data and new_payment_type != instance.payment_type_final:
-            log_invoice_data_change(user, instance, None, new_payment_type)
         
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
