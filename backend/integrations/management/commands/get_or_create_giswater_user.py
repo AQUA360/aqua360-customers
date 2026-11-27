@@ -8,7 +8,14 @@ from decouple import config
 class Command(BaseCommand):
     help = "Get or create Giswater inbound user and assign to giswater group"
 
-    def handle(self, *args, **kwargs):
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "--show-token",
+            action="store_true",
+            help="Mostra el token sencer (per defecte només se'n veu el final).",
+        )
+
+    def handle(self, *args, **options):
         self.stdout.write("⚙️  Setting Giswater user up...")
 
         giswater_group, group_created = Group.objects.get_or_create(name="giswater")
@@ -39,7 +46,15 @@ class Command(BaseCommand):
 
         token, token_created = Token.objects.get_or_create(user=user)
         self._notify(token_created, "Token")
-        self.stdout.write(self.style.SUCCESS(f"🔑 Token: {token.key}"))
+        if options.get("show_token"):
+            self.stdout.write(self.style.SUCCESS(f"🔑 Token: {token.key}"))
+        else:
+            # El token no es deixa als registres de Docker o de la CI: només se'n mostra el final.
+            self.stdout.write(
+                self.style.SUCCESS(
+                    f"🔑 Token: ****{token.key[-4:]} (executa l'ordre amb --show-token per veure'l sencer)"
+                )
+            )
 
     def _notify(self, created: bool, item: str):
         if created:

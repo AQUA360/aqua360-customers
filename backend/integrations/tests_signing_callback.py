@@ -85,9 +85,8 @@ class SigningCallbackTests(TestCase):
         response = self.post(signed_payload("CR-TEST", CR_SESSION), key="qualsevol")
         self.assertEqual(response.status_code, 403)
         self.assert_nothing_changed()
-        log = IntegrationRequestLog.objects.filter(direction="inbound").latest("id")
-        self.assertEqual(log.status_code, 403)
-        self.assertFalse(log.success)
+        # Una crida sense clau vàlida no deixa res a la BD
+        self.assertFalse(IntegrationRequestLog.objects.filter(direction="inbound").exists())
 
     def test_sense_capcalera_rebutjat(self):
         response = self.post(signed_payload("CR-TEST", CR_SESSION), key=None)
