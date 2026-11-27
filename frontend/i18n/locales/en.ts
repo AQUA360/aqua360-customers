@@ -56,6 +56,22 @@ export default {
     save: "Save",
     view_process: "View process",
     insolvent_person: "Insolvent person",
+    new_invoice_status: "Action",
+    invoice_status_create_help: "You can mark unpaid invoices as delinquent or irrecoverable now, or later from the process.",
+    invoice_targets: {
+      endowment: "Delinquent",
+      irrecoverable: "Irrecoverable",
+    },
+    to_endowment: "Mark as delinquent",
+    to_irrecoverable: "Mark as irrecoverable",
+    select_all: "Select all",
+    selected_invoices: "{n} selected",
+    invoice_status_help: "Select the unpaid invoices you want to mark as delinquent or irrecoverable. Invoices already delinquent can only be marked as irrecoverable.",
+    invoice_status_changed: "Status changed for {n} invoices",
+    confirm_invoice_status: {
+      endowment: "Mark {n} invoices as delinquent? Their pending payments will change too.",
+      irrecoverable: "Mark {n} invoices as irrecoverable? Their pending payments will change too.",
+    },
     kinds: {
       second_chance: "Second chance law",
       creditors: "Insolvency proceedings",

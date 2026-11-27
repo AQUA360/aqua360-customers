@@ -29,11 +29,15 @@ export default defineNuxtPlugin(nuxtApp => {
   const close = async (id, data = {}) =>
     await $apiManager.fetch(`${apiHost}${entity}${id}/close/`, 'POST', data);
 
+  // Factures del procés a morositat (target 'endowment') o a irrecuperable ('irrecoverable')
+  const changeInvoiceStatus = async (id, invoiceIds, target) =>
+    await $apiManager.fetch(`${apiHost}${entity}${id}/invoice-status/`, 'POST', { invoice_ids: invoiceIds, target });
+
   const uploadDocument = async (id, file) => {
     const formData = new FormData();
     formData.append('file', file);
     return await $apiManager.fetch(`${apiHost}${entity}${id}/upload-document/`, 'POST', formData);
   };
 
-  nuxtApp.provide(provideName, { getAll, getDetail, getPermissions, preview, create, close, uploadDocument });
+  nuxtApp.provide(provideName, { getAll, getDetail, getPermissions, preview, create, close, changeInvoiceStatus, uploadDocument });
 });

@@ -56,6 +56,22 @@ export default {
     save: "Guardar",
     view_process: "Ver proceso",
     insolvent_person: "Persona insolvente",
+    new_invoice_status: "Qué hacer",
+    invoice_status_create_help: "Si quieres, puedes pasar ahora las facturas pendientes de cobro a morosidad o a irrecuperable. Si no, también puedes hacerlo más adelante desde el proceso.",
+    invoice_targets: {
+      endowment: "Morosidad",
+      irrecoverable: "Irrecuperable",
+    },
+    to_endowment: "Pasar a morosidad",
+    to_irrecoverable: "Pasar a irrecuperable",
+    select_all: "Seleccionar todas",
+    selected_invoices: "{n} seleccionadas",
+    invoice_status_help: "Selecciona las facturas pendientes de cobro que quieras pasar a morosidad o a irrecuperable. Las que ya están en morosidad solo se pueden pasar a irrecuperable.",
+    invoice_status_changed: "Se ha cambiado el estado de {n} facturas",
+    confirm_invoice_status: {
+      endowment: "¿Quieres pasar {n} facturas a morosidad? Los cobros pendientes también pasarán.",
+      irrecoverable: "¿Quieres pasar {n} facturas a irrecuperable? Los cobros pendientes también pasarán.",
+    },
     kinds: {
       second_chance: "Ley de segunda oportunidad",
       creditors: "Concurso de acreedores",

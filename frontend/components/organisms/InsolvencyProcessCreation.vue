@@ -37,6 +37,7 @@ const preview = ref(null);
 const previewLoading = ref(false);
 const previewError = ref(false);
 const newPaymentTypes = ref({}); // contract_id -> payment_type_id (null = mantenir)
+const invoiceTargets = ref({}); // invoice_id -> 'endowment' | 'irrecoverable' (undefined = mantenir)
 const attemptedSave = ref(false);
 const saving = ref(false);
 
@@ -62,6 +63,7 @@ const loadPreview = async () => {
   preview.value = null;
   previewError.value = false;
   newPaymentTypes.value = {};
+  invoiceTargets.value = {};
   if (!person.value?.id || !startDate.value) {
     previewLoading.value = false;
     return;
@@ -125,6 +127,9 @@ const save = async () => {
       case_number: caseNumber.value?.trim() || null,
       observation: observation.value?.trim() || null,
       payment_changes: paymentChanges,
+      invoice_status_changes: Object.entries(invoiceTargets.value)
+        .filter(([, target]) => target)
+        .map(([invoiceId, target]) => ({ invoice_id: parseInt(invoiceId), target })),
     });
     // El procés ja és creat: si falla algun document, es pot tornar a pujar des del detall
     for (const file of pendingFiles.value) {
@@ -283,21 +288,33 @@ onMounted(async () => {
       <section class="mt-4 rounded-xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
         <h2 class="font-semibold text-slate-700">{{ t('insolvency.invoices_since') }} ({{ preview.invoices.length }})</h2>
         <p class="text-sm text-slate-500 mb-2">{{ t('insolvency.invoices_help') }}</p>
+        <p class="text-sm text-slate-500 mb-2">{{ t('insolvency.invoice_status_create_help') }}</p>
         <div v-if="preview.invoices.length" class="rounded-md border border-gray-300 divide-y bg-white">
-          <div class="grid grid-cols-[1.2fr,1fr,1fr,1fr,1fr] divide-x text-sm leading-4">
+          <div class="grid grid-cols-[1.2fr,1fr,1fr,1fr,1fr,1.4fr] divide-x text-sm leading-4">
             <span class="p-2 pl-3 text-slate-600">{{ t('invoice') }}</span>
             <span class="p-2 pl-3 text-slate-600">{{ t('common.date') }}</span>
             <span class="p-2 pl-3 text-slate-600">{{ t('insolvency.contract') }}</span>
             <span class="p-2 pl-3 text-slate-600">{{ t('common.total') }}</span>
             <span class="p-2 pl-3 text-slate-600">{{ t('common.status') }}</span>
+            <span class="p-2 pl-3 text-slate-600">{{ t('insolvency.new_invoice_status') }}</span>
           </div>
           <div v-for="invoice in preview.invoices" :key="invoice.id"
-            class="grid grid-cols-[1.2fr,1fr,1fr,1fr,1fr] divide-x text-sm leading-4">
+            class="grid grid-cols-[1.2fr,1fr,1fr,1fr,1fr,1.4fr] divide-x text-sm leading-4 items-center">
             <span class="footering text-slate-800 p-2">{{ invoice.serie_final || '-' }}</span>
             <span class="footering text-slate-500 p-2">{{ formatDate(invoice.issue_date) }}</span>
             <span class="footering text-slate-500 p-2">{{ invoice.contract_token || '-' }}</span>
             <span class="footering text-slate-500 p-2">{{ formatMoneyWithCurrency(invoice.total_final) }}</span>
             <span class="footering text-slate-500 p-2">{{ invoice.status_name || '-' }}</span>
+            <span class="p-1.5">
+              <select v-if="invoice.delinquency_targets?.length" v-model="invoiceTargets[invoice.id]"
+                class="input w-full text-sm !py-1">
+                <option :value="undefined">{{ t('insolvency.keep') }}</option>
+                <option v-for="target in invoice.delinquency_targets" :key="target" :value="target">
+                  {{ t(`insolvency.invoice_targets.${target}`) }}
+                </option>
+              </select>
+              <span v-else class="footering text-slate-400 px-1">-</span>
+            </span>
           </div>
         </div>
         <div v-else class="footering text-slate-500 p-2">{{ t('insolvency.no_invoices') }}</div>
