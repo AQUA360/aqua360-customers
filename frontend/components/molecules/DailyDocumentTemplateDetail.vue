@@ -101,6 +101,7 @@ const WEEKDAY_KEYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 's
 const periodicityLabel = computed(() => {
   const value = localData.value?.periodicity || 'daily';
   if (value === 'weekly') return t('statistics_block.periodicity_weekly');
+  if (value === 'monthly') return t('statistics_block.periodicity_monthly');
   if (value === 'every_x_days') return t('statistics_block.periodicity_every_x_days');
   return t('statistics_block.periodicity_daily');
 });
@@ -111,6 +112,9 @@ const periodicityDetail = computed(() => {
   if (data.periodicity === 'weekly' && data.weekday != null) {
     const key = WEEKDAY_KEYS[data.weekday];
     return key ? t(`date.${key}`) : '';
+  }
+  if (data.periodicity === 'monthly' && data.month_day != null) {
+    return t('statistics_block.periodicity_month_day_value', { day: data.month_day });
   }
   if (data.periodicity === 'every_x_days') {
     const parts = [];

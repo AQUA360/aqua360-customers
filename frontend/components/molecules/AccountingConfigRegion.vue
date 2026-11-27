@@ -1,9 +1,16 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useToast } from 'vue-toastification';
 import { checkPermission } from '~/middleware/permission';
 import H1Region from '~/components/atoms/H1Region.vue';
+
+const props = defineProps({
+  exploitationId: {
+    type: [Number, String],
+    default: null,
+  },
+});
 
 const emit = defineEmits(['close', 'changed']);
 
@@ -21,6 +28,17 @@ const saving = ref(false);
 const error = ref(null);
 const loadingPricings = ref(false);
 const pricingOptions = ref([]);
+
+const resolvedExploitationId = computed(() => {
+  if (props.exploitationId !== null && props.exploitationId !== undefined && props.exploitationId !== '') {
+    return props.exploitationId;
+  }
+  try {
+    return localStorage.getItem('exploitation') || null;
+  } catch (err) {
+    return null;
+  }
+});
 
 const accountingConfig = ref({
   piggybank_as_negative: false,
@@ -87,7 +105,7 @@ const loadPricingOptions = async () => {
   loadingPricings.value = true;
   try {
     const response = await $AccountingPricingApiService.getAll(
-      '', 1, null, false, false, null, null, null, null, 200,
+      '', 1, null, false, false, null, resolvedExploitationId.value, null, null, 200,
     );
     const list = Array.isArray(response?.results) ? response.results : [];
     pricingOptions.value = list.map(toPricingOption);
@@ -103,7 +121,7 @@ const loadConfig = async () => {
   pending.value = true;
   error.value = null;
   try {
-    const response = await $AccountingConfigApiService.getCurrent();
+    const response = await $AccountingConfigApiService.getCurrent(resolvedExploitationId.value);
     accountingConfig.value = {
       piggybank_as_negative: !!response.piggybank_as_negative,
       include_piggy_status_payments: !!response.include_piggy_status_payments,
@@ -128,6 +146,11 @@ const loadConfig = async () => {
   }
 };
 
+const reloadForExploitation = async () => {
+  await loadPricingOptions();
+  await loadConfig();
+};
+
 const saveConfig = async () => {
   if (!objectPermissions.value?.can_change || saving.value) return;
   if (!confirm(t('confirmation_text_block.confirm_save'))) return;
@@ -135,6 +158,7 @@ const saveConfig = async () => {
   saving.value = true;
   try {
     const payload = {
+      exploitation_id: resolvedExploitationId.value || null,
       piggybank_as_negative: !!accountingConfig.value.piggybank_as_negative,
       include_piggy_status_payments: !!accountingConfig.value.include_piggy_status_payments,
       document_format: accountingConfig.value.document_format === 'csv' ? 'csv' : 'xml',
@@ -150,7 +174,10 @@ const saveConfig = async () => {
       return_counter_declare_as: accountingConfig.value.return_counter_declare_as,
       return_counter_pricing_id: accountingConfig.value.return_counter_pricing?.id ?? null,
     };
-    const response = await $AccountingConfigApiService.saveCurrent(payload);
+    const response = await $AccountingConfigApiService.saveCurrent(
+      payload,
+      resolvedExploitationId.value,
+    );
     accountingConfig.value.incoming_counter_pricing = hydratePricingSelection(
       response.incoming_counter_pricing,
     );
@@ -167,6 +194,12 @@ const saveConfig = async () => {
   }
 };
 
+watch(resolvedExploitationId, async (next, prev) => {
+  if (String(next) === String(prev)) return;
+  if (!objectPermissions.value?.can_view) return;
+  await reloadForExploitation();
+});
+
 onMounted(async () => {
   objectPermissions.value = await checkPermission($PriceRateApiService);
   if (!objectPermissions.value.can_view) {
@@ -174,8 +207,7 @@ onMounted(async () => {
     emit('close');
     return;
   }
-  await loadPricingOptions();
-  await loadConfig();
+  await reloadForExploitation();
 });
 </script>
 

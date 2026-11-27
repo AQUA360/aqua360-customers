@@ -63,6 +63,8 @@ class AccountingAdditionalLineSerializer(serializers.ModelSerializer):
     accounting_pricing_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     accounting_concept = AccountingConceptSerializer(read_only=True, required=False, allow_null=True)
     accounting_concept_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+    accounting_cost_center = AccountingCostCenterSerializer(read_only=True, required=False, allow_null=True)
+    accounting_cost_center_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
 
     class Meta:
         model = AccountingAdditionalLine
@@ -71,15 +73,21 @@ class AccountingAdditionalLineSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         accounting_pricing_id = validated_data.pop('accounting_pricing_id', None)
         accounting_concept_id = validated_data.pop('accounting_concept_id', None)
+        accounting_cost_center_id = validated_data.pop('accounting_cost_center_id', None)
         if accounting_pricing_id:
             validated_data['accounting_pricing'] = AccountingPricing.objects.get(id=accounting_pricing_id)
         if accounting_concept_id:
             validated_data['accounting_concept'] = AccountingConcept.objects.get(id=accounting_concept_id)
+        if accounting_cost_center_id:
+            validated_data['accounting_cost_center'] = AccountingCostCenter.objects.get(
+                id=accounting_cost_center_id
+            )
         return super().create(validated_data)
 
     def update(self, instance, validated_data):
         accounting_pricing_id = validated_data.pop('accounting_pricing_id', None)
         accounting_concept_id = validated_data.pop('accounting_concept_id', None)
+        accounting_cost_center_id = validated_data.pop('accounting_cost_center_id', None)
         if accounting_pricing_id is not None:
             validated_data['accounting_pricing'] = (
                 AccountingPricing.objects.get(id=accounting_pricing_id) if accounting_pricing_id else None
@@ -88,11 +96,18 @@ class AccountingAdditionalLineSerializer(serializers.ModelSerializer):
             validated_data['accounting_concept'] = (
                 AccountingConcept.objects.get(id=accounting_concept_id) if accounting_concept_id else None
             )
+        if 'accounting_cost_center_id' in self.initial_data:
+            validated_data['accounting_cost_center'] = (
+                AccountingCostCenter.objects.get(id=accounting_cost_center_id)
+                if accounting_cost_center_id
+                else None
+            )
         return super().update(instance, validated_data)
 
 
 class AccountingAdditionalLineNestedSerializer(serializers.ModelSerializer):
     accounting_concept = AccountingConceptSerializer(read_only=True, required=False, allow_null=True)
+    accounting_cost_center = AccountingCostCenterSerializer(read_only=True, required=False, allow_null=True)
 
     class Meta:
         model = AccountingAdditionalLine
@@ -104,6 +119,7 @@ class AccountingAdditionalLineNestedSerializer(serializers.ModelSerializer):
             'declared_as',
             'declared_as_return',
             'accounting_concept',
+            'accounting_cost_center',
             'is_negative',
             'declare_as',
             'declare_sign',

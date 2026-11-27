@@ -13,6 +13,10 @@ const props = defineProps({
     is_connection: {
         type: Boolean,
         default: false
+    },
+    hasAccountingPricing: {
+        type: Boolean,
+        default: false
     }
 });
 
@@ -192,6 +196,11 @@ onMounted(async () => {
             <div class="flex flex-col space-y-4">
                 <input type="text" v-model="new_line_name" class="input"
                 :placeholder="t('pricing_block.new_line_name')" />
+                <div v-if="hasAccountingPricing"
+                    class="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                    <Icon name="fa6-solid:triangle-exclamation" class="mt-0.5 shrink-0 text-amber-500" />
+                    <span>{{ t('warning_block.warning_custom_line_generic_accounting') }}</span>
+                </div>
                 <button class="button-primary w-full" @click="handleAddLineItem()">
                     {{ t('billing_block.add_custom_line') }}
                 </button>

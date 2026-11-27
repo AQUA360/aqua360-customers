@@ -14,7 +14,7 @@ import Draggable from 'vuedraggable';
 import { openAuthenticatedFileUrl } from '~/utils/open-authenticated-file';
 
 const { t } = useI18n();
-const { $LineItemApiService, $InvoiceApiService, $ConfigProjectApiService, $LineItemTypeApiService } = useNuxtApp()
+const { $LineItemApiService, $InvoiceApiService, $ConfigProjectApiService, $LineItemTypeApiService, $AccountingPricingApiService } = useNuxtApp()
 const toast = useToast();
 
 const props = defineProps({
@@ -46,6 +46,7 @@ const error = ref(null);
 const lineItemTypeManual = ref(null)
 
 const showSelectLineType = ref(false)
+const hasAccountingPricing = ref(false)
 
 const item = ref(null);
 const invoiceTypeToken = ref(null)
@@ -54,6 +55,18 @@ const statusCancelledToken = ref(null)
 const generatingInvoice = ref(false)
 
 const comment = ref(null)
+
+const checkAccountingPricingConfigured = async () => {
+  try {
+    const response = await $AccountingPricingApiService.getAll(
+      '', 1, null, false, false, null, null, null, null, 1,
+    );
+    hasAccountingPricing.value = !!(response?.count > 0 || response?.results?.length > 0);
+  } catch (err) {
+    console.error(err);
+    hasAccountingPricing.value = false;
+  }
+}
 
 const isReorderable = computed(() => {
   // 1. Si l'origen és de lectures (sigui factura o pressupost), ha de ser FIXA
@@ -319,7 +332,7 @@ onMounted( async () => {
   invoiceTypeToken.value = await $ConfigProjectApiService.get('invoice_type_invoice_token');
   originReadingToken.value = await $ConfigProjectApiService.get('origin_reading_token');
   statusCancelledToken.value = await $ConfigProjectApiService.get('invoice_status_cancelled_token');
-  await getData();
+  await Promise.all([getData(), checkAccountingPricingConfigured()]);
 });
 </script>
 
@@ -530,6 +543,12 @@ onMounted( async () => {
                         <span class="text-white text-xs font-bold">!</span>
                       </div>
                     </div>
+                    <div v-if="hasAccountingPricing && line?.manually_added" class="relative inline-block">
+                      <div class="w-5 h-5 rounded-full bg-amber-500 flex items-center justify-center mousover"
+                        :title="t('warning_block.warning_custom_line_generic_accounting')">
+                        <Icon name="fa6-solid:triangle-exclamation" class="text-white w-3 h-3" />
+                      </div>
+                    </div>
                   </div>
                   <div class="pl-2">
                     <input v-model="line.name" type="text" class="w-full border rounded px-2 py-1 mb-1" /><br />
@@ -637,7 +656,8 @@ onMounted( async () => {
       </div>
       <div @click="showSelectLineType = false" v-if="showSelectLineType"
         class="absolute inset-0 flex items-center justify-center z-30 p-4">
-        <AddNewInvoiceLine @click.stop :is_connection="is_connection" :id="props.id" 
+        <AddNewInvoiceLine @click.stop :is_connection="is_connection" :id="props.id"
+        :hasAccountingPricing="hasAccountingPricing"
         @handleNewItem="handleAddLineItem" class="shadow-2xl relative" >
           <template #button-exit>
             <button @click="showSelectLineType = false" 
@@ -667,7 +687,9 @@ onMounted( async () => {
   padding: 4px 8px;
   border-radius: 4px;
   font-size: 12px;
-  white-space: nowrap;
+  white-space: normal;
+  max-width: 280px;
+  width: max-content;
   margin-left: 8px;
   z-index: 10;
 }

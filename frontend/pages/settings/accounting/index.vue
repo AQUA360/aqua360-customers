@@ -199,7 +199,8 @@ onMounted(async () => {
         :categories="accountingValues" @show-subregion="handleSubRegionEvent" @close="toggleRegion(false)"
         @changed="refreshConcepts" />
       <AccountingCostCentersRegion v-if="regionComponent === 'AccountingCostCenters'" @close="toggleRegion(false)" />
-      <AccountingConfigRegion v-if="regionComponent === 'AccountingConfig'" @close="toggleRegion(false)" />
+      <AccountingConfigRegion v-if="regionComponent === 'AccountingConfig'"
+        :exploitation-id="activeExploitationTab" @close="toggleRegion(false)" />
       <EditAccountingPricing v-if="regionComponent === 'EditAccountingPricing'" :id="selectedItemId"
         @close="toggleRegion(false)" @changed="refreshPricings" />
     </div>

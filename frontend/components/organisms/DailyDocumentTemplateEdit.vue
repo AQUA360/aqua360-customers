@@ -47,6 +47,7 @@ const isWorkDays = ref(false);
 const createWithoutData = ref(false);
 const periodicity = ref('daily');
 const weekday = ref(4); // Friday by default when switching to weekly
+const monthDay = ref(1); // 1st of month by default when switching to monthly
 const intervalDays = ref(15);
 const periodAnchorDate = ref('');
 
@@ -63,8 +64,16 @@ const dayType = computed({
 const periodicityOptions = computed(() => [
     { value: 'daily', label: t('statistics_block.periodicity_daily') },
     { value: 'weekly', label: t('statistics_block.periodicity_weekly') },
+    { value: 'monthly', label: t('statistics_block.periodicity_monthly') },
     { value: 'every_x_days', label: t('statistics_block.periodicity_every_x_days') },
 ]);
+
+const monthDayOptions = computed(() =>
+    Array.from({ length: 31 }, (_, i) => ({
+        value: i + 1,
+        label: String(i + 1),
+    }))
+);
 
 const weekdayOptions = computed(() => [
     { value: 0, label: t('date.monday') },
@@ -78,6 +87,7 @@ const weekdayOptions = computed(() => [
 
 const periodicityHelp = computed(() => {
     if (periodicity.value === 'weekly') return t('statistics_block.periodicity_weekly_help');
+    if (periodicity.value === 'monthly') return t('statistics_block.periodicity_monthly_help');
     if (periodicity.value === 'every_x_days') return t('statistics_block.periodicity_every_x_days_help');
     return t('statistics_block.periodicity_daily_help');
 });
@@ -131,6 +141,7 @@ const getData = async () => {
         createWithoutData.value = !!response.create_without_data;
         periodicity.value = response.periodicity || 'daily';
         weekday.value = response.weekday ?? 4;
+        monthDay.value = response.month_day ?? 1;
         intervalDays.value = response.interval_days || 15;
         periodAnchorDate.value = response.period_anchor_date || '';
         selectedUsers.value = (response.notify_users || []).map((user) => ({
@@ -237,6 +248,7 @@ const save = async () => {
             create_without_data: createWithoutData.value,
             periodicity: periodicity.value,
             weekday: periodicity.value === 'weekly' ? weekday.value : null,
+            month_day: periodicity.value === 'monthly' ? Number(monthDay.value) : null,
             interval_days: periodicity.value === 'every_x_days' ? Number(intervalDays.value) : null,
             period_anchor_date: periodicity.value === 'every_x_days' ? periodAnchorDate.value || null : null,
             available_report_id: selectedAvailableReport.value?.id,
@@ -263,6 +275,10 @@ const isValid = () => {
     if (!selectedAvailableReport.value) return false;
     if (periodicity.value === 'weekly' && (weekday.value === null || weekday.value === undefined || weekday.value === '')) {
         return false;
+    }
+    if (periodicity.value === 'monthly') {
+        const day = Number(monthDay.value);
+        if (!day || day < 1 || day > 31) return false;
     }
     if (periodicity.value === 'every_x_days') {
         if (!intervalDays.value || Number(intervalDays.value) < 1) return false;
@@ -332,6 +348,17 @@ onMounted(async () => {
                         <select v-model.number="weekday" class="input"
                             :class="{ 'invalid': attemptedSave && (weekday === null || weekday === undefined || weekday === '') }">
                             <option v-for="option in weekdayOptions" :key="option.value" :value="option.value">
+                                {{ option.label }}
+                            </option>
+                        </select>
+                    </div>
+                    <div v-else-if="periodicity === 'monthly'">
+                        <label class="block text-sm font-medium text-slate-500 mb-1">
+                            {{ t('statistics_block.periodicity_month_day') }}
+                        </label>
+                        <select v-model.number="monthDay" class="input"
+                            :class="{ 'invalid': attemptedSave && (!monthDay || Number(monthDay) < 1 || Number(monthDay) > 31) }">
+                            <option v-for="option in monthDayOptions" :key="option.value" :value="option.value">
                                 {{ option.label }}
                             </option>
                         </select>

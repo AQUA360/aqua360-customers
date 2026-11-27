@@ -40,6 +40,7 @@ class AccountingPricingViewSet(viewsets.ModelViewSet):
             queryset=AccountingAdditionalLine.objects.filter(is_active=True).select_related(
                 'accounting_concept',
                 'accounting_concept__type',
+                'accounting_cost_center',
             ).order_by('token', 'name'),
         ),
         'origins',
