@@ -16,7 +16,7 @@ from contract.serializers.contract_serializer import ContractMinimalSerializer, 
 from statistics.serializers import BillingConsumptionSerializer
 from verifactu.serializers.verifactu_serializer import VerifactuNotificationSerializer
 
-from billing.utils.invoice_service import change_status_logger, get_totals
+from billing.utils.invoice_service import change_status_logger, get_totals, log_invoice_data_change
 from billing.utils.invoice_list_queryset import invoice_list_config_tokens
 from billing.utils.invoice_period import (
     invoice_billing_cycles, invoice_payment_states, invoice_payment_summaries, invoice_relations_map,
@@ -648,6 +648,12 @@ class InvoiceFullSerializer(PdfPageCountMixin, serializers.ModelSerializer):
             instance.status = status
             if status.token == cancelled_token:
                 notify_cancelled_invoices([instance])
+        
+        # Un canvi de mètode de pagament per aquí també ha de quedar a l'historial: si no, l'avís
+        # d'un canvi anterior del sistema podria tornar a sortir (payment_method_alert_service)
+        new_payment_type = validated_data.get('payment_type_final')
+        if 'payment_type_final' in validated_data and new_payment_type != instance.payment_type_final:
+            log_invoice_data_change(user, instance, None, new_payment_type)
         
         for attr, value in validated_data.items():
             setattr(instance, attr, value)

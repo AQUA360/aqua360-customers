@@ -139,6 +139,21 @@ class TestRemittanceBlockedAlert(PaymentMethodAlertBase):
 
         self.assertIsNone(invoice_payment_method_alert(invoice))
 
+    def test_change_through_the_invoice_update_is_logged(self):
+        invoice = self.create_blocked_invoice('BLK1')
+        request = type('Request', (), {'user': self.user})()
+        serializer = InvoiceFullSerializer(context={'request': request})
+
+        # Es canvia a mà a domiciliació i es torna a pagament bancari, per l'actualització de la factura
+        serializer.update(invoice, {'payment_type_final': self.direct_debit.name})
+        serializer.update(invoice, {'payment_type_final': self.bank_payment.name})
+
+        logs = LogInvoiceDataChange.objects.filter(object=invoice, auto_reason__isnull=True)
+        self.assertEqual(logs.count(), 2)
+        invoice.refresh_from_db()
+        self.assertIsNone(invoice_payment_method_alert(invoice))
+        self.assertIsNone(contract_remittance_blocked_alert(self.contract))
+
     def test_no_alert_without_changes(self):
         self.assertIsNone(contract_remittance_blocked_alert(self.contract))
         self.assertIsNone(invoice_payment_method_alert(self.invoice))
