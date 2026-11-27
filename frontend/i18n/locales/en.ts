@@ -2104,6 +2104,8 @@ export default {
     initial_reading: 'Initial reading',
     termination_requested: 'Termination requested',
     pending_termination: 'Pending termination',
+    only_pending_termination: 'Only pending termination',
+    pending_termination_filter_hint: 'Shows only the contracts in the checked statuses that have an open termination request. It cannot be combined with the terminated status.',
     mark_as_initial_reading: "Mark as initial reading",
     mark_as_initial_short: "Mark as initial",
     choose_existing_reading: "Choose another meter reading",
