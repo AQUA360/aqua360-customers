@@ -3459,6 +3459,21 @@ export default {
     is_null: 'É nulo',
     is_not_null: 'Non é nulo'
   },
+  password_reset: {
+    title: 'Recuperar o contrasinal',
+    request_help: 'Escribe o teu nome de usuario e enviarémosche un correo cunha ligazón para escoller un contrasinal novo.',
+    send_link: 'Enviar a ligazón',
+    sent: 'Enviámosche un correo ao enderezo do teu usuario cunha ligazón para escoller un contrasinal novo. Revisa a caixa de entrada (e o correo lixo).',
+    unavailable: 'Non podemos enviarche o correo de recuperación. Ponte en contacto co administrador para que che restableza o contrasinal.',
+    request_error: 'Non se puido facer agora. Téntao de novo dentro dun anaco.',
+    back_to_login: 'Volver ao inicio de sesión',
+    forgot_link: 'Esqueciches o contrasinal?',
+    new_password_title: 'Escolle un contrasinal novo',
+    invalid_link: 'A ligazón non é válida, xa se usou ou caducou.',
+    request_new_link: 'Pedir unha ligazón nova',
+    done: 'Contrasinal gardado. Xa podes iniciar sesión co novo.',
+    save_password: 'Gardar o contrasinal',
+  },
   user_group:   {
     groups: 'Grupos',
     new_group: 'Novo grupo',

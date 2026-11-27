@@ -2,12 +2,13 @@ from rest_framework import viewsets, generics
 from rest_framework.decorators import action
 from rest_framework import status
 from rest_framework.authtoken.views import ObtainAuthToken
-from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
+from rest_framework.permissions import AllowAny, IsAuthenticated, DjangoModelPermissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.throttling import ScopedRateThrottle
 from axes.handlers.proxy import AxesProxyHandler
+from axes.utils import reset as axes_reset
 
 from django.shortcuts import render
 from django.utils.translation import gettext_lazy as _
@@ -19,6 +20,7 @@ from auth.roles import CANONICAL_SUPERUSER_USERNAME, get_user_role, is_canonical
 from auth.serializers import GroupSerializer, OwnProfileSerializer, UserSerializer, PermissionSerializer
 from auth.permissions import PermissionManager
 from auth.validators import validate_user_password
+from auth import password_reset_service
 from coredata.authentication import issue_token_key
 from coredata.permissions import can_edit_config_project
 
@@ -93,6 +95,59 @@ class LogoutView(APIView):
             request.auth.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
     
+
+class PasswordResetIPThrottle(LoginIPThrottle):
+    """Límit per IP de la recuperació de contrasenya (scope "password_reset")."""
+    scope = 'password_reset'
+
+
+class PasswordResetRequestView(APIView):
+    """Demana el correu de recuperació de la contrasenya des del login (sense sessió).
+
+    POST {username} → {status: "sent" | "unavailable"}. "unavailable" vol dir que no s'ha pogut
+    enviar (usuari sense correu, empresa sense correu configurat...): la pantalla demana
+    que s'adreci a l'administrador. No es diu el motiu.
+    """
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    throttle_classes = [PasswordResetIPThrottle]
+
+    def post(self, request):
+        result = password_reset_service.request_password_reset(request.data.get('username'), request)
+        return Response({'status': result}, status=status.HTTP_200_OK)
+
+
+class PasswordResetConfirmView(APIView):
+    """Desa la contrasenya nova a partir de l'enllaç del correu (sense sessió).
+
+    POST {uid, token} → {valid, strict_rules}: comprova l'enllaç abans d'ensenyar el formulari.
+    POST {uid, token, new_password} → 204 i es tanquen totes les sessions de l'usuari.
+    """
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    throttle_classes = [PasswordResetIPThrottle]
+
+    def post(self, request):
+        user = password_reset_service.get_user_from_reset_token(
+            request.data.get('uid'), request.data.get('token'))
+        new_password = request.data.get('new_password')
+        if new_password is None:
+            return Response({
+                'valid': user is not None,
+                'strict_rules': bool(user and is_canonical_superuser(user)),
+            }, status=status.HTTP_200_OK)
+        if user is None:
+            raise ValidationError({'token': [_('The link is not valid or has expired. Request a new one.')]})
+        try:
+            validate_user_password(new_password, user, is_canonical_superuser(user))
+        except DjangoValidationError as error:
+            raise ValidationError({'new_password': list(error.messages)})
+        user.set_password(new_password)
+        user.save(update_fields=['password'])
+        # Si l'usuari estava bloquejat per intents fallits, amb la contrasenya nova ja pot entrar
+        axes_reset(username=user.username)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 class OwnProfileView(generics.RetrieveUpdateAPIView):
     """Fitxa de l'usuari autenticat (consultar i canviar nom, cognoms i correu).

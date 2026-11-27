@@ -3575,6 +3575,21 @@ export default {
     is_null: 'Es nulo',
     is_not_null: 'No es nulo'
   },
+  password_reset: {
+    title: 'Recuperar la contraseña',
+    request_help: 'Escribe tu nombre de usuario y te enviaremos un correo con un enlace para elegir una contraseña nueva.',
+    send_link: 'Enviar el enlace',
+    sent: 'Te hemos enviado un correo a la dirección de tu usuario con un enlace para elegir una contraseña nueva. Revisa la bandeja de entrada (y el correo no deseado).',
+    unavailable: 'No podemos enviarte el correo de recuperación. Ponte en contacto con el administrador para que te restablezca la contraseña.',
+    request_error: 'No se ha podido hacer ahora. Vuelve a intentarlo dentro de un rato.',
+    back_to_login: 'Volver al inicio de sesión',
+    forgot_link: '¿Has olvidado la contraseña?',
+    new_password_title: 'Elige una contraseña nueva',
+    invalid_link: 'El enlace no es válido, ya se ha usado o ha caducado.',
+    request_new_link: 'Pedir un enlace nuevo',
+    done: 'Contraseña guardada. Ya puedes iniciar sesión con la nueva.',
+    save_password: 'Guardar la contraseña',
+  },
   user_group:   {
     groups: 'Grupos',
     new_group: 'Nuevo grupo',

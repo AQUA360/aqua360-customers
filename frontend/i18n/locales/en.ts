@@ -3459,6 +3459,21 @@ export default {
     is_null: 'Is null',
     is_not_null: 'Is not null'
   },
+  password_reset: {
+    title: 'Recover your password',
+    request_help: 'Enter your username and we will send you an email with a link to choose a new password.',
+    send_link: 'Send link',
+    sent: 'We have sent an email to your user\'s address with a link to choose a new password. Check your inbox (and spam folder).',
+    unavailable: 'We can\'t send you a recovery email. Please contact the administrator to reset your password.',
+    request_error: 'It could not be done right now. Please try again in a while.',
+    back_to_login: 'Back to login',
+    forgot_link: 'Forgot your password?',
+    new_password_title: 'Choose a new password',
+    invalid_link: 'The link is not valid, has already been used or has expired.',
+    request_new_link: 'Request a new link',
+    done: 'Password saved. You can now log in with the new one.',
+    save_password: 'Save password',
+  },
   user_group:   {
     groups: 'Groups',
     new_group: 'New group',

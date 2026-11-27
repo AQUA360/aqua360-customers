@@ -3575,6 +3575,21 @@ export default {
     is_null: 'És null',
     is_not_null: 'No és null'
   },
+  password_reset: {
+    title: 'Recuperar la contrasenya',
+    request_help: 'Escriu el teu nom d\'usuari i t\'enviarem un correu amb un enllaç per triar una contrasenya nova.',
+    send_link: 'Enviar l\'enllaç',
+    sent: 'T\'hem enviat un correu a l\'adreça del teu usuari amb un enllaç per triar una contrasenya nova. Mira la safata d\'entrada (i el correu brossa).',
+    unavailable: 'No et podem enviar el correu de recuperació. Adreça\'t a l\'administrador perquè et restableixi la contrasenya.',
+    request_error: 'No s\'ha pogut fer ara. Torna-ho a provar d\'aquí a una estona.',
+    back_to_login: 'Tornar a l\'inici de sessió',
+    forgot_link: 'Has oblidat la contrasenya?',
+    new_password_title: 'Tria una contrasenya nova',
+    invalid_link: 'L\'enllaç no és vàlid, ja s\'ha fet servir o ha caducat.',
+    request_new_link: 'Demanar un enllaç nou',
+    done: 'Contrasenya desada. Ja pots iniciar sessió amb la nova.',
+    save_password: 'Desar la contrasenya',
+  },
   user_group:   {
     groups: 'Grups',
     new_group: 'Nou grup',

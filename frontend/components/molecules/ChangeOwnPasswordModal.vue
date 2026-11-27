@@ -4,6 +4,8 @@
 import { ref, computed, watch, nextTick } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useToast } from 'vue-toastification';
+import { usePasswordRules } from '~/composables/usePasswordRules';
+import PasswordRequirements from '~/components/molecules/PasswordRequirements.vue';
 
 const open = defineModel('open', { type: Boolean, default: false });
 
@@ -26,45 +28,10 @@ const saving = ref(false);
 const attemptedSave = ref(false);
 const currentInput = ref(null);
 
-// Mateixos requisits que la gestió d'usuaris (el backend també els valida): mínim 8
-// caràcters i un número per a tothom i, per als superusuaris, també una lletra i un caràcter especial
-const passwordRules = computed(() => {
-  const pwd = newPassword.value || '';
-  const rules = [
-    { key: 'min_length', ok: pwd.length >= 8 },
-    { key: 'number', ok: /\p{N}/u.test(pwd) },
-  ];
-  if (props.isSuperuser) {
-    rules.push(
-      { key: 'letter', ok: /\p{L}/u.test(pwd) },
-      { key: 'special', ok: /[^\p{L}\p{N}\s]/u.test(pwd) },
-    );
-  }
-  return rules;
-});
-
-const rulesOk = computed(() => passwordRules.value.every(rule => rule.ok));
-
-// Fortalesa orientativa (1 feble … 4 forta): llargada i varietat de caràcters, penalitzant
-// si conté el nom d'usuari o és d'un sol tipus de caràcter. No bloqueja res: ho fan les regles.
-const STRENGTH_LEVELS = [
-  { key: 'weak', bar: 'bg-red-500', text: 'text-red-600' },
-  { key: 'fair', bar: 'bg-orange-400', text: 'text-orange-600' },
-  { key: 'good', bar: 'bg-yellow-400', text: 'text-yellow-700' },
-  { key: 'strong', bar: 'bg-green-500', text: 'text-green-600' },
-];
-
-const strength = computed(() => {
-  const pwd = newPassword.value || '';
-  if (!pwd) return null;
-  const classes = [/\p{Ll}/u, /\p{Lu}/u, /\p{N}/u, /[^\p{L}\p{N}\s]/u].filter(re => re.test(pwd)).length;
-  let score = [8, 12, 16, 20].filter(min => pwd.length >= min).length + Math.max(classes - 1, 0);
-  const username = (props.username || '').toLowerCase();
-  if (username.length >= 3 && pwd.toLowerCase().includes(username)) score -= 2;
-  // Un sol tipus de caràcter només és feble si és curta (una frase llarga sí que és segura)
-  if ((classes <= 1 && pwd.length < 16) || /^(.)\1*$/u.test(pwd)) score = Math.min(score, 1);
-  const level = score <= 1 ? 1 : score <= 3 ? 2 : score === 4 ? 3 : 4;
-  return { level, ...STRENGTH_LEVELS[level - 1] };
+// Requisits (els mateixos que valida el backend) i fortalesa orientativa
+const { rules: passwordRules, rulesOk, strength } = usePasswordRules(newPassword, {
+  strict: () => props.isSuperuser,
+  username: () => props.username,
 });
 const passwordsMatch = computed(() => newPassword.value === repeatPassword.value);
 const showMismatch = computed(() => !!repeatPassword.value && !passwordsMatch.value);
@@ -163,23 +130,7 @@ const save = async () => {
               <input id="new-password" v-model="newPassword" type="password" class="input w-full"
                 autocomplete="new-password"
                 :class="{ 'invalid': attemptedSave && !rulesOk }" />
-              <!-- Barra de fortalesa (orientativa) -->
-              <div v-if="strength" class="mt-2 flex items-center gap-3">
-                <div class="flex flex-1 gap-1" aria-hidden="true">
-                  <span v-for="n in 4" :key="n" class="h-1.5 flex-1 rounded-full transition-colors"
-                    :class="n <= strength.level ? strength.bar : 'bg-slate-200'" />
-                </div>
-                <span class="text-xs font-medium whitespace-nowrap" :class="strength.text" aria-live="polite">
-                  {{ t('user_group.password_strength') }}: {{ t(`user_group.password_strength_level.${strength.key}`) }}
-                </span>
-              </div>
-              <ul class="mt-2 text-sm flex flex-col gap-1">
-                <li v-for="rule in passwordRules" :key="rule.key" class="flex items-center gap-x-2"
-                  :class="rule.ok ? 'text-green-600' : 'text-slate-500'">
-                  <Icon :name="rule.ok ? 'fa6-solid:circle-check' : 'fa6-regular:circle'" aria-hidden="true" />
-                  {{ t(`user_group.password_rule.${rule.key}`) }}
-                </li>
-              </ul>
+              <PasswordRequirements :rules="passwordRules" :strength="strength" />
             </div>
 
             <div>

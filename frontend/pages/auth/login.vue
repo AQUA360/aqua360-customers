@@ -184,6 +184,11 @@ const getLanguage = () => {
             <label for="password" class="block text-sm font-medium leading-6 text-gray-900">
               {{ $t('common.password') }}
             </label>
+            <!-- Recuperació de la contrasenya: porta el nom d'usuari si ja l'ha escrit -->
+            <NuxtLink :to="{ path: '/auth/forgot-password', query: username ? { username } : {} }"
+              class="text-sm font-semibold text-indigo-600 hover:text-indigo-500">
+              {{ $t('password_reset.forgot_link') }}
+            </NuxtLink>
           </div>
           <div class="mt-2">
             <input

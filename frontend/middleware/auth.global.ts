@@ -40,7 +40,7 @@ export default defineNuxtRouteMiddleware(async (to, from) => {
   }
 
   // Handle main application routes
-  const no_auth_paths = ['/auth/login', '/auth/register', '/auth/logout'];
+  const no_auth_paths = ['/auth/login', '/auth/register', '/auth/logout', '/auth/forgot-password', '/auth/reset-password'];
   if( no_auth_paths.includes(to.path) ) return;
   
   if (!isAuthenticated()) {
