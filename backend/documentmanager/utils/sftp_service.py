@@ -7,6 +7,7 @@ import posixpath
 import paramiko
 from django.conf import settings
 from django.http import Http404, HttpResponse
+from documentmanager.utils.http_utils import attachment_disposition
 
 logger = logging.getLogger(__name__)
 
@@ -116,5 +117,5 @@ def download_document_from_sftp(document):
         _close(client, sftp)
 
     response = HttpResponse(buffer.getvalue(), content_type="application/octet-stream")
-    response['Content-Disposition'] = f'attachment; filename="{document_name}"'
+    response['Content-Disposition'] = attachment_disposition(document_name)
     return response

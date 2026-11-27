@@ -3,6 +3,7 @@ from django.http import HttpResponse
 from google.cloud import storage
 from datetime import datetime
 import calendar
+from documentmanager.utils.http_utils import attachment_disposition
 
 
 def upload_document_to_cloud(file, entity, field, entity_id, entity_token, folder, document_name, document, date=None):
@@ -84,7 +85,7 @@ def download_document_from_cloud(document):
     #file_content = blob.download_as_string()
     file_content = blob.download_as_bytes()
     response = HttpResponse(file_content, content_type="application/octet-stream")
-    response['Content-Disposition'] = f'attachment; filename="{document.document_name}"'
+    response['Content-Disposition'] = attachment_disposition(document.document_name)
     return response
 
 #

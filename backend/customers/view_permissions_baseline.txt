@@ -75,9 +75,6 @@ dashboard.views.DashboardCardDataView
 dashboard.views.DashboardCardListView
 dashboard.views.DashboardLayoutView
 dashboard.views.SidebarLayoutView
-documentmanager.views.DocumentSignViewSet
-documentmanager.views.DocumentViewSet
-documentmanager.views_export.export_job_view.ExportJobViewSet
 fraud.views.fraud_view.FraudViewSet
 integrations.inbound.giswater.views.GiswaterContractReadingsView
 integrations.inbound.giswater.views.GiswaterContractsView
