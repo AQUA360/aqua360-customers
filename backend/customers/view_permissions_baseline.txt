@@ -124,7 +124,6 @@ ov.views.BatchInvoiceDownloadView
 ov.views.BilledConsumptionsOVView
 ov.views.BillingContractInvoiceOVView
 ov.views.BillingContractInvoicesOVView
-ov.views.BillingDataOVUpdateIBANView
 ov.views.BillingDataOVView
 ov.views.BillingPeriodsOVView
 ov.views.CancelDirectDebitView
@@ -145,7 +144,6 @@ ov.views.ContractsListOVView
 ov.views.CreateReadingOVView
 ov.views.InvoiceDetailByTokenOVView
 ov.views.InvoicePDFView
-ov.views.InvoicePaidView
 ov.views.InvoiceReturnRequestOVView
 ov.views.InvoiceStatusDictionaryOVView
 ov.views.MeterDetailByTokenOVView

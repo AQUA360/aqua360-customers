@@ -166,3 +166,25 @@ class PersonContractsThrottle(DniEnumerationThrottle):
 
     scope = "ov_person_contracts_dni"
     rate = "35/min"
+
+
+class IbanUpdateThrottle(DniEnumerationThrottle):
+    """
+    Rate limit for `POST /ov/billing-data/update-iban/`, que canvia el compte
+    de domiciliació d'un contracte. Té el seu propi marge (no consumeix els
+    altres) i és més baix que el de les consultes: un canvi d'IBAN no s'ha de
+    fer en ràfega. Compta per compte OV, que és compartit.
+    """
+
+    scope = "ov_update_iban"
+    rate = "20/min"
+
+
+class InvoicePaidThrottle(DniEnumerationThrottle):
+    """
+    Rate limit for `POST /ov/invoice/paid/`, que marca una factura com a
+    pagada. Marge propi i compartit pel compte OV, igual que el de quick-pay.
+    """
+
+    scope = "ov_invoice_paid"
+    rate = "35/min"

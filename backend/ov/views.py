@@ -150,6 +150,8 @@ from ov.throttles import (
     ContractTerminationProcedureThrottle,
     ContractChangeProcedureThrottle,
     DniEnumerationThrottle,
+    IbanUpdateThrottle,
+    InvoicePaidThrottle,
     PaymentReceiptThrottle,
     PersonContractsThrottle,
     PersonDataThrottle,
@@ -274,7 +276,8 @@ class BillingDataOVView(APIView):
 
 class BillingDataOVUpdateIBANView(APIView):
     queryset = Contract.objects.all()
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsOVUser]
+    throttle_classes = [IbanUpdateThrottle]
     LookupField = "token"
 
     def post(self, request):
@@ -519,7 +522,8 @@ class InvoicePaidView(APIView):
     pagada respon 200 igual, amb `already_paid: true`.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsOVUser]
+    throttle_classes = [InvoicePaidThrottle]
 
     def post(self, request):
         serializer = InvoicePaidSerializer(data=request.data)
@@ -534,6 +538,16 @@ class InvoicePaidView(APIView):
                     },
                     status=status.HTTP_409_CONFLICT,
                 )
+            logger.info(
+                "OV: factura %s del contracte %s marcada com a pagada pel compte %s "
+                "(ja pagada: %s, import: %s, referència: %r)",
+                invoice.token,
+                serializer.validated_data["contract_token"],
+                request.user.pk,
+                serializer.already_paid,
+                serializer.validated_data.get("amount"),
+                serializer.validated_data.get("transaction_reference"),
+            )
             return Response(
                 {
                     "success": True,
