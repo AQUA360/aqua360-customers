@@ -1,4 +1,5 @@
-from datetime import datetime, timedelta
+import calendar
+from datetime import date, datetime, timedelta
 from documentmanager.models import Document
 from statistics.models import DailyDocument, DailyDocumentTemplate
 
@@ -48,11 +49,28 @@ def _as_date(value):
     return value
 
 
+def _previous_calendar_month(on_date):
+    """Inclusive first/last day of the calendar month before on_date."""
+    if on_date.month == 1:
+        year, month = on_date.year - 1, 12
+    else:
+        year, month = on_date.year, on_date.month - 1
+    last_day = calendar.monthrange(year, month)[1]
+    return date(year, month, 1), date(year, month, last_day)
+
+
+def _month_day_for(year, month, month_day):
+    """Clamp month_day to the last valid day of that month (e.g. 31 → 28 in Feb)."""
+    last_day = calendar.monthrange(year, month)[1]
+    return min(max(int(month_day), 1), last_day)
+
+
 def compute_period_range(template, end_date):
     """
     Inclusive date window covered by a document generated on end_date.
     - daily: [end, end]
     - weekly: 7 days ending on end_date (selected weekday)
+    - monthly: previous calendar month relative to end_date
     - every_x_days: interval_days ending on end_date
     """
     end = _as_date(end_date)
@@ -60,6 +78,9 @@ def compute_period_range(template, end_date):
 
     if periodicity == DailyDocumentTemplate.PERIODICITY_WEEKLY:
         return end - timedelta(days=6), end
+
+    if periodicity == DailyDocumentTemplate.PERIODICITY_MONTHLY:
+        return _previous_calendar_month(end)
 
     if periodicity == DailyDocumentTemplate.PERIODICITY_EVERY_X_DAYS:
         interval = template.interval_days or 1
@@ -82,6 +103,11 @@ def should_generate_on_date(template, on_date):
         if template.weekday is None:
             return False
         return day.weekday() == int(template.weekday)
+
+    if periodicity == DailyDocumentTemplate.PERIODICITY_MONTHLY:
+        if template.month_day is None:
+            return False
+        return day.day == _month_day_for(day.year, day.month, template.month_day)
 
     if periodicity == DailyDocumentTemplate.PERIODICITY_EVERY_X_DAYS:
         interval = template.interval_days

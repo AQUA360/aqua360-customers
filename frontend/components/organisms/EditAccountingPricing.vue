@@ -94,6 +94,8 @@ const restorePreviousOnPayment = ref(true);
 const selectedCounterpartPricing = ref(null);
 const counterpartPricingOptions = ref([]);
 const loadingCounterpartPricings = ref(false);
+/** Payment: also put this pricing's cost center on the have/counterpart line. */
+const costCenterOnCounterpart = ref(false);
 
 /** IBAN nationality and movement direction only apply to these payment methods. */
 const IBAN_PAYMENT_TYPE_TOKENS = ['DIRECT_DEBIT', 'BANK_TRANSFER'];
@@ -347,7 +349,7 @@ const banks = ref([]);
 const selectedBanks = ref([]);
 const loadingBanks = ref(false);
 const selectedAccountingConcept = ref(null);
-/** Optional singular cost center — lineitem & payment (not invoice). */
+/** Optional singular cost center — all accounting categories. */
 const selectedCostCenter = ref(null);
 const costCenters = ref([]);
 const loadingCostCenters = ref(false);
@@ -383,6 +385,7 @@ const additionalLineForm = ref({
     declaredAs: '',
     declaredAsReturn: '',
     accountingConcept: null,
+    accountingCostCenter: null,
     isNegative: false,
     declareAs: 'debt',
     declareSign: 'positive',
@@ -408,7 +411,10 @@ const canEditProductChildren = computed(
 );
 
 const showsCostCenter = computed(
-    () => selectedCategory.value === 'lineitem' || selectedCategory.value === 'payment',
+    () =>
+        selectedCategory.value === 'invoice' ||
+        selectedCategory.value === 'lineitem' ||
+        selectedCategory.value === 'payment',
 );
 
 const assignmentKey = (kind, id) => `${kind}:${String(id)}`;
@@ -490,6 +496,7 @@ const resetAdditionalLineForm = () => {
         declaredAs: '',
         declaredAsReturn: '',
         accountingConcept: null,
+        accountingCostCenter: null,
         isNegative: false,
         declareAs: 'debt',
         declareSign: 'positive',
@@ -506,6 +513,18 @@ const mapAdditionalLineConceptOption = (concept) => {
         code: concept.id,
         label: `${concept.token || '—'} · ${concept.name}`,
     };
+};
+
+const mapAdditionalLineCostCenterOption = (costCenter) => {
+    if (!costCenter) return null;
+    const mapped = mapCostCenterOption(costCenter);
+    const savedId = costCenter.id ?? costCenter.code ?? null;
+    if (savedId == null) return mapped;
+    return (
+        costCenters.value.find(
+            (c) => String(c.code ?? c.id) === String(savedId),
+        ) || mapped
+    );
 };
 
 const loadAdditionalLineConcepts = async () => {
@@ -546,6 +565,9 @@ const openAdditionalLinePanel = async (line = null) => {
     if (!additionalLineConcepts.value.length) {
         await loadAdditionalLineConcepts();
     }
+    if (!costCenters.value.length) {
+        await loadCostCenters();
+    }
     if (line) {
         additionalLineForm.value = {
             id: line.id,
@@ -555,6 +577,9 @@ const openAdditionalLinePanel = async (line = null) => {
             declaredAs: line.declared_as || '',
             declaredAsReturn: line.declared_as_return || '',
             accountingConcept: mapAdditionalLineConceptOption(line.accounting_concept),
+            accountingCostCenter: mapAdditionalLineCostCenterOption(
+                line.accounting_cost_center,
+            ),
             isNegative: !!line.is_negative,
             declareAs: normalizeDeclareAs(line.declare_as),
             declareSign: normalizeSign(line.declare_sign),
@@ -593,6 +618,7 @@ const saveAdditionalLine = async () => {
             id: form.id || null,
             accounting_pricing_id: props.id,
             accounting_concept_id: form.accountingConcept?.code ?? form.accountingConcept?.id,
+            accounting_cost_center_id: costCenterIdOf(form.accountingCostCenter),
             token: (form.token || '').trim(),
             token_return: optionalText(form.tokenReturn),
             name: (form.name || '').trim(),
@@ -1040,6 +1066,7 @@ const resetPaymentScope = () => {
     selectedPaymentOrigin.value = null;
     separateByPaymentOrigin.value = false;
     selectedCounterpartPricing.value = null;
+    costCenterOnCounterpart.value = false;
 };
 
 const counterpartPricingOptionLabel = (item) => {
@@ -1224,6 +1251,7 @@ const applyPaymentScope = (response) => {
         ?? response?.counterpart_accounting_pricing_id
         ?? null,
     );
+    costCenterOnCounterpart.value = response?.cost_center_on_counterpart === true;
 };
 
 const ibanScopeHint = computed(() => {
@@ -1728,6 +1756,7 @@ const costCenterIdOf = (option) => {
 const hydrateSelectedCostCenter = (response) => {
     if (!showsCostCenter.value) {
         selectedCostCenter.value = null;
+        costCenterOnCounterpart.value = false;
         return;
     }
 
@@ -1750,6 +1779,7 @@ const hydrateSelectedCostCenter = (response) => {
     }
 
     selectedCostCenter.value = null;
+    costCenterOnCounterpart.value = false;
 };
 
 const loadCostCenters = async () => {
@@ -2192,6 +2222,7 @@ const getAccountingPricingData = async () => {
 
         if (selectedCategory.value === 'invoice') {
             applyInvoiceScope(response);
+            hydrateSelectedCostCenter(response);
             if (showsInvoiceOrigins.value) {
                 const savedOrigins = response.origins || [];
                 const hydratedOrigins = hydrateRelationSelection(
@@ -2383,6 +2414,10 @@ const buildBasePayload = () => ({
     cost_center: showsCostCenter.value
         ? costCenterIdOf(selectedCostCenter.value)
         : null,
+    cost_center_on_counterpart:
+        selectedCategory.value === 'payment' && showsCostCenter.value
+            ? costCenterOnCounterpart.value === true
+            : false,
     ...invoiceScopePayload(),
     ...paymentScopePayload(),
     counterpart_accounting_pricing_id:
@@ -2788,6 +2823,10 @@ watch(
     { deep: true },
 );
 
+watch(selectedCostCenter, (value) => {
+    if (!value) costCenterOnCounterpart.value = false;
+});
+
 watch([selectAddTaxes, selectAddSubtotal], async () => {
     if (!selectedCategory.value || isEditing.value) return;
     await getAccountingConcepts();
@@ -2894,9 +2933,9 @@ onMounted(async () => {
                         @click="coversUndeclared = !coversUndeclared">
                         {{ t('pricing_block.accounting_pricing_covers_undeclared') }}
                     </button>
-                    <p v-if="coversUndeclared" class="max-w-[16rem] text-right text-[10px] leading-snug text-slate-500">
+                    <!-- <p v-if="coversUndeclared" class="max-w-[16rem] text-right text-[10px] leading-snug text-slate-500">
                         {{ t('pricing_block.accounting_pricing_rest_catch_all_hint') }}
-                    </p>
+                    </p> -->
                 </div>
                 <button type="button"
                     class="rounded-md border px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.14em] transition-colors"
@@ -3187,9 +3226,9 @@ onMounted(async () => {
                                 {{ t('common.select_all') }}
                             </button>
                         </div>
-                        <p v-if="isRestCatchAll" class="mb-2 text-[11px] leading-snug text-slate-500">
+                        <!-- <p v-if="isRestCatchAll" class="mb-2 text-[11px] leading-snug text-slate-500">
                             {{ t('pricing_block.accounting_pricing_rest_relations_optional_hint') }}
-                        </p>
+                        </p> -->
                         <v-select :model-value="selectedPaymentTypes" :options="paymentTypes" multiple append-to-body
                             class="block w-full"
                             :class="{ invalid: attemptedSave && !isRestCatchAll && !selectedPaymentTypes.length }"
@@ -4103,7 +4142,7 @@ onMounted(async () => {
                                 </v-select>
                             </div>
 
-                            <div v-if="showsCostCenter">
+                            <div v-if="showsCostCenter" class="space-y-2">
                                 <label
                                     class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400 select-truncate">
                                     {{ t('pricing_block.accounting_cost_center') }}
@@ -4118,6 +4157,20 @@ onMounted(async () => {
                                         {{ t('common.no_records') }}
                                     </template>
                                 </v-select>
+                                <template v-if="selectedCategory === 'payment'">
+                                    <label
+                                        class="inline-flex items-center gap-2 text-[12px] text-sky-950"
+                                        :class="existingSelection || !selectedCostCenter
+                                            ? 'cursor-not-allowed opacity-60'
+                                            : 'cursor-pointer'">
+                                        <input v-model="costCenterOnCounterpart" type="checkbox" class="checkbox"
+                                            :disabled="!!existingSelection || !selectedCostCenter" />
+                                        <span>{{ t('pricing_block.accounting_pricing_cost_center_on_counterpart') }}</span>
+                                    </label>
+                                    <!-- <p class="text-[11px] leading-snug text-slate-500">
+                                        {{ t('pricing_block.accounting_pricing_cost_center_on_counterpart_hint') }}
+                                    </p>-->
+                                </template>
                             </div>
 
                             <div v-if="showsIbanPaymentScope"
@@ -4544,6 +4597,11 @@ onMounted(async () => {
                                         class="mt-1 mr-1 inline-block rounded-md bg-orange-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-orange-700">
                                         {{ t('pricing_block.accounting_pricing_additional_line_is_negative') }}
                                     </span>
+                                    <span v-if="line.accounting_cost_center"
+                                        class="mt-1 mr-1 inline-block rounded-md bg-slate-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-slate-600">
+                                        {{ line.accounting_cost_center.token || '—' }}
+                                        · {{ line.accounting_cost_center.name || t('pricing_block.accounting_cost_center') }}
+                                    </span>
                                     <span
                                         class="mt-1 inline-block rounded-md bg-sky-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-sky-800">
                                         {{
@@ -4677,6 +4735,24 @@ onMounted(async () => {
                                             !(additionalLineForm.accountingConcept?.code ??
                                                 additionalLineForm.accountingConcept?.id),
                                     }">
+                                    <template #no-options>
+                                        {{ t('common.no_records') }}
+                                    </template>
+                                </v-select>
+                            </div>
+                            <div class="sm:col-span-2">
+                                <label
+                                    class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                                    {{ t('pricing_block.accounting_cost_center') }}
+                                    <span class="font-normal normal-case tracking-normal">({{ t('common.optional')
+                                        }})</span>
+                                    <span v-if="loadingCostCenters" class="ml-1">…</span>
+                                </label>
+                                <v-select v-model="additionalLineForm.accountingCostCenter"
+                                    :options="costCenters" :clearable="true" class="block w-full"
+                                    append-to-body :loading="loadingCostCenters"
+                                    :disabled="loadingCostCenters"
+                                    :placeholder="t('pricing_block.accounting_cost_center')">
                                     <template #no-options>
                                         {{ t('common.no_records') }}
                                     </template>

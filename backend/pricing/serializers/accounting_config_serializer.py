@@ -2,9 +2,14 @@ from rest_framework import serializers
 
 from pricing.models import AccountingConfig, AccountingPricing
 from pricing.serializers.accounting_pricing_serializer import AccountingPricingListSerializer
+from service.serializers.exploitation_serializer import ExploitationMinimalSerializer
 
 
 class AccountingConfigSerializer(serializers.ModelSerializer):
+    exploitation = ExploitationMinimalSerializer(read_only=True, allow_null=True)
+    exploitation_id = serializers.IntegerField(
+        write_only=True, required=False, allow_null=True,
+    )
     incoming_counter_pricing = AccountingPricingListSerializer(read_only=True, allow_null=True)
     return_counter_pricing = AccountingPricingListSerializer(read_only=True, allow_null=True)
     incoming_counter_pricing_id = serializers.IntegerField(
@@ -20,6 +25,8 @@ class AccountingConfigSerializer(serializers.ModelSerializer):
             'id',
             'created_at',
             'updated_at',
+            'exploitation',
+            'exploitation_id',
             'piggybank_as_negative',
             'include_piggy_status_payments',
             'document_format',
@@ -38,7 +45,7 @@ class AccountingConfigSerializer(serializers.ModelSerializer):
             'return_counter_pricing_id',
             'is_active',
         )
-        read_only_fields = ('id', 'created_at', 'updated_at')
+        read_only_fields = ('id', 'created_at', 'updated_at', 'exploitation')
 
     def _set_pricing(self, validated_data, field_name, id_name):
         pricing_id = validated_data.pop(id_name, serializers.empty)
@@ -49,12 +56,20 @@ class AccountingConfigSerializer(serializers.ModelSerializer):
         else:
             validated_data[field_name] = AccountingPricing.objects.get(id=pricing_id)
 
+    def _set_exploitation(self, validated_data):
+        exploitation_id = validated_data.pop('exploitation_id', serializers.empty)
+        if exploitation_id is serializers.empty:
+            return
+        validated_data['exploitation_id'] = exploitation_id
+
     def update(self, instance, validated_data):
+        self._set_exploitation(validated_data)
         self._set_pricing(validated_data, 'incoming_counter_pricing', 'incoming_counter_pricing_id')
         self._set_pricing(validated_data, 'return_counter_pricing', 'return_counter_pricing_id')
         return super().update(instance, validated_data)
 
     def create(self, validated_data):
+        self._set_exploitation(validated_data)
         self._set_pricing(validated_data, 'incoming_counter_pricing', 'incoming_counter_pricing_id')
         self._set_pricing(validated_data, 'return_counter_pricing', 'return_counter_pricing_id')
         return super().create(validated_data)

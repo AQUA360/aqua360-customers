@@ -177,6 +177,7 @@ class DailyDocumentTemplateSaveSerializer(serializers.ModelSerializer):
             getattr(self.instance, 'periodicity', DailyDocumentTemplate.PERIODICITY_DAILY),
         )
         weekday = attrs.get('weekday', getattr(self.instance, 'weekday', None) if self.instance else None)
+        month_day = attrs.get('month_day', getattr(self.instance, 'month_day', None) if self.instance else None)
         interval_days = attrs.get(
             'interval_days',
             getattr(self.instance, 'interval_days', None) if self.instance else None,
@@ -189,6 +190,13 @@ class DailyDocumentTemplateSaveSerializer(serializers.ModelSerializer):
         if periodicity == DailyDocumentTemplate.PERIODICITY_WEEKLY:
             if weekday is None or weekday < 0 or weekday > 6:
                 raise serializers.ValidationError({'weekday': 'Weekday (0=Mon … 6=Sun) is required for weekly periodicity.'})
+            attrs['month_day'] = None
+            attrs['interval_days'] = None
+            attrs['period_anchor_date'] = None
+        elif periodicity == DailyDocumentTemplate.PERIODICITY_MONTHLY:
+            if month_day is None or month_day < 1 or month_day > 31:
+                raise serializers.ValidationError({'month_day': 'Day of month (1–31) is required for monthly periodicity.'})
+            attrs['weekday'] = None
             attrs['interval_days'] = None
             attrs['period_anchor_date'] = None
         elif periodicity == DailyDocumentTemplate.PERIODICITY_EVERY_X_DAYS:
@@ -197,8 +205,10 @@ class DailyDocumentTemplateSaveSerializer(serializers.ModelSerializer):
             if not period_anchor_date:
                 raise serializers.ValidationError({'period_anchor_date': 'Anchor date is required for every-X-days periodicity.'})
             attrs['weekday'] = None
+            attrs['month_day'] = None
         else:
             attrs['weekday'] = None
+            attrs['month_day'] = None
             attrs['interval_days'] = None
             attrs['period_anchor_date'] = None
             attrs['periodicity'] = DailyDocumentTemplate.PERIODICITY_DAILY

@@ -320,10 +320,12 @@ class ReportQueue(models.Model):
 class DailyDocumentTemplate(models.Model):
     PERIODICITY_DAILY = 'daily'
     PERIODICITY_WEEKLY = 'weekly'
+    PERIODICITY_MONTHLY = 'monthly'
     PERIODICITY_EVERY_X_DAYS = 'every_x_days'
     PERIODICITY_CHOICES = [
         (PERIODICITY_DAILY, 'Daily'),
         (PERIODICITY_WEEKLY, 'Weekly (day of week)'),
+        (PERIODICITY_MONTHLY, 'Monthly (day of month)'),
         (PERIODICITY_EVERY_X_DAYS, 'Every X days'),
     ]
 
@@ -346,6 +348,8 @@ class DailyDocumentTemplate(models.Model):
     )
     # Python weekday: 0=Monday ... 6=Sunday. Used when periodicity=weekly.
     weekday = models.PositiveSmallIntegerField(null=True, blank=True)
+    # Day of month: 1–31. Used when periodicity=monthly (clamped to last day if needed).
+    month_day = models.PositiveSmallIntegerField(null=True, blank=True)
     # Interval length in days. Used when periodicity=every_x_days (e.g. 15).
     interval_days = models.PositiveIntegerField(null=True, blank=True)
     # Anchor date for every_x_days cycles (generation on anchor, anchor+N, ...).
