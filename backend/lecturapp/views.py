@@ -5,7 +5,6 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
-from rest_framework.viewsets import ModelViewSet
 from django.shortcuts import get_object_or_404
 from django.contrib.auth.hashers import make_password
 from django.http import JsonResponse
@@ -35,8 +34,6 @@ from .utils.batch_scope_service import (
 )
 from .serializers import (
     ReadingOperatorSerializer,
-    ReadingOperatorCreateSerializer,
-    ReadingOperatorUpdateSerializer,
     ReadingOperatorPasswordChangeSerializer,
     AuthenticationSerializer
 )
@@ -44,61 +41,6 @@ from .decorators import lecturapp_auth_required, get_authenticated_operator
 import logging
 
 logger = logging.getLogger(__name__)
-
-class ReadingOperatorViewSet(ModelViewSet):
-    """
-    ViewSet for ReadingOperator CRUD operations
-    All endpoints require custom authentication
-    """
-    queryset = ReadingOperator.objects.all()
-    serializer_class = ReadingOperatorSerializer
-    
-    def get_serializer_class(self):
-        if self.action == 'create':
-            return ReadingOperatorCreateSerializer
-        elif self.action in ['update', 'partial_update']:
-            return ReadingOperatorUpdateSerializer
-        return ReadingOperatorSerializer
-    
-    @lecturapp_auth_required
-    def list(self, request, *args, **kwargs):
-        """List all reading operators"""
-        operators = self.get_queryset()
-        serializer = self.get_serializer(operators, many=True)
-        return JsonResponse(serializer.data, safe=False)
-    
-    @lecturapp_auth_required
-    def retrieve(self, request, *args, **kwargs):
-        """Get a specific reading operator"""
-        instance = self.get_object()
-        serializer = self.get_serializer(instance)
-        return JsonResponse(serializer.data)
-    
-    @lecturapp_auth_required
-    def create(self, request, *args, **kwargs):
-        """Create a new reading operator"""
-        serializer = self.get_serializer(data=request.POST)
-        if serializer.is_valid():
-            serializer.save()
-            return JsonResponse(serializer.data, status=201)
-        return JsonResponse(serializer.errors, status=400)
-    
-    @lecturapp_auth_required
-    def update(self, request, *args, **kwargs):
-        """Update a reading operator"""
-        instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.POST, partial=True)
-        if serializer.is_valid():
-            serializer.save()
-            return JsonResponse(serializer.data)
-        return JsonResponse(serializer.errors, status=400)
-    
-    @lecturapp_auth_required
-    def destroy(self, request, *args, **kwargs):
-        """Delete a reading operator"""
-        instance = self.get_object()
-        instance.delete()
-        return JsonResponse({'message': 'Operator deleted successfully'})
 
 class AuthenticationView(APIView):
     """

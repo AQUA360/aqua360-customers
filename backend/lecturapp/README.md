@@ -70,11 +70,7 @@ Authorization: Bearer your-token-here
 - `GET /lecturapp/auth/profile/` - Get current operator profile (requires authentication)
 
 ### Operators Management
-- `GET /lecturapp/operators/` - List all operators (requires authentication)
-- `POST /lecturapp/operators/` - Create new operator (requires authentication)
-- `GET /lecturapp/operators/{id}/` - Get specific operator (requires authentication)
-- `PUT /lecturapp/operators/{id}/` - Update operator (requires authentication)
-- `DELETE /lecturapp/operators/{id}/` - Delete operator (requires authentication)
+Operators are managed from the back office (`/order/operator/`), not from the app API.
 
 ### Protected Endpoints
 - `GET /lecturapp/protected/` - Example protected endpoint (requires authentication)
