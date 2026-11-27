@@ -13,6 +13,7 @@ from django.conf import settings
 from django.http import Http404, HttpResponse
 
 from documentmanager.models import Document
+from documentmanager.utils.http_utils import attachment_disposition
 
 def authenticate_azure():
     account_name = settings.AZURE_ACCOUNT_NAME
@@ -121,7 +122,7 @@ def download_document_from_azure(document):
         blob_client = blob_service.get_blob_client(container=document.location, blob=document.location_url)
         file_content = blob_client.download_blob().readall()
         response = HttpResponse(file_content, content_type="application/octet-stream")
-        response['Content-Disposition'] = f'attachment; filename="{document.document_name}"'
+        response['Content-Disposition'] = attachment_disposition(document.document_name)
         return response
     except ResourceExistsError:
         raise Http404(f"Document {document.document_name} not found on Azure.")

@@ -4,6 +4,8 @@ import locale
 from django.conf import settings
 from django.http import Http404, HttpResponse
 
+from documentmanager.utils.http_utils import attachment_disposition
+
 #from documentmanager.utils.main_utils import get_unique_document_name
 
 def upload_to_hdd(file, entity, field, entity_id, entity_token, folder, document_name, document, date=None, subfolder=None):
@@ -64,12 +66,12 @@ def download_document_from_hdd(document):
                 file_data = f.read()
 
             response = HttpResponse(file_data, content_type="application/octet-stream")
-            response['Content-Disposition'] = f'attachment; filename="{document.document_name}"'
+            response['Content-Disposition'] = attachment_disposition(document.document_name)
             return response
         except IOError:
             raise Http404("Could not read the file from the disk.")
     else:
-        raise Http404(f"Document {document.document_name} not found on HDD.")
+        raise Http404("Document not found on HDD.")
 
 def delete_document_from_hdd(document):
     """Deletes a document file from the hard drive."""

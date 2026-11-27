@@ -63,6 +63,7 @@ EXEMPT_VIEWS = {
     'service.views.route_position_view.RoutePositionAppViewSet': "autenticació pròpia de l'app de lectures",
     'service.views.supply_point_placement_view.SupplyPointPlacementAppViewSet': "autenticació pròpia de l'app de lectures",
     'coredata.views.deploy_info_view.DeployInfoView': 'versió del desplegament, sense dades de clients',
+    'documentmanager.views_export.export_job_view.ExportJobViewSet': "cua de descàrregues de l'usuari: el queryset és sempre el de request.user",
     'rest_framework.routers.APIRootView': "índex d'URLs de l'API, sense dades",
 }
 

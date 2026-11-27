@@ -4,9 +4,13 @@ import io
 from io import BytesIO
 from django.conf import settings
 from django.http import HttpResponse, Http404
-from rest_framework import viewsets, status
+from rest_framework import mixins, viewsets, status
 from rest_framework.decorators import action, api_view
-from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
+from rest_framework.permissions import IsAuthenticated
+
+from auth.permissions import DjangoModelViewPermissions
+from .permissions import DocumentPermission
+from .utils.http_utils import attachment_disposition
 from rest_framework.response import Response
 from datetime import datetime
 from pydantic import ValidationError
@@ -33,30 +37,16 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-class DocumentViewSet(viewsets.ModelViewSet):
-    queryset = Document.objects.all()
+class DocumentViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
+    """Documents: només lectura per l'API, més les accions de descàrrega i d'esborrat.
+
+    Els documents esborrats (`is_active=False`) no es llisten ni es descarreguen. No hi ha
+    alta ni edició ni DELETE directes: un document el crea el servei que el genera
+    (`upload_document` del backend) i s'esborra només per `delete-document/`, que el desactiva.
+    """
+    queryset = Document.objects.filter(is_active=True)
     serializer_class = DocumentSerializer
-    permission_classes = [IsAuthenticated]
-
-    
-    @action(detail=False, methods=['post'])
-    def upload_document(self, request):
-        file = request.FILES['file']
-        service = request.data.get('service')
-        entity = request.data.get('entity')
-        field = request.data.get('field')
-        entity_id = request.data.get('entity_id')
-        entity_name = request.data.get('entity_name')
-        document_name = request.data.get('document_name')
-
-        document = upload_document(file, entity, field, entity_id, entity_name, service, document_name)
-
-        serializer = self.get_serializer(document)
-        return Response({"document": serializer.data})
-        """ if service == 'aws':
-            return Response({"presigned_url": document.location_url, "document": serializer.data})
-        else:
-            return Response({"document": serializer.data}) """
+    permission_classes = [DocumentPermission]
 
     @action(detail=True, methods=['get'])
     def view_document(self, request, pk=None):
@@ -103,7 +93,7 @@ class DocumentViewSet(viewsets.ModelViewSet):
         deleted_count = 0
         for doc_id in doc_ids:
             try:
-                document = Document.objects.get(id=doc_id)
+                document = Document.objects.get(id=doc_id, is_active=True)
                 document.is_active = False
                 document.save()
                 """ delete_document(document)  
@@ -125,7 +115,7 @@ class DocumentViewSet(viewsets.ModelViewSet):
         doc_ids = request.data['doc_ids']
         try:
             service = None
-            documents = Document.objects.filter(id__in=doc_ids).order_by('id')
+            documents = Document.objects.filter(id__in=doc_ids, is_active=True).order_by('id')
             if not documents.exists():
                 return Response(
                     {"error": "No documents found with the provided IDs"},
@@ -139,7 +129,7 @@ class DocumentViewSet(viewsets.ModelViewSet):
             zip_buffer = io.BytesIO()
             with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
                 if all_cloud:
-                    files = download_multiple_documents(doc_ids, service)
+                    files = download_multiple_documents([document.id for document in documents], service)
                     for filename, file_content in files:
                         zip_file.writestr(filename, file_content)
                 else:
@@ -180,7 +170,7 @@ class DocumentViewSet(viewsets.ModelViewSet):
         try:
             service = None
             # L'ordre dels ids és el del PDF (p. ex. agrupat per persona a les comunicacions)
-            documents = Document.in_order(doc_ids)
+            documents = [document for document in Document.in_order(doc_ids) if document.is_active]
             if not documents:
                 return Response(
                     {"error": "No documents found with the provided IDs"},
@@ -249,7 +239,7 @@ class DocumentSignViewSet(viewsets.ModelViewSet):
         .order_by('-created_at')
     )
     serializer_class = DocumentSignSerializer
-    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    permission_classes = [IsAuthenticated, DjangoModelViewPermissions]
 
     def perform_create(self, serializer):
         # L'alta només crea el registre (Pending). L'enviament a Aqua360 és POST .../send/.
@@ -266,9 +256,9 @@ class DocumentSignViewSet(viewsets.ModelViewSet):
     def send(self, request, pk=None):
         """Envia el document a signar i retorna el resultat i el registre actualitzat.
 
-        Accepta callback_url i force al cos de la petició. Retorna 400 si la
-        signatura està deshabilitada o falla el servei; el detall del servei
-        es registra al log.
+        Accepta force al cos de la petició. El callback_url no el tria el client: es
+        fa servir sempre el configurat. Retorna 400 si la signatura està deshabilitada o
+        falla el servei; el detall del servei es registra al log.
         """
         from integrations.outbound.signing.exceptions import SigningApiError
         from integrations.outbound.signing.services import create_document_sign_session
@@ -281,11 +271,10 @@ class DocumentSignViewSet(viewsets.ModelViewSet):
 
         document_sign = self.get_object()
         force = bool(request.data.get('force', False))
-        callback_url = request.data.get('callback_url') or None
 
         try:
             result = create_document_sign_session(
-                document_sign, callback_url=callback_url, force=force, request=request
+                document_sign, callback_url=None, force=force, request=request
             )
         except SigningApiError:
             # El detall (resposta del servei extern) queda al log, no al client.
@@ -410,9 +399,9 @@ class DocumentSignViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        filename = (document.document_name or f"document-sign-{document_sign.id}.pdf").replace('"', '')
+        filename = document.document_name or f"document-sign-{document_sign.id}.pdf"
         download_info['Content-Type'] = 'application/pdf'
-        download_info['Content-Disposition'] = f'attachment; filename="{filename}"'
+        download_info['Content-Disposition'] = attachment_disposition(filename)
         download_info['Access-Control-Expose-Headers'] = 'Content-Disposition'
         return download_info
 

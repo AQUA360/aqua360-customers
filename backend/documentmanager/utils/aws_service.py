@@ -10,6 +10,7 @@ from datetime import datetime
 from django.http import Http404, HttpResponse
 from order.middleware import get_current_user
 from documentmanager.models import Document
+from documentmanager.utils.http_utils import attachment_disposition
 
 def upload_to_aws(file, document, name, field, entity):
     """Uploads a file to the AWS S3 bucket, ensuring a unique object key, and updates the document record."""
@@ -125,7 +126,7 @@ def download_document_from_aws(document):
             file_content,
             content_type=content_type,
             headers={
-                'Content-Disposition': f'attachment; filename="{file_name}"'
+                'Content-Disposition': attachment_disposition(file_name)
             }
         )
         return response

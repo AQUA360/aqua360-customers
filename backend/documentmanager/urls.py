@@ -12,7 +12,6 @@ router.register(r'export-job', ExportJobViewSet, basename='export-job')
 urlpatterns = [
     path('', include(router.urls)),
     path('view-document/<int:pk>/', DocumentViewSet.as_view({'get': 'view_document'}), name='view_document'),
-    path('upload-document/', DocumentViewSet.as_view({'post': 'upload_document'}), name='upload_document'),
     path('download-documents/', DocumentViewSet.as_view({'post': 'download_documents'}), name='download_documents'),
     path('download-single-pdf-document/', DocumentViewSet.as_view({'post': 'download_single_pdf_document'}), name='download_single_pdf_document'),
     path('delete-document/', DocumentViewSet.as_view({'post': 'delete_documents'}), name='delect_documents'),
