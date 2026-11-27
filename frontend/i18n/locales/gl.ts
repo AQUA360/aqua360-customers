@@ -3515,6 +3515,7 @@ export default {
     profile_account_help: 'O nome de usuario, o rol e o grupo só os pode cambiar un superusuario desde a xestión de usuarios.',
     profile_load_error: 'Non se puideron cargar os datos do usuario',
     profile_email_invalid: 'O correo electrónico non é válido',
+    profile_email_password_help: 'Para cambiar o correo, escribe o contrasinal actual.',
     last_login: 'Último acceso',
     change_password_sessions_help: 'Ao cambiar o contrasinal pecharanse as demais sesións abertas; esta mantense.',
     password_section_help: 'O contrasinal co que entras na aplicación.',

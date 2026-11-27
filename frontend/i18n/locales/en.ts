@@ -3515,6 +3515,7 @@ export default {
     profile_account_help: 'Only a superuser can change the username, role and group, from user management.',
     profile_load_error: 'The user details could not be loaded',
     profile_email_invalid: 'The email is not valid',
+    profile_email_password_help: 'To change the email, enter your current password.',
     last_login: 'Last login',
     change_password_sessions_help: 'Changing the password will close your other open sessions; this one stays open.',
     password_section_help: 'The password you use to log in.',

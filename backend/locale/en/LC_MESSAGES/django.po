@@ -4614,6 +4614,14 @@ msgstr "Floor-door"
 msgid "The current password is not correct."
 msgstr "The current password is not correct."
 
+#: auth/serializers.py
+msgid "Enter your current password to change the email."
+msgstr "Enter your current password to change the email."
+
+#: auth/views.py
+msgid "This field must be text."
+msgstr "This field must be text."
+
 #: auth/views.py
 msgid "The new password is required."
 msgstr "The new password is required."

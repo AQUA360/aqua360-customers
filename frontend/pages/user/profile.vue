@@ -24,6 +24,8 @@ const profile = ref(null);
 const firstName = ref('');
 const lastName = ref('');
 const email = ref('');
+// Canviar el correu demana la contrasenya actual (el correu rep l'enllaç de recuperació)
+const currentPassword = ref('');
 
 const fullName = computed(() =>
   [profile.value?.first_name, profile.value?.last_name].filter(Boolean).join(' ')
@@ -40,6 +42,8 @@ const roleLabel = computed(() => {
   return t('user_group.role_none');
 });
 
+const emailChanged = computed(() => !!profile.value
+  && email.value.trim().toLowerCase() !== (profile.value.email || '').trim().toLowerCase());
 const emailValid = computed(() => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((email.value || '').trim()));
 const hasChanges = computed(() => !!profile.value && (
   firstName.value !== (profile.value.first_name || '')
@@ -52,6 +56,7 @@ const fillForm = (data) => {
   firstName.value = data.first_name || '';
   lastName.value = data.last_name || '';
   email.value = data.email || '';
+  currentPassword.value = '';
 };
 
 const getData = async () => {
@@ -78,12 +83,17 @@ const save = async () => {
     toast.warning(t('user_group.profile_email_invalid'));
     return;
   }
+  if (emailChanged.value && !currentPassword.value) {
+    toast.warning(t('user_group.current_password_required'));
+    return;
+  }
   saving.value = true;
   try {
     const response = await $UserApiService.updateOwnProfile({
       first_name: firstName.value.trim(),
       last_name: lastName.value.trim(),
       email: email.value.trim(),
+      ...(emailChanged.value ? { current_password: currentPassword.value } : {}),
     });
     fillForm(response);
     attemptedSave.value = false;
@@ -157,6 +167,13 @@ onMounted(getData);
               <label for="profile-email" class="block text-sm font-medium text-slate-500 mb-2">{{ $t('common.email_long') }}</label>
               <input id="profile-email" v-model="email" type="email" class="input w-full" autocomplete="email" maxlength="254"
                 :class="{ 'invalid': attemptedSave && !emailValid }" />
+            </div>
+            <div v-if="emailChanged" class="sm:col-span-2">
+              <label for="profile-current-password" class="block text-sm font-medium text-slate-500 mb-2">{{ $t('user_group.current_password') }}</label>
+              <input id="profile-current-password" v-model="currentPassword" type="password" class="input w-full"
+                autocomplete="current-password"
+                :class="{ 'invalid': attemptedSave && !currentPassword }" />
+              <p class="mt-1 text-xs text-slate-500">{{ $t('user_group.profile_email_password_help') }}</p>
             </div>
           </div>
 

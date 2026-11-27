@@ -6634,6 +6634,14 @@ msgstr "Piso-puerta"
 msgid "The current password is not correct."
 msgstr "La contraseña actual no es correcta."
 
+#: auth/serializers.py
+msgid "Enter your current password to change the email."
+msgstr "Hay que indicar la contraseña actual para cambiar el correo electrónico."
+
+#: auth/views.py
+msgid "This field must be text."
+msgstr "Este campo debe ser un texto."
+
 #: auth/views.py
 msgid "The new password is required."
 msgstr "Hay que informar la contraseña nueva."

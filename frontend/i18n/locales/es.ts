@@ -3631,6 +3631,7 @@ export default {
     profile_account_help: 'El nombre de usuario, el rol y el grupo solo los puede cambiar un superusuario desde la gestión de usuarios.',
     profile_load_error: 'No se han podido cargar los datos del usuario',
     profile_email_invalid: 'El correo electrónico no es válido',
+    profile_email_password_help: 'Para cambiar el correo, escribe la contraseña actual.',
     last_login: 'Último acceso',
     change_password_sessions_help: 'Al cambiar la contraseña se cerrarán las demás sesiones abiertas; esta se mantiene.',
     password_section_help: 'La contraseña con la que entras en la aplicación.',

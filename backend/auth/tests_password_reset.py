@@ -6,6 +6,7 @@ from django.contrib.auth.tokens import default_token_generator
 from django.core.cache import cache
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from rest_framework.throttling import SimpleRateThrottle
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
 
@@ -93,6 +94,12 @@ class PasswordResetRequestTests(TestCase):
             self.assertEqual(self.ask(HTTP_ORIGIN="https://atacant.example").json(), {"status": "unavailable"})
         send.assert_not_called()
 
+    def test_nom_d_usuari_que_no_es_text(self):
+        with mock.patch(SEND) as send:
+            response = self.client.post(REQUEST_URL, {"username": ["persona"]}, content_type="application/json")
+        self.assertEqual(response.status_code, 400)
+        send.assert_not_called()
+
 
 @override_settings(AUTH_TOKEN_NON_EXPIRING_USERS=[], AUTH_TOKEN_NON_EXPIRING_GROUPS=[])
 class PasswordResetConfirmTests(TestCase):
@@ -129,3 +136,24 @@ class PasswordResetConfirmTests(TestCase):
         response = self.confirm(new_password="curta")
         self.assertEqual(response.status_code, 400)
         self.assertIn("new_password", response.json())
+
+    def test_camps_que_no_son_text(self):
+        self.assertEqual(self.confirm(uid=["x"]).status_code, 400)
+        self.assertEqual(self.confirm(token=123).status_code, 400)
+        self.assertEqual(self.confirm(new_password=12345678).status_code, 400)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("clau-antiga-1"))
+
+    def test_l_enllac_no_gasta_el_limit_de_demanar_el_correu(self):
+        # Comprovar l'enllaç i els intents de desar tenen el seu propi límit. DRF llegeix els
+        # límits en importar-se: es canvien al diccionari de la classe.
+        rates = {**SimpleRateThrottle.THROTTLE_RATES, "password_reset": "1/hour",
+                 "password_reset_confirm": "100/hour"}
+        with mock.patch.object(SimpleRateThrottle, "THROTTLE_RATES", rates):
+            self.client.post(REQUEST_URL, {"username": "ningu"}, content_type="application/json")
+            self.assertEqual(
+                self.client.post(REQUEST_URL, {"username": "ningu"}, content_type="application/json").status_code,
+                429)
+            for _ in range(3):
+                self.assertEqual(self.confirm().status_code, 200)
+            self.assertEqual(self.confirm(new_password="nova-clau-2026").status_code, 204)

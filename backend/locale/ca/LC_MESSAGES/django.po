@@ -6590,6 +6590,14 @@ msgstr "Pis-porta"
 msgid "The current password is not correct."
 msgstr "La contrasenya actual no és correcta."
 
+#: auth/serializers.py
+msgid "Enter your current password to change the email."
+msgstr "Cal la contrasenya actual per canviar el correu electrònic."
+
+#: auth/views.py
+msgid "This field must be text."
+msgstr "Aquest camp ha de ser un text."
+
 #: auth/views.py
 msgid "The new password is required."
 msgstr "Cal informar la contrasenya nova."

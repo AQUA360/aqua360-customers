@@ -3631,6 +3631,7 @@ export default {
     profile_account_help: 'El nom d\'usuari, el rol i el grup només els pot canviar un superusuari des de la gestió d\'usuaris.',
     profile_load_error: 'No s\'han pogut carregar les dades de l\'usuari',
     profile_email_invalid: 'El correu electrònic no és vàlid',
+    profile_email_password_help: 'Per canviar el correu, escriu la contrasenya actual.',
     last_login: 'Darrer accés',
     change_password_sessions_help: 'En canviar la contrasenya es tancaran les altres sessions obertes; aquesta es manté.',
     password_section_help: 'La contrasenya amb què entres a l\'aplicació.',

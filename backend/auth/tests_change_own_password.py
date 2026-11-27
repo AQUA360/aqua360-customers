@@ -91,6 +91,11 @@ class ChangeOwnPasswordTests(TestCase):
                                     content_type="application/json")
         self.assertEqual(response.status_code, 401)
 
+    def test_contrasenya_que_no_es_text(self):
+        response = self.change(self.login(), {"current_password": "clau-antiga-1", "new_password": 12345678})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("new_password", response.json())
+
 
 @override_settings(AUTH_TOKEN_NON_EXPIRING_USERS=[])
 class OwnProfileTests(TestCase):
@@ -114,11 +119,29 @@ class OwnProfileTests(TestCase):
         self.assertEqual(response.json()["role"], "none")
 
     def test_canvia_nom_cognoms_i_correu(self):
-        response = self.patch({"first_name": "Nom", "last_name": "Cognom", "email": "nou@example.com"})
+        response = self.patch({"first_name": "Nom", "last_name": "Cognom", "email": "nou@example.com",
+                               "current_password": "clau-antiga-1"})
         self.assertEqual(response.status_code, 200)
+        self.assertNotIn("current_password", response.json())
         self.user.refresh_from_db()
         self.assertEqual((self.user.first_name, self.user.last_name, self.user.email),
                          ("Nom", "Cognom", "nou@example.com"))
+
+    def test_canviar_el_correu_demana_la_contrasenya_actual(self):
+        # Sense contrasenya o amb una d'incorrecta, el correu no canvia (amb una sessió robada no
+        # es pot posar un correu propi i demanar la recuperació)
+        for extra in ({}, {"current_password": ""}, {"current_password": "no-es-aquesta-1"}):
+            response = self.patch({"email": "atacant@example.com", **extra})
+            self.assertEqual(response.status_code, 400)
+            self.assertIn("current_password", response.json())
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.email, "persona@example.com")
+
+    def test_nom_i_mateix_correu_sense_contrasenya(self):
+        response = self.patch({"first_name": "Nom", "email": "Persona@Example.com"})
+        self.assertEqual(response.status_code, 200)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.first_name, "Nom")
 
     def test_no_canvia_nom_d_usuari_rol_ni_contrasenya(self):
         response = self.patch({"username": "customers", "role": "superuser", "is_superuser": True,
@@ -138,3 +161,4 @@ class OwnProfileTests(TestCase):
         self.patch({"id": self.other.pk, "first_name": "Canviat"})
         self.other.refresh_from_db()
         self.assertEqual(self.other.first_name, "")
+

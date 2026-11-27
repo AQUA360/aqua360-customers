@@ -5194,6 +5194,14 @@ msgstr "Andar-porta"
 msgid "The current password is not correct."
 msgstr "O contrasinal actual non é correcto."
 
+#: auth/serializers.py
+msgid "Enter your current password to change the email."
+msgstr "Hai que indicar o contrasinal actual para cambiar o correo electrónico."
+
+#: auth/views.py
+msgid "This field must be text."
+msgstr "Este campo debe ser un texto."
+
 #: auth/views.py
 msgid "The new password is required."
 msgstr "Hai que indicar o contrasinal novo."

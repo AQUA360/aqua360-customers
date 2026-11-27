@@ -97,8 +97,26 @@ class LogoutView(APIView):
     
 
 class PasswordResetIPThrottle(LoginIPThrottle):
-    """Límit per IP de la recuperació de contrasenya (scope "password_reset")."""
+    """Límit per IP de la demanda del correu de recuperació (scope "password_reset")."""
     scope = 'password_reset'
+
+
+class PasswordResetConfirmIPThrottle(LoginIPThrottle):
+    """Límit per IP de l'enllaç de recuperació (comprovar-lo i desar la contrasenya).
+
+    Separat de la demanda del correu: cada recuperació en fa diverses peticions (comprovar,
+    intents amb contrasenyes rebutjades, desar) i, compartint el límit, una oficina darrere
+    d'una sola IP es quedaria sense recuperacions."""
+    scope = 'password_reset_confirm'
+
+
+def _request_text(request, field):
+    """Camp de text del cos de la petició; 400 (no 500) si arriba un número, una llista..."""
+    data = request.data if isinstance(request.data, dict) else {}
+    value = data.get(field)
+    if value is not None and not isinstance(value, str):
+        raise ValidationError({field: [_('This field must be text.')]})
+    return value
 
 
 class PasswordResetRequestView(APIView):
@@ -113,7 +131,7 @@ class PasswordResetRequestView(APIView):
     throttle_classes = [PasswordResetIPThrottle]
 
     def post(self, request):
-        result = password_reset_service.request_password_reset(request.data.get('username'), request)
+        result = password_reset_service.request_password_reset(_request_text(request, 'username'), request)
         return Response({'status': result}, status=status.HTTP_200_OK)
 
 
@@ -125,12 +143,13 @@ class PasswordResetConfirmView(APIView):
     """
     authentication_classes = []
     permission_classes = [AllowAny]
-    throttle_classes = [PasswordResetIPThrottle]
+    throttle_classes = [PasswordResetConfirmIPThrottle]
 
     def post(self, request):
-        user = password_reset_service.get_user_from_reset_token(
-            request.data.get('uid'), request.data.get('token'))
-        new_password = request.data.get('new_password')
+        uid = _request_text(request, 'uid')
+        token = _request_text(request, 'token')
+        new_password = _request_text(request, 'new_password')
+        user = password_reset_service.get_user_from_reset_token(uid, token)
         if new_password is None:
             return Response({
                 'valid': user is not None,
@@ -156,6 +175,14 @@ class OwnProfileView(generics.RetrieveUpdateAPIView):
     sobre `request.user`: no accepta cap id d'usuari."""
     serializer_class = OwnProfileSerializer
     permission_classes = [IsAuthenticated]
+    throttle_scope = 'password_change'
+
+    def get_throttles(self):
+        # Canviar el correu comprova la contrasenya actual: comparteix el límit del canvi de
+        # contrasenya perquè no serveixi per endevinar-la. Consultar la fitxa no té límit.
+        if self.request.method in ('PUT', 'PATCH'):
+            return [ScopedRateThrottle()]
+        return []
 
     def get_object(self):
         return self.request.user
@@ -175,8 +202,8 @@ class ChangeOwnPasswordView(APIView):
 
     def post(self, request):
         user = request.user
-        current_password = request.data.get('current_password') or ''
-        new_password = request.data.get('new_password') or ''
+        current_password = _request_text(request, 'current_password') or ''
+        new_password = _request_text(request, 'new_password') or ''
 
         if not current_password or not user.check_password(current_password):
             raise ValidationError({'current_password': [_('The current password is not correct.')]})

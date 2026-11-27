@@ -499,8 +499,11 @@ REST_FRAMEWORK = {
         "login": "10/min",
         # Canvi de la contrasenya pròpia (per usuari): limita endevinar l'actual
         "password_change": "5/min",
-        # Recuperació de la contrasenya des del login (per IP): demanar el correu i desar la nova
+        # Recuperació de la contrasenya des del login (per IP): demanar el correu
         "password_reset": "10/hour",
+        # Enllaç de recuperació (per IP): comprovar-lo i desar la nova (diverses peticions per
+        # recuperació; el token no es pot endevinar)
+        "password_reset_confirm": "30/hour",
     },
     # Nombre de proxys de confiança davant el backend (Cloudflare + nginx): DRF en deriva
     # la IP real de X-Forwarded-For sense fiar-se d'un valor falsejable pel client.

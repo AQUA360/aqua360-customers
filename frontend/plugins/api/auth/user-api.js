@@ -111,6 +111,8 @@ export default defineNuxtPlugin(nuxtApp => {
         first_name: data.first_name,
         last_name: data.last_name,
         email: data.email,
+        // Només quan canvia el correu
+        ...(data.current_password !== undefined ? { current_password: data.current_password } : {}),
       }, { 'Content-Type': 'application/json' });
     };
 
