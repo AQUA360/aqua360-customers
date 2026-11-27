@@ -541,6 +541,15 @@ export default defineNuxtPlugin(nuxtApp => {
     getEInvoices,
 
     getPermissions,
+    // Canvi de la forma de pagament d'un rebut pendent d'un compromís de pagament
+    getCommitmentPaymentMethodOptions: async (id) => {
+      const apiUrl = `${apiHost}${entity}${id}/commitment-payment-method-options/`;
+      return await $apiManager.fetch(apiUrl, 'GET');
+    },
+    changeCommitmentPaymentMethod: async (id, data) => {
+      const apiUrl = `${apiHost}${entity}${id}/change-commitment-payment-method/`;
+      return await $apiManager.fetch(apiUrl, 'PUT', data, { 'Content-Type': 'application/json' });
+    },
     regeneratePDF: async (id, date = null) => {
       let apiUrl = `${apiHost}${entity}${id}/regenerate-pdf/`;
       if (date) {

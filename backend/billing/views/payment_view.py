@@ -838,6 +838,67 @@ class PaymentViewSet(viewsets.ModelViewSet):
             traceback.print_exc()
             return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+    @action(detail=True, methods=['get'], url_path='commitment-payment-method-options')
+    def commitment_payment_method_options(self, request, pk=None):
+        """Formes de pagament i comptes que es poden triar per canviar la forma de pagament
+        d'un rebut pendent d'un compromís, i si ara es pot canviar."""
+        from billing.utils.commitment_payment_method_service import (
+            CommitmentPaymentMethodError, check_commitment_payment_changeable, error_message,
+            get_available_payment_types, get_contract_company_banks, get_contract_person_banks,
+        )
+        payment = self.get_object()
+        error = None
+        try:
+            check_commitment_payment_changeable(payment)
+        except CommitmentPaymentMethodError as e:
+            error = error_message(e.code)
+        contract = payment.commitment_deposit.contract if payment.commitment_deposit_id else None
+        default_person_bank = contract.payment.IBAN_id if contract and contract.payment else None
+        return Response({
+            'can_change': error is None,
+            'error': error,
+            'current_payment_type_token': payment.payment_type_token,
+            'payment_types': [
+                {'id': pt.id, 'name': pt.name, 'token': pt.token}
+                for pt in get_available_payment_types()
+            ],
+            'company_banks': [
+                {'id': b.id, 'iban': b.iban, 'swift': b.swift, 'name': b.bank.name if b.bank_id else None}
+                for b in get_contract_company_banks(contract).select_related('bank')
+            ],
+            'person_banks': [
+                {'id': b.id, 'iban': b.iban, 'swift': b.swift,
+                 'person': f"{b.person.name or ''} {b.person.surname or ''}".strip() if b.person_id else None,
+                 'is_default': b.id == default_person_bank}
+                for b in get_contract_person_banks(contract).select_related('person')
+            ],
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['put'], url_path='change-commitment-payment-method')
+    def change_commitment_payment_method(self, request, pk=None):
+        """Canvia la forma de pagament d'un rebut pendent d'un compromís i del seu termini,
+        sense generar moviments ni canviar-ne l'estat."""
+        from billing.utils.commitment_payment_method_service import (
+            CommitmentPaymentMethodError, change_commitment_payment_method, error_message,
+        )
+        payment = self.get_object()
+        try:
+            payment = change_commitment_payment_method(
+                payment.id,
+                request.data.get('payment_type_id'),
+                request.user,
+                person_bank_id=request.data.get('person_bank_id'),
+                company_bank_id=request.data.get('company_bank_id'),
+            )
+        except CommitmentPaymentMethodError as e:
+            return Response({'error': error_message(e.code)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'id': payment.id,
+            'payment_type': payment.payment_type,
+            'payment_type_token': payment.payment_type_token,
+            'payment_bank': payment.payment_bank,
+        }, status=status.HTTP_200_OK)
+
     def get_permissions(self):
         if self.action == 'permissions':
             return [IsAuthenticated()]
