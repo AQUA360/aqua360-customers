@@ -1,3 +1,5 @@
+import re
+
 from rest_framework import permissions
 from rest_framework import exceptions
 
@@ -9,19 +11,50 @@ from contract.permissions import ContractPermission, RelatedModuleReadMixin
 from service.permissions import SupplyPointPermission
 
 # Els valors de ConfigProject governen el comportament de tota la instal·lació: els pot
-# llegir qualsevol usuari autenticat, però només els pot modificar l'usuari tècnic.
-CONFIG_PROJECT_EDITOR_USERNAME = 'customers'
+# llegir qualsevol usuari autenticat (les pantalles consulten activadors i tokens d'estats),
+# però només els pot modificar qui té `coredata.change_configproject`.
+CONFIG_PROJECT_CHANGE_PERM = 'coredata.change_configproject'
+
+# Valors que no es retornen als qui no poden modificar la configuració (claus, contrasenyes...).
+# Els tokens `*_token` d'estats i tipus NO hi són: són identificadors de dades, no secrets.
+SENSITIVE_CONFIG_PATTERN = re.compile(
+    r'(secret|password|passwd|api_?key|private|credential|authentication_token|auth_token|access_token)',
+    re.IGNORECASE,
+)
+MASKED_CONFIG_VALUE = '********'
 
 
 def can_edit_config_project(user):
-    """Return whether the user is authenticated as the customers account."""
-    return bool(user and user.is_authenticated and user.username == CONFIG_PROJECT_EDITOR_USERNAME)
+    """Si l'usuari pot modificar la configuració del projecte.
+
+    El compte `customers` sempre; la resta, només amb el permís del model donat de manera
+    explícita. Cap superusuari ni administrador hi entra pel simple fet de ser-ho (Django els
+    donaria tots els permisos): configurar la instal·lació és cosa del compte tècnic.
+    """
+    if not user or not user.is_authenticated:
+        return False
+    if is_customers_account(user):
+        return True
+    if user.is_superuser or user.is_staff:
+        return False
+    return user.has_perm(CONFIG_PROJECT_CHANGE_PERM)
+
+
+def is_sensitive_config(token):
+    return bool(token and SENSITIVE_CONFIG_PATTERN.search(token))
+
+
+def visible_config_value(token, value, user):
+    """El valor tal com el pot veure `user`: els sensibles, emmascarats si no pot modificar."""
+    if value and is_sensitive_config(token) and not can_edit_config_project(user):
+        return MASKED_CONFIG_VALUE
+    return value
 
 
 class ConfigProjectPermission(permissions.BasePermission):
 
     def has_permission(self, request, view):
-        """Allow authenticated reads and reserve writes for the customers account."""
+        """Lectura per a qualsevol usuari autenticat; escriptura només amb el permís de canvi."""
         if not request.user or not request.user.is_authenticated:
             return False
         if request.method in permissions.SAFE_METHODS:
