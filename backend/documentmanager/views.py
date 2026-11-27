@@ -9,6 +9,7 @@ from rest_framework.decorators import action, api_view
 from rest_framework.permissions import IsAuthenticated
 
 from auth.permissions import DjangoModelViewPermissions
+from .entity_permissions import viewable_documents
 from .permissions import DocumentPermission
 from .utils.http_utils import attachment_disposition
 from rest_framework.response import Response
@@ -40,13 +41,17 @@ logger = logging.getLogger(__name__)
 class DocumentViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
     """Documents: només lectura per l'API, més les accions de descàrrega i d'esborrat.
 
-    Els documents esborrats (`is_active=False`) no es llisten ni es descarreguen. No hi ha
+    Només es veuen els documents d'entitats que l'usuari pot veure (contracte, factura, mandat
+    SEPA...: `entity_permissions`), i no els esborrats (`is_active=False`). No hi ha
     alta ni edició ni DELETE directes: un document el crea el servei que el genera
     (`upload_document` del backend) i s'esborra només per `delete-document/`, que el desactiva.
     """
     queryset = Document.objects.filter(is_active=True)
     serializer_class = DocumentSerializer
     permission_classes = [DocumentPermission]
+
+    def get_queryset(self):
+        return viewable_documents(self.request.user, super().get_queryset())
 
     @action(detail=True, methods=['get'])
     def view_document(self, request, pk=None):
@@ -93,7 +98,7 @@ class DocumentViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets
         deleted_count = 0
         for doc_id in doc_ids:
             try:
-                document = Document.objects.get(id=doc_id, is_active=True)
+                document = self.get_queryset().get(id=doc_id)
                 document.is_active = False
                 document.save()
                 """ delete_document(document)  
@@ -115,7 +120,7 @@ class DocumentViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets
         doc_ids = request.data['doc_ids']
         try:
             service = None
-            documents = Document.objects.filter(id__in=doc_ids, is_active=True).order_by('id')
+            documents = self.get_queryset().filter(id__in=doc_ids).order_by('id')
             if not documents.exists():
                 return Response(
                     {"error": "No documents found with the provided IDs"},
@@ -170,7 +175,8 @@ class DocumentViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets
         try:
             service = None
             # L'ordre dels ids és el del PDF (p. ex. agrupat per persona a les comunicacions)
-            documents = [document for document in Document.in_order(doc_ids) if document.is_active]
+            allowed_ids = set(self.get_queryset().filter(id__in=doc_ids).values_list('id', flat=True))
+            documents = [document for document in Document.in_order(doc_ids) if document.id in allowed_ids]
             if not documents:
                 return Response(
                     {"error": "No documents found with the provided IDs"},
