@@ -1,4 +1,5 @@
 # contract/views/contract_request_view.py
+from django.utils.translation import gettext
 from rest_framework.decorators import action
 from django.conf import settings
 from rest_framework import viewsets, status
@@ -20,7 +21,11 @@ from contract.permissions import ContractRequestPermission, ContractRequestReadP
 from contract.models import (ContractRequest, ContractDocumentationType, ContractRequestDocumentation)
 from contract.serializers.contract_request_serializer import (ContractRequestSerializer, ContractRequestSaveSerializer, ContractRequestListSerializer)
 from contract.utils.contract_service import contract_create
-from contract.utils.contract_token_service import generate_contract_request_token
+from contract.utils.contract_token_service import (
+    generate_contract_request_token,
+    next_contract_request_token,
+    sync_contract_request_token,
+)
 from coredata.models import ConfigProject
 from coredata.utils.name_utils import generate_token, check_token_exists
 from coredata.utils import name_utils as name_utils_module
@@ -95,23 +100,21 @@ class ContractRequestViewSet(viewsets.ModelViewSet):
         """Calcula un nou token per a la ContractRequest sense persistir-lo."""
         set_current_user(request.user)
         instance = self.get_object()
+        return Response({'token': next_contract_request_token(instance)}, status=status.HTTP_200_OK)
 
-        candidate = generate_token(
-            ContractRequest,
-            use_type_id=getattr(instance.use_type, 'id', None),
-            client_type_id=getattr(instance.client_type, 'id', None),
-            company_id=getattr(instance.company, 'id', None),
-            is_change_of_name=instance.is_change_of_name,
+    @action(detail=True, methods=['post'], url_path='sync-token')
+    def sync_token(self, request, pk=None):
+        """Regenera i desa el token només si les dades que el determinen
+        (segons name_utils_personalized) han canviat. Sense personalització no
+        fa res."""
+        set_current_user(request.user)
+        instance = self.get_object()
+        old_token = instance.token
+        token, changed = sync_contract_request_token(instance)
+        return Response(
+            {'token': token, 'previous_token': old_token, 'changed': changed},
+            status=status.HTTP_200_OK,
         )
-
-        while ContractRequest.objects.filter(token=candidate).exclude(pk=instance.pk).exists():
-            try:
-                candidate = f'{int(candidate) + 1:05d}'
-            except (TypeError, ValueError):
-                candidate = check_token_exists(candidate, ContractRequest)
-                break
-
-        return Response({'token': candidate}, status=status.HTTP_200_OK)
 
     def update(self, request, *args, **kwargs):
         file = request.data.pop('contract_file', None)
@@ -305,4 +308,4 @@ class ContractRequestCreateContractView(APIView):
             return Response({"error": "ContractRequest not found"}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             logger.exception("Error inesperat")
-            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

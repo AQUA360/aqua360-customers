@@ -694,3 +694,87 @@ class ClaimRequestTotalInvoicesTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['total_invoices'], 2)
         self.assertEqual(response.data['amount'], 35)
+
+
+class ClaimExcelAddressAndVariablesTests(TestCase):
+    """Excel de la gestió d'impagats: adreça en columnes, sense el tipus de via,
+    i les variables vigents del contracte."""
+
+    def setUp(self):
+        from coredata.models import Address, City, Street, StreetNumber, StreetType
+
+        ConfigProject.objects.get_or_create(token='contract_terminated_status', defaults={'value': '99'})
+        street_type = StreetType.objects.create(name='Carrer', abbreviation='C')
+        self.city = City.objects.create(token='MUN-PROVA', name='Municipi Prova')
+        street = Street.objects.create(type=street_type, name='Major', city=self.city)
+        self.address = Address.objects.create(
+            street=street,
+            street_number=StreetNumber.objects.create(street=street, number=12),
+            city=self.city,
+            floor='2',
+            door='1',
+        )
+        supply_point = SupplyPoint.objects.create(token='SP-EXCEL', address=self.address)
+        self.contract = Contract.objects.create(token='C-EXCEL', supply_point_default=supply_point)
+
+    def test_address_split_without_street_type(self):
+        from claimrequest.views.claim_request_excel_generate_view import split_supply_address
+
+        self.assertEqual(
+            split_supply_address(self.address),
+            {'street': 'Major', 'number': '12', 'floor_door': '2-1', 'city': 'Municipi Prova'},
+        )
+
+    def test_address_split_with_secondary_name_and_without_address(self):
+        from claimrequest.views.claim_request_excel_generate_view import split_supply_address
+
+        self.address.street.name_2 = 'Segon'
+        self.assertEqual(split_supply_address(self.address)['street'], 'Major / Segon')
+        self.assertEqual(
+            split_supply_address(None), {'street': '', 'number': '', 'floor_door': '', 'city': ''}
+        )
+
+    def test_variables_only_active_current_and_meaningful(self):
+        from datetime import date
+
+        from claimrequest.views.claim_request_excel_generate_view import contract_variables_by_contract
+        from contract.models import Variable, VariableType
+
+        flag = VariableType.objects.create(token='FLAG', data_type='bool')
+        text = VariableType.objects.create(token='TEXT', data_type='char')
+        numeric = VariableType.objects.create(token='NUM', data_type='int')
+        inactive_type = VariableType.objects.create(token='OLD', data_type='bool', is_active=False)
+        inactive_text = VariableType.objects.create(token='CARD', data_type='char', is_active=False)
+        today = date(2026, 6, 1)
+
+        Variable.objects.create(contract=self.contract, type=flag, value='true')
+        Variable.objects.create(contract=self.contract, type=text, value='SI', start_at=date(2026, 1, 1))
+        Variable.objects.create(contract=self.contract, type=numeric, value='90')
+        Variable.objects.create(contract=self.contract, type=inactive_type, value='true')
+        Variable.objects.create(contract=self.contract, type=inactive_text, value='ABC 01/01/2026')
+        Variable.objects.create(contract=self.contract, type=flag, value='true', is_active=False)
+        Variable.objects.create(contract=self.contract, type=text, value='OLD', end_at=date(2026, 5, 31))
+        Variable.objects.create(contract=self.contract, type=text, value='NEXT', start_at=date(2026, 6, 2))
+
+        result = contract_variables_by_contract([self.contract.id], today=today)
+        # Les variables actives d'un tipus desactivat també surten
+        self.assertEqual(
+            set(result[self.contract.id].split(', ')), {'FLAG', 'TEXT: SI', 'OLD', 'CARD: ABC 01/01/2026'}
+        )
+
+    def test_address_text_is_neutralized_for_spreadsheets(self):
+        from claimrequest.views.claim_request_excel_generate_view import neutralize_formula
+
+        self.assertEqual(neutralize_formula('=SUM(A1)'), "'=SUM(A1)")
+        self.assertEqual(neutralize_formula('@cmd'), "'@cmd")
+        self.assertEqual(neutralize_formula('-1'), '-1')
+        self.assertEqual(neutralize_formula('Major'), 'Major')
+        self.assertEqual(neutralize_formula(''), '')
+
+    def test_false_flag_is_not_listed(self):
+        from claimrequest.views.claim_request_excel_generate_view import contract_variables_by_contract
+        from contract.models import Variable, VariableType
+
+        flag = VariableType.objects.create(token='FLAG', data_type='bool')
+        Variable.objects.create(contract=self.contract, type=flag, value='false')
+        self.assertEqual(contract_variables_by_contract([self.contract.id]), {})

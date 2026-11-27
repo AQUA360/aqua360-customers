@@ -1,4 +1,4 @@
-/** Només aquest compte pot ser superusuari a Customers. */
+/** Compte tècnic: sempre superusuari i l'únic que dona o treu el rol de superusuari. */
 export const CANONICAL_SUPERUSER_USERNAME = 'customers';
 
 export type UserRole = 'superuser' | 'admin' | 'none';

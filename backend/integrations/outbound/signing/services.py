@@ -1,8 +1,10 @@
 import base64
+import logging
 
 import requests
 from django.conf import settings
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.http import Http404
 from django.utils.dateparse import parse_datetime
 
 from contract.models import Contract, ContractRequest
@@ -13,7 +15,9 @@ from contract.utils.contract_pdf_service import (
 )
 from documentmanager.models import DocumentSign
 from documentmanager.utils.document_sign_config import (
+    DOCUMENT_SIGN_INVOICE_ID_PREFIX,
     DOCUMENT_SIGN_REFERENCE_PREFIX,
+    DOCUMENT_SIGN_SEPA_ID_PREFIX,
     is_document_sign_enabled,
 )
 from documentmanager.utils.main_utils import download_document, upload_document
@@ -22,6 +26,8 @@ from integrations.models import ContractSigningSession
 
 from .client import SigningClient
 from .exceptions import SIGNING_SERVICE_ERROR, SigningApiError
+
+logger = logging.getLogger(__name__)
 
 
 def _resolve_recipient(
@@ -230,10 +236,138 @@ def _ensure_document_sign_contract_file(document_sign):
     return document
 
 
-def create_document_sign_session(document_sign, *, callback_url=None, force=False):
+def _document_bytes(document):
+    # Cada servei de documents avisa diferent d'un fitxer absent (Http404, None o una
+    # excepció genèrica, p. ex. Alfresco): tots es tracten com a document il·legible.
+    try:
+        content = download_document(document)
+    except Http404:
+        content = None
+    except Exception:
+        logger.exception("No s'ha pogut llegir el document %s per enviar a signar", document.id)
+        content = None
+    if not content:
+        raise SigningApiError(f"No s'ha pogut descarregar el document (id={document.id})")
+    try:
+        return content.getvalue()
+    except AttributeError:
+        return content.content
+
+
+def _is_direct_debit(source):
+    payment = getattr(source, "payment", None)
+    return bool(payment and payment.type and payment.type.token == "DIRECT_DEBIT")
+
+
+def _ensure_document_sign_sepa_file(document_sign, request=None):
+    """
+    Mandat SEPA per signar amb el contracte, només si el pagament és domiciliat.
+    Es genera un cop i es reutilitza als reenviaments. Retorna None si no n'hi ha.
+    """
+    from billing.views.contract_sepa_pdf_view import render_contract_sepa_pdf
+
+    source = document_sign.contract or document_sign.contract_request
+    if not document_sign.include_sepa or not source or not _is_direct_debit(source):
+        return None
+    if document_sign.sepa_file:
+        return document_sign.sepa_file
+
+    pdf_bytes = render_contract_sepa_pdf(source, {"direct_debit": "true"}, request=request)
+    if not pdf_bytes:
+        raise SigningApiError("No s'ha pogut generar el PDF del mandat SEPA")
+
+    filename = f"SEPA_{source.token or source.id}.pdf"
+    service = settings.DOCUMENT_MANAGER_SERVICES.get("contract")
+    file_obj = SimpleUploadedFile(filename, pdf_bytes, content_type="application/pdf")
+    document = upload_document(
+        file_obj,
+        "DOCUMENT_SIGN",
+        "SEPA",
+        document_sign.id,
+        source.token or "",
+        "",
+        service,
+        filename,
+    )
+    document_sign.sepa_file = document
+    document_sign.save(update_fields=["sepa_file", "updated_at"])
+    return document
+
+
+def _document_sign_invoice_document(document_sign):
+    """
+    PDF de la factura que s'adjunta (sense signar). Ha de ser de la mateixa
+    sol·licitud que el contracte; si no, no s'envia res.
+    """
+    from billing.tasks import generate_invoice_pdf
+    from documentmanager.models import Document
+
+    invoice = document_sign.invoice
+    if not invoice:
+        return None
+
+    contract_request_id = document_sign.contract_request_id or (
+        document_sign.contract.contract_request_id if document_sign.contract else None
+    )
+    if not contract_request_id or invoice.contract_request_id != contract_request_id:
+        raise SigningApiError("La factura no correspon a la sol·licitud del contracte")
+
+    document_id = generate_invoice_pdf(invoice, find_existing=True)
+    document = Document.objects.filter(id=document_id).first() if document_id else None
+    if document:
+        try:
+            _document_bytes(document)
+            return document
+        except SigningApiError:
+            # El PDF desat no es pot llegir (fitxer perdut o mogut): es torna a generar.
+            pass
+
+    document_id = generate_invoice_pdf(invoice)
+    document = Document.objects.filter(id=document_id).first() if document_id else None
+    if not document:
+        raise SigningApiError("No s'ha pogut generar el PDF de la factura")
+    return document
+
+
+def _document_sign_documents(document_sign, request=None):
+    """
+    Documents de la sessió, en ordre: contracte i mandat SEPA per signar, i la
+    factura com a adjunt informatiu. Retorna (documents, metadata) per a Sign.
+    """
+    entries = [(document_sign.contract_file, str(document_sign.id), True)]
+
+    sepa_file = _ensure_document_sign_sepa_file(document_sign, request=request)
+    if sepa_file:
+        entries.append((sepa_file, f"{DOCUMENT_SIGN_SEPA_ID_PREFIX}{document_sign.id}", True))
+
+    invoice_document = _document_sign_invoice_document(document_sign)
+    if invoice_document:
+        entries.append(
+            (invoice_document, f"{DOCUMENT_SIGN_INVOICE_ID_PREFIX}{document_sign.invoice_id}", False)
+        )
+
+    documents = []
+    metadata = []
+    for sort_order, (document, external_document_id, requires_signature) in enumerate(entries):
+        filename = document.document_name
+        documents.append((filename, _document_bytes(document), "application/pdf"))
+        metadata.append(
+            {
+                "title": filename,
+                "external_document_id": external_document_id,
+                "sort_order": sort_order,
+                "requires_signature": requires_signature,
+            }
+        )
+    return documents, metadata
+
+
+def create_document_sign_session(document_sign, *, callback_url=None, force=False, request=None):
     """
     Envia el `contract_file` d'un DocumentSign a Aqua360 Sign per a la firma OTP.
     Si encara no existeix, el genera ara mateix a partir del contracte/sol·licitud.
+    A la mateixa sessió hi van el mandat SEPA (per signar, si el pagament és
+    domiciliat) i la factura indicada (adjunt informatiu, sense signar).
     """
     if not is_document_sign_enabled():
         raise SigningApiError("La signatura de documents (DocumentSign) no està habilitada")
@@ -263,16 +397,7 @@ def create_document_sign_session(document_sign, *, callback_url=None, force=Fals
     # (p. ex. ContractRequest) que també poden usar el mateix id com a referència.
     external_reference = f"{DOCUMENT_SIGN_REFERENCE_PREFIX}{document_sign.id}"
 
-    document_content = download_document(document_sign.contract_file)
-    if not document_content:
-        raise SigningApiError(
-            f"No s'ha pogut descarregar el contract_file (id={document_sign.contract_file.id})"
-        )
-    try:
-        document_bytes = document_content.getvalue()
-    except AttributeError:
-        document_bytes = document_content.content
-    filename = document_sign.contract_file.document_name
+    documents, document_metadata = _document_sign_documents(document_sign, request=request)
 
     client = SigningClient()
 
@@ -283,14 +408,8 @@ def create_document_sign_session(document_sign, *, callback_url=None, force=Fals
             recipient_phone=document_sign.otp_phone,
             external_reference=external_reference,
             callback_url=resolved_callback_url,
-            documents=[(filename, document_bytes, "application/pdf")],
-            document_metadata=[
-                {
-                    "title": filename,
-                    "external_document_id": str(document_sign.id),
-                    "sort_order": 0,
-                }
-            ],
+            documents=documents,
+            document_metadata=document_metadata,
             object_type="document_sign",
             object_id=str(document_sign.id),
         )
@@ -306,9 +425,11 @@ def create_document_sign_session(document_sign, *, callback_url=None, force=Fals
     document_sign.error_report = None
     # Un reenviament encara no té PDF firmat: el d'una sessió anterior deixa de ser descarregable.
     document_sign.contract_file_signed = None
+    document_sign.sepa_file_signed = None
     document_sign.signed_at = None
     document_sign.save(update_fields=[
-        "token", "status", "error_report", "contract_file_signed", "signed_at", "updated_at",
+        "token", "status", "error_report", "contract_file_signed", "sepa_file_signed",
+        "signed_at", "updated_at",
     ])
 
     return {

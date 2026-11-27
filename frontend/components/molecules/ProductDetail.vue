@@ -35,7 +35,8 @@ const showDetail = function (component, id) {
     <div role="row" class="grid grid-cols-2 gap-3">
       <FieldDetail :label='$t("product")' :value=data.name />
       <FieldDetail :label='$t("pricing_block.related_product")' v-if="data.product_related">
-        <button @click="showDetail('ProductRegion', data.product_related)" class="text-start text-sky-500 underline">
+        <span v-if="isSubRegion">{{ data.product_related_name }}</span>
+        <button v-else @click="showDetail('ProductRegion', data.product_related)" class="text-start text-sky-500 underline">
           <span>{{ data.product_related_name }}</span>
         </button>
       </FieldDetail>

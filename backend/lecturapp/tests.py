@@ -318,3 +318,84 @@ class TestLecturappPropertySplitAcrossRoutes(TestCase):
         self.assertEqual(meters['split-a']['is_readable'], False)
         self.assertEqual(meters['split-a']['other_position_token'], 'SPLIT-T_1')
         self.assertEqual(set(meters['split-a']) ^ set(meters['split-b']), set())
+
+
+class TestLecturappMeterWithSeveralContracts(TestCase):
+    """Un comptador amb dos contractes té una lectura per contracte al lot
+    (l'original i una còpia), però a l'app compta com un sol comptador llegit."""
+
+    @classmethod
+    def setUpTestData(cls):
+        ConfigProject.objects.update_or_create(token='token_meter_status_no_meter', defaults={'value': '0'})
+        ConfigProject.objects.update_or_create(token='supply_point_status_activate_token', defaults={'value': 'SP_OK'})
+        ConfigProject.objects.update_or_create(token='contract_active_token', defaults={'value': 'ACTIVE'})
+        ConfigProject.objects.get_or_create(token='contract_terminated_status', defaults={'value': 'TERMINATED'})
+        sp_status = SupplyPointStatus.objects.get_or_create(token='SP_OK', defaults={'name': 'Actiu'})[0]
+        meter_status = MeterStatus.objects.get_or_create(token='1', defaults={'name': 'Actiu'})[0]
+        contract_status = ContractStatus.objects.get_or_create(token='ACTIVE', defaults={'name': 'Alta'})[0]
+        company = Company.objects.create(name='Company two contracts')
+
+        route = Route.objects.create(token='TWO-CONTRACTS')
+        position = RoutePosition.objects.create(route=route, position=1, token='TWO-CONTRACTS_1')
+        cls.property = Property.objects.create(token='two-contracts-property', route_position=position)
+        cls.meter = Meter.objects.create(code='M-TWO-CONTRACTS', status=meter_status)
+        supply_point = SupplyPoint.objects.create(
+            token='two-contracts-sp', meter=cls.meter, property=cls.property, status=sp_status)
+        contracts = []
+        for i in (1, 2):
+            contract = Contract.objects.create(
+                company=company, token=f'TWO-C{i}', status=contract_status, is_active=True,
+                supply_point_default=supply_point)
+            contract.supply_points.add(supply_point)
+            contracts.append(contract)
+
+        old_batch = ReadingBatch.objects.create(token='two-contracts-old', name='Old')
+        cls.batch = ReadingBatch.objects.create(token='two-contracts-new', name='New')
+        cls.batch.routes.add(route)
+        cls.previous = Reading.objects.create(
+            meter=cls.meter, contract=contracts[0], supply_point=supply_point, batch=old_batch,
+            reading_date=date(2026, 6, 16), reading_value=100)
+        cls.original = Reading.objects.create(
+            meter=cls.meter, contract=contracts[0], supply_point=supply_point, batch=cls.batch,
+            reading_date=date(2026, 9, 16), reading_value=150)
+        Reading.objects.create(
+            meter=cls.meter, contract=contracts[1], supply_point=supply_point, batch=cls.batch,
+            reading_date=date(2026, 9, 16), reading_value=150, copied_from=cls.original)
+
+    def test_batch_counts_the_meter_once(self):
+        from lecturapp.serializers import ReadingBatchAppSerializer
+
+        data = ReadingBatchAppSerializer(self.batch).data
+        self.assertEqual((data['num_readings'], data['num_meters']), (1, 1))
+
+    def test_detailed_download_counts_the_meter_once(self):
+        from unittest.mock import patch
+        from lecturapp.tasks import process_reading_batch_routes_detailed
+
+        class FakeProgressRecorder:
+            def __init__(self, task):
+                pass
+
+            def set_progress(self, *args, **kwargs):
+                pass
+
+        with patch('lecturapp.tasks.ProgressRecorder', FakeProgressRecorder):
+            result = process_reading_batch_routes_detailed.apply(args=[self.batch.id]).get()
+
+        self.assertEqual(result['status'], 'completed', result.get('message'))
+        properties = result['data'][0]['positions'][0]['properties']
+        self.assertEqual((properties[0]['num_readings'], properties[0]['num_meters']), (1, 1))
+        meter = properties[0]['meters'][0]
+        self.assertEqual(meter['new_reading'], 150)
+        # La darrera lectura és l'anterior, no la còpia de la del lot
+        self.assertEqual(meter['previous_reading_id'], self.previous.id)
+        self.assertEqual(meter['last_reading'], 100)
+
+    def test_route_property_counts_the_meter_once(self):
+        from lecturapp.serializers import PropertyAppSerializer
+
+        # El mateix comptador en un segon punt de la finca
+        SupplyPoint.objects.create(token='two-contracts-sp-2', meter=self.meter, property=self.property)
+        context = {'include_telecontrol': True, 'batch_readings': list(self.batch.readings.all())}
+        data = PropertyAppSerializer(self.property, context=context).data
+        self.assertEqual((data['num_readings'], data['num_meters']), (1, 1))

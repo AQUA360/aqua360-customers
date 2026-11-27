@@ -1,3 +1,4 @@
+from django.utils.translation import gettext
 import re
 from itertools import groupby
 
@@ -16,6 +17,7 @@ from statistics.utils.report_billing_service import _payoff_signed_sum
 from statistics.utils.report_filters import get_multi_ids, invoice_multi_filter_q
 from statistics.views.reports_views import add_row, adjust_column_widths, jump_row, save_report
 import logging
+from coredata.utils.workbook_utils import workbook_to_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -262,16 +264,14 @@ def generate_general_billing_summary_report(request, black_fill, white_bold_font
         import datetime
         import os
         filename = f"general_billing_summary_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-        wb.save(filename)
+        xlsx_content = workbook_to_bytes(wb)
 
-        with open(filename, "rb") as f:
-            response = HttpResponse(f.read(), content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-            response["Content-Disposition"] = f"attachment; filename={filename}"
+        response = HttpResponse(xlsx_content, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        response["Content-Disposition"] = f"attachment; filename={filename}"
 
         document_id = save_report(content=wb, filename=filename, name=name, type_id=type_id)
 
-        os.remove(filename)
         return response, document_id, None
     except Exception as e:
         logger.exception("Error inesperat")
-        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None

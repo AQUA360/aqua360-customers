@@ -27,9 +27,12 @@ from .views import (
     CancelDirectDebitView,
     ContractProcedureOVView,
     ContractRequestStatusOVView,
+    ContractRequestPdfOVView,
+    ContractRequestSignedUploadOVView,
     ContractTerminationProcedureOVView,
     ContractChangeProcedureOVView,
     ContactDataOVView,
+    PersonContractsOVView,
     PersonDataOVView,
     PersonInvoicesOVView,
     BatchInvoiceDownloadView,
@@ -72,6 +75,12 @@ urlpatterns = [
         "person-invoices/",
         PersonInvoicesOVView.as_view(),
         name="person-invoices-ov",
+    ),  # Get method
+    # /ov/person-contracts/?dni=<DNI>[&role=holder|payer][&related_now=true|false][&page=<n>][&limit=<n>]
+    path(
+        "person-contracts/",
+        PersonContractsOVView.as_view(),
+        name="person-contracts-ov",
     ),  # Get method
     # /ov/invoices/?contract_token=<token>
     path("invoices/", BillingContractInvoicesOVView.as_view(), name="invoices-ov"),
@@ -134,9 +143,9 @@ urlpatterns = [
     path("billing-periods/", BillingPeriodsOVView.as_view(), name="billing-periods-ov"),
     # /ov/contracts/?dni=<DNI>&estado=<status_token>&page=<n>&limit=<n>
     path("contracts/", ContractsListOVView.as_view(), name="contracts-ov"),
-    # /ov/contract/by-nic/<nic>/   (nic conté «/» amb 1 o 2 barres, p. ex.
-    # 12345/1234 o 012345/654321/12345678; <path:nic>
-    # evita que el ruter retalli el NIC i acabi en 404 de ruta)
+    # /ov/contract/by-nic/<nic>/   (nic = 12 xifres, p. ex. 123456000001;
+    # <path:nic> fa que un NIC amb «/» del format antic rebi el 400 de format
+    # de la vista i no un 404 de ruta)
     path(
         "contract/by-nic/<path:nic>/",
         ContractByNicView.as_view(),
@@ -169,6 +178,23 @@ urlpatterns = [
         "procedures/contract/<str:contract_request_token>/",
         ContractRequestStatusOVView.as_view(),
         name="contract-request-status-ov",
+    ),
+    # /ov/procedures/contract/<contract_request_token>/pdf/
+    # PDF del contracte de la sol·licitud per signar-lo fora d'Aqua360.
+    # Quatre segments amb literals als extrems: no confon amb
+    # procedures/<contract_token>/<accio>/ (tres segments).
+    path(
+        "procedures/contract/<str:contract_request_token>/pdf/",
+        ContractRequestPdfOVView.as_view(),
+        name="contract-request-pdf-ov",
+    ),
+    # /ov/procedures/contract/<contract_request_token>/signed/  POST multipart
+    # Contracte de la sol·licitud signat fora d'Aqua360. Quatre segments, com
+    # el del PDF.
+    path(
+        "procedures/contract/<str:contract_request_token>/signed/",
+        ContractRequestSignedUploadOVView.as_view(),
+        name="contract-request-signed-ov",
     ),
     # /ov/procedures/contract-termination/  POST body: baixa de contracte
     # (ContractTerminationRequest). Dos segments literals: no entra en

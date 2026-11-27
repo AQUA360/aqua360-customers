@@ -23,6 +23,7 @@ from order.serializers.order_serializer import OrderSerializer
 from lecturapp.decorators import lecturapp_auth_required as token_required
 from lecturapp.models import ReadingOperator
 import logging
+from coredata.utils.workbook_utils import workbook_to_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -192,6 +193,20 @@ def get_order_operator(lc_operator):
         return None
 
 
+def operator_scope_filter(order_operator):
+    """Un operari només veu les ordres assignades a ell o sense assignar."""
+    return Q(operators=order_operator) | Q(operators__isnull=True)
+
+
+def scoped_orders(order_operator):
+    return Order.objects.filter(operator_scope_filter(order_operator)).distinct()
+
+
+def other_operator_requested(lc_operator, lecture_user_id):
+    """Cert si es demana una llista d'un altre operari (no es permet al GOT)."""
+    return bool(lecture_user_id) and str(lecture_user_id) != str(lc_operator.id)
+
+
 def build_orders_queryset(base_filter=None, exploitation_id=None):
     """
     Build the base orders queryset with standard annotations and ordering.
@@ -330,6 +345,11 @@ def operator_orders(request):
 
     # Parse filter parameters
     lecture_user_id = request.GET.get("lecture_user_id")
+    if other_operator_requested(lc_operator, lecture_user_id):
+        return JsonResponse(
+            {"success": False, "message": "No tens permís per veure ordres d'un altre operari"},
+            status=403,
+        )
     unassigned = request.GET.get("unassigned", "").lower() == "true"
     
     cancelled_status = ConfigProject.objects.get(token='order_status_cancelled_token').value
@@ -407,6 +427,11 @@ def operator_orders_list(request):
 
     # Parse filter parameters
     lecture_user_id = request.GET.get("lecture_user_id")
+    if other_operator_requested(lc_operator, lecture_user_id):
+        return JsonResponse(
+            {"success": False, "message": "No tens permís per veure ordres d'un altre operari"},
+            status=403,
+        )
     unassigned = request.GET.get("unassigned", "").lower() == "true"
     exploitation_id = request.GET.get("exploitation", "")
     show_pending = request.GET.get("show_pending", "").lower() == "true"
@@ -438,8 +463,8 @@ def operator_orders_list(request):
                 status=404,
             )
     else:
-        # Default: all orders
-        orders = build_orders_queryset(exploitation_id=exploitation_id).exclude(status__token=order_cancelled_token).distinct()
+        # Default: les meves ordres i les sense assignar
+        orders = build_orders_queryset(operator_scope_filter(order_operator), exploitation_id=exploitation_id).exclude(status__token=order_cancelled_token).distinct()
     
     
     total_completed_orders = orders.filter(is_completed=True).count()
@@ -517,8 +542,8 @@ def order_detail(request, order_id):
             {"success": False, "message": "No operator profile found"}, status=403
         )
 
-    # Allow viewing any order (not just assigned to current operator)
-    order = get_object_or_404(Order, id=order_id)
+    # Només ordres assignades a l'operari o sense assignar
+    order = get_object_or_404(scoped_orders(order_operator), id=order_id)
     serializer = OrderGotSerializer(order)
 
     return JsonResponse({"success": True, "order": serializer.data})
@@ -556,7 +581,7 @@ def get_order_form(request, order_id):
             {"success": False, "message": "No operator profile found"}, status=403
         )
 
-    order = get_object_or_404(Order, id=order_id)
+    order = get_object_or_404(scoped_orders(order_operator), id=order_id)
 
     order_form = None
     if order.type:
@@ -642,11 +667,10 @@ def assign_lecture_user(request, order_id):
     """
     Assign or deassign lecture users (operators) to/from an order.
 
-    This endpoint allows:
-    - Assigning the current user to an order
-    - Assigning another lecture user to an order
-    - Deassigning all operators (making the order unassigned)
-    - Adding multiple operators to an order
+    Un operari només es pot assignar o desassignar a ell mateix, i només d'ordres
+    seves o sense assignar. Assignar a altres operaris o substituir-ne la llista
+    ("set") retorna 403: ho fa el coordinador des del programa. Cada canvi queda
+    al registre.
 
     Methods:
         POST: Assign/deassign operators
@@ -679,8 +703,9 @@ def assign_lecture_user(request, order_id):
             {"success": False, "message": "No operator profile found"}, status=403
         )
 
-    # Get the order - any operator can modify assignments
-    order = get_object_or_404(Order, id=order_id)
+    # Un operari només gestiona la seva pròpia assignació, i només d'ordres seves o sense assignar.
+    # Assignar feina a altres és cosa del coordinador, des del programa, no del GOT.
+    order = get_object_or_404(scoped_orders(order_operator), id=order_id)
 
     # Parse request body
     try:
@@ -693,6 +718,20 @@ def assign_lecture_user(request, order_id):
     action = data.get("action", "assign")
     lecture_user_id = data.get("lecture_user_id")
     lecture_user_ids = data.get("lecture_user_ids", [])
+
+    if action == "set":
+        return JsonResponse(
+            {"success": False, "message": "No tens permís per reassignar l'ordre a altres operaris"},
+            status=403,
+        )
+    requested_ids = lecture_user_ids if lecture_user_ids else (
+        [lecture_user_id] if lecture_user_id is not None else []
+    )
+    if any(str(uid) != str(lc_operator.id) for uid in requested_ids):
+        return JsonResponse(
+            {"success": False, "message": "Només et pots assignar o desassignar a tu mateix"},
+            status=403,
+        )
 
     # Validate action
     if action not in ["assign", "deassign", "set"]:
@@ -782,6 +821,9 @@ def assign_lecture_user(request, order_id):
 
             for op in target_operators:
                 order.operators.add(op)
+                logger.info(
+                    "GOT: l'operari %s s'assigna l'ordre %s", lc_operator.id, order.id
+                )
 
             current_operators = list(order.operators.all())
 
@@ -829,6 +871,9 @@ def assign_lecture_user(request, order_id):
 
             for op in target_operators:
                 order.operators.remove(op)
+                logger.info(
+                    "GOT: l'operari %s es desassigna de l'ordre %s", lc_operator.id, order.id
+                )
 
             current_operators = list(order.operators.all())
 
@@ -1453,8 +1498,8 @@ def order_report(request, order_id):
     from order.models import OrderReport
     from order.serializers.order_report_serializer import OrderReportSerializer
 
-    # Allow viewing reports for any order (not just assigned to current operator)
-    order = get_object_or_404(Order, id=order_id)
+    # Només informes d'ordres assignades a l'operari o sense assignar
+    order = get_object_or_404(scoped_orders(order_operator), id=order_id)
 
     reports = OrderReport.objects.filter(order=order).order_by(
         "-report_date", "-created_at"
@@ -1688,6 +1733,11 @@ def get_orders_report(request):
         
         
     lecture_user_id = request.GET.get("lecture_user_id")
+    if other_operator_requested(lc_operator, lecture_user_id):
+        return JsonResponse(
+            {"success": False, "message": "No tens permís per veure ordres d'un altre operari"},
+            status=403,
+        )
     unassigned = request.GET.get("unassigned", "").lower() == "true"
     exploitation_id = request.GET.get("exploitation", "")
     show_pending = request.GET.get("show_pending", "").lower() == "true"
@@ -1714,8 +1764,8 @@ def get_orders_report(request):
                 status=404,
             )
     else:
-        # Default: all orders
-        orders = build_orders_queryset(exploitation_id=exploitation_id)
+        # Default: les meves ordres i les sense assignar
+        orders = build_orders_queryset(operator_scope_filter(order_operator), exploitation_id=exploitation_id).distinct()
     
     if not show_pending:
         orders = orders.filter(is_completed=True)
@@ -1767,10 +1817,9 @@ def get_orders_report(request):
     
     filename = f"orders_time_{datetime.datetime.now().strftime('%m_%y')}.xlsx"
     
-    wb.save(filename)
+    xlsx_content = workbook_to_bytes(wb)
 
-    with open(filename, "rb") as f:
-        response = HttpResponse(f.read(), content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-        response["Content-Disposition"] = f"attachment; filename={filename}"
+    response = HttpResponse(xlsx_content, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    response["Content-Disposition"] = f"attachment; filename={filename}"
     
     return response

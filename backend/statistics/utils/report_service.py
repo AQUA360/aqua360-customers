@@ -1,4 +1,5 @@
 # FOR ACCOUNTING REPORTS EXPORTATION
+from django.utils.translation import gettext
 import datetime
 from collections import defaultdict
 from django.utils.dateparse import parse_date
@@ -44,6 +45,7 @@ from statistics.utils.report_filters import (contract_multi_filter_q, get_billin
                                              invoice_multi_filter_q, serie_final_range_invoices, serie_final_range_period)
 from billing.utils.invoice_range_utils import filter_invoices_by_serie_final_range
 import logging
+from coredata.utils.workbook_utils import workbook_to_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -554,14 +556,13 @@ def generate_accounting_values_report(request, black_fill=None, white_bold_font=
     adjust_column_widths(sheet)
 
     filename = f"accounting_values_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-    wb.save(filename)
+    xlsx_content = workbook_to_bytes(wb)
 
-    with open(filename, "rb") as f:
-        response = HttpResponse(
-            f.read(),
-            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
-        response["Content-Disposition"] = f"attachment; filename={filename}"
+    response = HttpResponse(
+        xlsx_content,
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    response["Content-Disposition"] = f"attachment; filename={filename}"
 
     document_id = save_report(
         content=wb,
@@ -571,7 +572,6 @@ def generate_accounting_values_report(request, black_fill=None, white_bold_font=
         start_date=start_date,
         end_date=end_date,
     )
-    os.remove(filename)
     return response, document_id, None
 
 def generate_aqua_remittance_report(request, black_fill=None, white_bold_font=None, task=None):
@@ -623,16 +623,14 @@ def generate_aqua_remittance_report(request, black_fill=None, white_bold_font=No
         
     filename = f"remesa_aqua_{remittance.token}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
     
-    wb.save(filename)
+    xlsx_content = workbook_to_bytes(wb)
 
     # Send the file as a response
-    with open(filename, "rb") as f:
-        response = HttpResponse(f.read(), content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-        response["Content-Disposition"] = f"attachment; filename={filename}"
+    response = HttpResponse(xlsx_content, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    response["Content-Disposition"] = f"attachment; filename={filename}"
     
     document_id = save_report(content=wb, filename=filename, name=name, type_id=type_id, start_date=start_date, end_date=end_date)
     print("report saved")
-    os.remove(filename)
     return response, document_id, None
 
 def get_translated_alert_notes(alert_text):
@@ -2242,18 +2240,16 @@ def generate_mini_register_billing_summary(request, black_fill, white_bold_font,
     
     filename = f"billing_detailed_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
     
-    wb.save(filename)
+    xlsx_content = workbook_to_bytes(wb)
 
     # Send the file as a response
-    with open(filename, "rb") as f:
-        response = HttpResponse(f.read(), content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-        response["Content-Disposition"] = f"attachment; filename={filename}"
+    response = HttpResponse(xlsx_content, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    response["Content-Disposition"] = f"attachment; filename={filename}"
     
     
     document_id = save_report(content=wb, filename=filename, name=name, type_id=type_id, start_date=start_date, end_date=end_date)
     
     
-    os.remove(filename)
     return response, document_id, None
 
 
@@ -2415,21 +2411,19 @@ def generate_order_time_summary(request, black_fill=None, white_bold_font=None, 
         
         filename = f"orders_time_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
         
-        wb.save(filename)
+        xlsx_content = workbook_to_bytes(wb)
 
         
-        with open(filename, "rb") as f:
-            response = HttpResponse(f.read(), content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-            response["Content-Disposition"] = f"attachment; filename={filename}"
+        response = HttpResponse(xlsx_content, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        response["Content-Disposition"] = f"attachment; filename={filename}"
         
         document_id = save_report(content=wb, filename=filename, name=name, type_id=type_id, start_date=start_date, end_date=end_date)
         print("report saved")
         
-        os.remove(filename)
         return response, document_id, None
     except Exception as e:
         logger.exception("Error inesperat")
-        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
 def get_order_address(order):
     order_address = ""
@@ -2483,7 +2477,7 @@ def generate_bails_report(request, black_fill=None, white_bold_font=None, task=N
             
         except Exception as e:
             logger.exception("Error inesperat")
-            return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+            return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
         
         wb = openpyxl.Workbook()
         sheet = wb.active
@@ -2637,20 +2631,18 @@ def generate_bails_report(request, black_fill=None, white_bold_font=None, task=N
                 for j, value in enumerate(row_data, start=1):
                     sheet_lines.cell(row=i, column=j, value=value)
 
-        wb.save(filename)
+        xlsx_content = workbook_to_bytes(wb)
         
         
-        with open(filename, "rb") as f:
-            response = HttpResponse(f.read(), content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-            response["Content-Disposition"] = f"attachment; filename={filename}"
+        response = HttpResponse(xlsx_content, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        response["Content-Disposition"] = f"attachment; filename={filename}"
         
         document_id = save_report(content=wb, filename=filename, name=name, type_id=type_id, start_date=start_date, end_date=end_date)
         
-        os.remove(filename)
         return response, document_id, None
     except Exception as e:
         logger.exception("Error inesperat")
-        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
     
     
 def generate_sii_report(request, black_fill=None, white_bold_font=None, task=None):
@@ -2822,7 +2814,7 @@ def generate_sii_report(request, black_fill=None, white_bold_font=None, task=Non
     except Exception as e:
         logger.exception("Error inesperat")
         print("error: ", e)
-        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
 
     
@@ -3000,15 +2992,13 @@ def generate_pending_invoices_values_report(request, black_fill=None, white_bold
     
     filename = f"puntual_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
     
-    wb.save(filename)
+    xlsx_content = workbook_to_bytes(wb)
 
     # Send the file as a response
-    with open(filename, "rb") as f:
-        response = HttpResponse(f.read(), content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-        response["Content-Disposition"] = f"attachment; filename={filename}"
+    response = HttpResponse(xlsx_content, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    response["Content-Disposition"] = f"attachment; filename={filename}"
     
     document_id = save_report(content=wb, filename=filename, name=name, type_id=type_id)
-    os.remove(filename)
     return response, document_id, None
 
 

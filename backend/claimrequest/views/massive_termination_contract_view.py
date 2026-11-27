@@ -1,3 +1,4 @@
+from django.utils.translation import gettext
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -150,5 +151,5 @@ class MassiveTerminationContractViewSet(APIView):
         except Exception as e:
             logger.exception("Error inesperat")
             return Response({
-                'error': 'Ha ocorregut un error inesperat.'
+                'error': gettext("An unexpected error has occurred.")
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR) 

@@ -39,6 +39,21 @@ const permissions = ref(null);
 
 const filter_is_juridic = ref([]);//filter options
 const selected_is_juridic_filter = ref(null);//selected value 
+// Només persones amb un procés d'insolvència obert
+const insolvencyFilter = ref(false);
+// Filtres d'email, telèfon i IBAN, amb el mateix funcionament que els de contractes
+const searchEmailInput = ref('');
+const searchPhoneInput = ref('');
+const searchIbanInput = ref('');
+const showEmailSearch = ref(false);
+const showPhoneSearch = ref(false);
+const showIbanSearch = ref(false);
+const extraFilters = () => ({
+  ...(insolvencyFilter.value ? { insolvency: 'true' } : {}),
+  ...(searchEmailInput.value.trim() ? { search_email: searchEmailInput.value.trim() } : {}),
+  ...(searchPhoneInput.value.trim() ? { search_phone: searchPhoneInput.value.trim() } : {}),
+  ...(searchIbanInput.value.trim() ? { search_iban: searchIbanInput.value.trim() } : {}),
+});
 
 const pagination = ref({
   page: 1,
@@ -71,7 +86,7 @@ const exportColumns = computed(() => [
 
 const exportPersons = (columns) => $PersonApiService.exportData(
   searchInput.value, [], sortBy.value, sortDesc.value,
-  selected_is_juridic_filter.value ? [selected_is_juridic_filter.value] : [], columns
+  selected_is_juridic_filter.value ? [selected_is_juridic_filter.value] : [], columns, extraFilters()
 );
 
 const getData = async (searchQuery = '', filters = [], juridicFilter = null, page = 1, sort = null, desc = false) => {
@@ -82,7 +97,7 @@ const getData = async (searchQuery = '', filters = [], juridicFilter = null, pag
   pending.value = true;
   error.value = null;
   try {
-    const data = await $PersonApiService.getAll(searchQuery, filters, page, sort, desc, juridicFilter ? [juridicFilter] : []);
+    const data = await $PersonApiService.getAll(searchQuery, filters, page, sort, desc, juridicFilter ? [juridicFilter] : [], extraFilters());
 
     items.value = data.results;
     Object.assign(pagination.value, {
@@ -90,11 +105,18 @@ const getData = async (searchQuery = '', filters = [], juridicFilter = null, pag
       totalPages: Math.ceil(data.count / pagination.value.perPage),
       previous: data.previous,
       next: data.next,
-      isFiltered: String(searchQuery).trim() !== ''
+      isFiltered: String(searchQuery).trim() !== '' || insolvencyFilter.value
+        || searchEmailInput.value.trim() !== '' || searchPhoneInput.value.trim() !== '' || searchIbanInput.value.trim() !== ''
     });
 
     nextTick(() => {
-      document.getElementById('searchInput').focus();
+      // No robar el focus: si l'usuari està escrivint en un altre camp (per
+      // exemple en els filtres d'email, telèfon o IBAN), es queda on està.
+      const active = document.activeElement;
+      const isTyping = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable);
+      if (!isTyping) {
+        document.getElementById('searchInput')?.focus();
+      }
     });
   } catch (err) {
     error.value = err;
@@ -117,6 +139,21 @@ const handleFilterChange = () => {
   handleSearch();
 }
 
+// Mostra o amaga el camp d'un filtre; en amagar-lo, el buida i torna a cercar
+const searchFields = {
+  email: { show: showEmailSearch, input: searchEmailInput },
+  iban: { show: showIbanSearch, input: searchIbanInput },
+  phone: { show: showPhoneSearch, input: searchPhoneInput },
+};
+const toggleSearchField = (key) => {
+  const field = searchFields[key];
+  field.show.value = !field.show.value;
+  if (!field.show.value && field.input.value) {
+    field.input.value = '';
+    handleSearch();
+  }
+};
+
 const handlePageChange = (newPage) => {
   pagination.value.page = newPage;
   getData(searchInput.value, [], selected_is_juridic_filter.value, newPage, sortBy.value, sortDesc.value);
@@ -134,8 +171,15 @@ const handleSort = (key) => {
 
 const resetFilters = () => {
   searchInput.value = '';
+  searchEmailInput.value = '';
+  searchPhoneInput.value = '';
+  searchIbanInput.value = '';
+  showEmailSearch.value = false;
+  showPhoneSearch.value = false;
+  showIbanSearch.value = false;
   pagination.value.page = 1;
   selected_is_juridic_filter.value = null;
+  insolvencyFilter.value = false;
   getData();
 };
 
@@ -246,6 +290,33 @@ const tableColumns = computed(() => [
         </label>
       </span>
 
+      <div class="h-8 w-px bg-gray-300"></div>
+
+      <label class="text-slate-800 text-base flex items-center gap-1">
+        <input type="checkbox" v-model="insolvencyFilter" @change="handleFilterChange" />
+        {{ $t('insolvency.filter_started') }}
+      </label>
+
+      <div class="h-8 w-px bg-gray-300"></div>
+
+      <span class="flex gap-1">
+        <button id="filterEmail" name="form_filter" type="button" class="px-2 py-1 hover:bg-slate-300 rounded"
+          :class="{ 'bg-slate-300': showEmailSearch }" @click="toggleSearchField('email')"
+          :title="$t('contract_block.search_email_info')">
+          <span class="text-slate-500"><Icon name="fa6-solid:at" />+</span>
+        </button>
+        <button id="filterIban" name="form_filter" type="button" class="px-2 py-1 hover:bg-slate-300 rounded"
+          :class="{ 'bg-slate-300': showIbanSearch }" @click="toggleSearchField('iban')"
+          :title="$t('contract_block.search_iban_info')">
+          <span class="text-slate-500"><Icon name="fa6-solid:building-columns" />+</span>
+        </button>
+        <button id="filterPhone" name="form_filter" type="button" class="px-2 py-1 hover:bg-slate-300 rounded"
+          :class="{ 'bg-slate-300': showPhoneSearch }" @click="toggleSearchField('phone')"
+          :title="$t('contract_block.search_phone_info')">
+          <span class="text-slate-500"><Icon name="fa6-solid:phone" />+</span>
+        </button>
+      </span>
+
       <span>
         <button id="filterReset" name="form_filter" type="button" class="px-2 py-1 hover:bg-slate-300 rounded"
           @click="resetFilters" title="reset">
@@ -253,6 +324,30 @@ const tableColumns = computed(() => [
         </button>
       </span>
     </form>
+
+    <div v-if="showEmailSearch || showPhoneSearch || showIbanSearch"
+      class="mb-3 px-2 text-base flex flex-start gap-2 justify-start items-center flex-wrap">
+      <span v-if="showEmailSearch" class="input-group flex flex-start items-center gap-2 w-60">
+        <Icon name="fa6-solid:at" class="text-slate-500" />
+        <input v-model="searchEmailInput" @input="handleSearch" id="searchEmailInput" type="text" name="search_email"
+          :placeholder="$t('contract_block.search_email_info')"
+          class="w-full p-1 rounded-md focus:outline-none focus-visible:border-0" autocomplete="off" />
+      </span>
+
+      <span v-if="showIbanSearch" class="input-group flex flex-start items-center gap-2 w-60">
+        <Icon name="fa6-solid:building-columns" class="text-slate-500" />
+        <input v-model="searchIbanInput" @input="handleSearch" id="searchIbanInput" type="text" name="search_iban"
+          :placeholder="$t('contract_block.search_iban_info')"
+          class="w-full p-1 rounded-md focus:outline-none focus-visible:border-0" autocomplete="off" />
+      </span>
+
+      <span v-if="showPhoneSearch" class="input-group flex flex-start items-center gap-2 w-60">
+        <Icon name="fa6-solid:phone" class="text-slate-500" />
+        <input v-model="searchPhoneInput" @input="handleSearch" id="searchPhoneInput" type="text" name="search_phone"
+          :placeholder="$t('contract_block.search_phone_info')"
+          class="w-full p-1 rounded-md focus:outline-none focus-visible:border-0" autocomplete="off" />
+      </span>
+    </div>
     <DataTable
       table-key="persons"
       :columns="tableColumns"

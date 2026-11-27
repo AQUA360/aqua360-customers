@@ -43,14 +43,17 @@ fake = Faker()
 
 
 def invoice_current_file_used_in_communication(invoice):
-    """True if the CURRENT invoice PDF Document is attached to an active communication."""
+    """True if the CURRENT invoice PDF Document is attached to a communication.
+
+    Inactive links count too: they are the communication's document history
+    (e.g. after regenerating its documents) and must keep their file.
+    """
     from communication.models import CommunicationFile
 
     if not invoice.invoice_file_id:
         return False
     return CommunicationFile.objects.filter(
         file_id=invoice.invoice_file_id,
-        is_active=True,
     ).exists()
 
 
@@ -60,7 +63,6 @@ def invoice_has_communication_retained_pdfs(invoice):
     from documentmanager.models import Document
 
     return CommunicationFile.objects.filter(
-        is_active=True,
         file_id__in=Document.objects.filter(
             entity='FACTURES',
             field='FACTURA',
@@ -72,15 +74,15 @@ def invoice_has_communication_retained_pdfs(invoice):
 def discard_unused_invoice_pdf_document(old_document):
     """
     Remove a previous invoice Document (and its storage file) when it is not
-    linked to any active communication. Call only after the invoice points to
-    the new Document, because Invoice.invoice_file uses on_delete=CASCADE.
+    linked to any communication (active or historic). Call only after the invoice
+    points to the new Document, because Invoice.invoice_file uses on_delete=CASCADE.
     """
     from communication.models import CommunicationFile
     from documentmanager.utils.main_utils import delete_document
 
     if not old_document:
         return
-    if CommunicationFile.objects.filter(file_id=old_document.id, is_active=True).exists():
+    if CommunicationFile.objects.filter(file_id=old_document.id).exists():
         return
 
     delete_document(old_document)
@@ -123,6 +125,31 @@ def update_invoice_data(invoice):
             invoice.country_final = address_fields['country_iso']
         invoice.save()
     return invoice
+
+
+def get_invoice_supply_address(invoice):
+    """
+    Adreça de subministrament que s'imprimeix al PDF de la factura/pressupost.
+
+    Mateixa lògica que generate_invoice_pdf: l'adreça de l'escomesa per a una
+    sol·licitud d'escomesa; si no, la del punt de subministrament per defecte del
+    contracte, de la sol·licitud d'alta o del contracte de la baixa.
+    """
+    if invoice.connection_request:
+        return get_connection_request_supply_address(invoice.connection_request)
+    if invoice.contract:
+        contract = invoice.contract
+    elif invoice.contract_request:
+        contract = invoice.contract_request
+    elif invoice.contract_termination:
+        contract = invoice.contract_termination.contract
+    else:
+        return None
+    supply_point = getattr(contract, 'supply_point_default', None) if contract else None
+    if supply_point and supply_point.address:
+        return str(supply_point.address)
+    return None
+
 
 def get_contract_variables(contract):
     """

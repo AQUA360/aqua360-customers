@@ -371,6 +371,15 @@ class CommunicationProcessSaveSerializer(serializers.ModelSerializer):
                 template_instance = MessageTemplate.objects.filter(token=message_template_id).first()
         if attach_claim_documents is None:
             attach_claim_documents = template_instance.attach_claim_documents if template_instance else True
+        if fixed_data == 'claimrequest' and attach_claim_documents and fixed_data_id:
+            # Pas sense document (p. ex. només genera ordre): no hi ha res a adjuntar i la
+            # carta postal ha de ser la del missatge, com si el document s'hagués desmarcat.
+            from claimrequest.models import ClaimRequest
+            step_document_type_id = ClaimRequest.objects.filter(id=fixed_data_id).values_list(
+                'current_step__document_type_id', flat=True,
+            ).first()
+            if step_document_type_id is None:
+                attach_claim_documents = False
         # Sense valor al procés, el de la plantilla; si la plantilla tampoc en té, el de l'empresa.
         if not invoice_email_delivery and template_instance:
             invoice_email_delivery = template_instance.invoice_email_delivery

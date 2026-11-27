@@ -149,9 +149,87 @@ def _iban_and_swift(person_bank):
     return iban, swift
 
 
+def render_contract_sepa_pdf(contract, data, request=None):
+    """
+    Genera el PDF del mandat SEPA d'un contracte o sol·licitud, signat amb el
+    certificat de l'empresa. Retorna els bytes, o None si falla la generació.
+
+    `data` admet els mateixos camps que el cos de la vista: `direct_debit`,
+    `mandate_id`, `bank_id`/`person_bank_id` i `person_id`.
+    """
+    general_payment = contract.payment
+    # Per defecte és el document «no domiciliat»; amb direct_debit és el mandat de
+    # domiciliació (p. ex. l'alta, abans que el pagament de la sol·licitud estigui desat).
+    direct_debit = str(data.get("direct_debit", "")).lower() == "true"
+    mandate_reference = None
+    if direct_debit:
+        mandate_reference = data.get("mandate_id") or (
+            general_payment.mandate_id if general_payment else None
+        )
+
+    default_person_bank = general_payment.IBAN if general_payment and general_payment.IBAN else None
+    person_bank = _resolve_person_bank(data, default_person_bank)
+    context = {"request": request}
+    company = _company_from_contract(contract, context)
+    holder_person = _resolve_person(data) or contract.holder
+    holder = PersonSerializer(holder_person, context=context).data if holder_person else None
+    if holder and holder_person:
+        holder["addresses"] = PersonAddressSerializer(
+            holder_person.addresses.all(), many=True, context=context
+        ).data
+
+    billing_address = _billing_address(holder, holder_person, contract, context)
+    iban, swift = _iban_and_swift(person_bank)
+    contact_phone, contact_email = _contact_info(holder_person, contract)
+    person_fullname = (
+        person_bank.name if person_bank and person_bank.name else holder.get("full_name") if holder else ""
+    )
+    person_token = (
+        person_bank.dni if person_bank and person_bank.dni else holder.get("token") if holder else ""
+    )
+
+    html_content = render_to_string(
+        "sepa_template.html",
+        {
+            "iban": iban,
+            "swift": swift,
+            "now_date": datetime.now().date(),
+            "company": company or "",
+            "city": (
+                contract.supply_point_default.address.city.name
+                if contract.supply_point_default
+                and contract.supply_point_default.address
+                and contract.supply_point_default.address.city
+                else ""
+            ),
+            "holder": holder or "",
+            "holder_address": billing_address or "",
+            "debtor_address": _debtor_address(billing_address),
+            "person_fullname": person_fullname or "",
+            "person_token": person_token or "",
+            "contact_phone": contact_phone,
+            "contact_email": contact_email,
+            "contract": contract,
+            "no_sepa": not direct_debit,
+            "mandate_reference": mandate_reference,
+            "data_protection_law_text": company.get("data_protection_law_text") if company else None,
+        },
+    )
+
+    pdf_buffer = BytesIO()
+    pisa_status = pisa.CreatePDF(html_content, dest=pdf_buffer)
+    if pisa_status.err:
+        return None
+
+    return sign_pdf(pdf_buffer, company, "SEPA DIRECT DEBIT", "SEPA").getvalue()
+
+
 class ContractSepaPDFView(APIView):
     """
     Generate a SEPA mandate PDF for a contract.
+
+    By default the document is marked as "no direct debit"; with ``direct_debit``
+    in the body it is a regular mandate (reference: ``mandate_id`` or the token).
 
     If the contract has a GeneralPayment, the document is stored on it and its
     URL is returned. If the contract has no payment configured, the contract
@@ -169,61 +247,10 @@ class ContractSepaPDFView(APIView):
         else:
             contract = get_object_or_404(Contract, id=contract_id)
         general_payment = contract.payment
-
-        default_person_bank = general_payment.IBAN if general_payment and general_payment.IBAN else None
-        person_bank = _resolve_person_bank(request.data, default_person_bank)
-        context = {"request": request}
-        company = _company_from_contract(contract, context)
-        holder_person = _resolve_person(request.data) or contract.holder
-        holder = PersonSerializer(holder_person, context=context).data if holder_person else None
-        if holder and holder_person:
-            holder["addresses"] = PersonAddressSerializer(
-                holder_person.addresses.all(), many=True, context=context
-            ).data
-
-        billing_address = _billing_address(holder, holder_person, contract, context)
-        iban, swift = _iban_and_swift(person_bank)
-        contact_phone, contact_email = _contact_info(holder_person, contract)
-        person_fullname = (
-            person_bank.name if person_bank and person_bank.name else holder.get("full_name") if holder else ""
-        )
-        person_token = (
-            person_bank.dni if person_bank and person_bank.dni else holder.get("token") if holder else ""
-        )
-
-        html_content = render_to_string(
-            "sepa_template.html",
-            {
-                "iban": iban,
-                "swift": swift,
-                "now_date": datetime.now().date(),
-                "company": company or "",
-                "city": (
-                    contract.supply_point_default.address.city.name
-                    if contract.supply_point_default
-                    and contract.supply_point_default.address
-                    and contract.supply_point_default.address.city
-                    else ""
-                ),
-                "holder": holder or "",
-                "holder_address": billing_address or "",
-                "debtor_address": _debtor_address(billing_address),
-                "person_fullname": person_fullname or "",
-                "person_token": person_token or "",
-                "contact_phone": contact_phone,
-                "contact_email": contact_email,
-                "contract": contract,
-                "no_sepa": True,
-                "data_protection_law_text": company.get("data_protection_law_text") if company else None,
-            },
-        )
-
-        pdf_buffer = BytesIO()
-        pisa_status = pisa.CreatePDF(html_content, dest=pdf_buffer)
-        if pisa_status.err:
+        pdf_bytes = render_contract_sepa_pdf(contract, request.data, request=request)
+        if pdf_bytes is None:
             return JsonResponse({"error": "PDF generation failed"}, status=500)
 
-        signed_pdf_buffer = sign_pdf(pdf_buffer, company, "SEPA DIRECT DEBIT", "SEPA")
         pdf_filename = f"SEPA_{contract.token}.pdf"
 
         if general_payment:
@@ -233,7 +260,7 @@ class ContractSepaPDFView(APIView):
             # No payment to attach to: store a standalone document (built from the
             # contract holder). Can't get_or_create on a null OneToOne, so create one.
             sepa = GeneralPaymentSepaDocument.objects.create()
-        sepa.template.save(pdf_filename, ContentFile(signed_pdf_buffer.getvalue()))
+        sepa.template.save(pdf_filename, ContentFile(pdf_bytes))
 
         file_url = request.build_absolute_uri(sepa.template.url)
         return JsonResponse({"pdf_url": file_url, "sepa_document_id": sepa.id})

@@ -37,6 +37,7 @@ class CommunicationSerializer(serializers.ModelSerializer):
     user = UserMinimalSerializer(read_only=True, required=False, allow_null=True)
     #files = CommunicationFileSerializer(many=True, read_only=True, required=False, allow_null=True)
     files = serializers.SerializerMethodField()
+    historic_files = serializers.SerializerMethodField()
     invoices = serializers.SerializerMethodField()
     readings = serializers.SerializerMethodField()
     contracts = serializers.SerializerMethodField()
@@ -76,6 +77,11 @@ class CommunicationSerializer(serializers.ModelSerializer):
     
     def get_files(self, obj):
         files = obj.files.filter(is_active=True)
+        return CommunicationFileSerializer(files, many=True, read_only=True, required=False, allow_null=True).data
+
+    def get_historic_files(self, obj):
+        # Documents substituïts en regenerar-los: es conserven però ja no s'envien
+        files = obj.files.filter(is_active=False, file__isnull=False).order_by('-id')
         return CommunicationFileSerializer(files, many=True, read_only=True, required=False, allow_null=True).data
         
 class CommunicationListSerializer(serializers.ModelSerializer):

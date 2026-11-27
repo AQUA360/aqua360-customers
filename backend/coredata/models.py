@@ -1,4 +1,7 @@
 # coredata/models.py
+import secrets
+from datetime import timedelta
+
 from django.db import models
 from django.utils import timezone
 from django.contrib.auth.models import User
@@ -403,6 +406,56 @@ class PersonObservation(models.Model):
             return "PersonObservation {}".format(self.id)
     
 
+class PersonAnomalyType(models.Model):
+    """Catàleg de tipus d'anomalia d'una persona (DNI/CIF incorrecte, IBAN incorrecte, difunt, insolvent...)."""
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    token = models.CharField(max_length=50, unique=True)
+    name = models.CharField(max_length=255)
+    # Marca els tipus que obren un procés de gestió (p. ex. insolvència)
+    opens_process = models.BooleanField(default=False)
+    position = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['position', 'id']
+
+    def __str__(self):
+        return self.name
+
+
+class PersonAnomaly(models.Model):
+    """Anomalia d'una persona. És vigent mentre està activa i sense data de fi (o amb data de fi futura)."""
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    person = models.ForeignKey(Person, on_delete=models.CASCADE, related_name='anomalies')
+    anomaly_type = models.ForeignKey(PersonAnomalyType, on_delete=models.PROTECT, related_name='anomalies')
+    start_date = models.DateField()
+    end_date = models.DateField(null=True, blank=True)
+    observation = models.TextField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+
+    class Meta:
+        ordering = ['-start_date', '-id']
+
+    def __str__(self):
+        return f"{self.person_id} - {self.anomaly_type}"
+
+    @property
+    def is_current(self):
+        return self.is_active and (self.end_date is None or self.end_date > timezone.now().date())
+
+    @classmethod
+    def current_q(cls, prefix=''):
+        """Condició de vigència per filtrar (prefix p. ex. 'anomalies__')."""
+        today = timezone.now().date()
+        return (
+            models.Q(**{f'{prefix}is_active': True})
+            & (models.Q(**{f'{prefix}end_date__isnull': True}) | models.Q(**{f'{prefix}end_date__gt': today}))
+        )
+
+
 class PersonAddress(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -638,3 +691,55 @@ class DeployRecord(models.Model):
 
     def __str__(self):
         return f"{self.component} {self.release or self.commit} ({self.deployed_at:%Y-%m-%d %H:%M})"
+
+
+class AuthSessionToken(models.Model):
+    """Token d'accés d'una sessió: se'n crea un a cada login d'una persona.
+
+    Caduca per inactivitat (AUTH_TOKEN_IDLE_HOURS) o per antiguitat
+    (AUTH_TOKEN_MAX_AGE_DAYS). Els usuaris d'integració no en fan servir:
+    conserven el token permanent de DRF.
+    """
+
+    key = models.CharField(max_length=40, unique=True)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="auth_session_tokens")
+    created = models.DateTimeField(auto_now_add=True)
+    last_used = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        verbose_name = "Auth session token"
+        verbose_name_plural = "Auth session tokens"
+
+    def __str__(self):
+        return f"Session token for {self.user}"
+
+    @staticmethod
+    def generate_key():
+        return secrets.token_hex(20)
+
+    @classmethod
+    def create_for(cls, user):
+        return cls.objects.create(user=user, key=cls.generate_key())
+
+    @staticmethod
+    def expiration_limits(now=None):
+        """Retorna (límit d'inactivitat, límit d'antiguitat): abans d'aquestes dates, caducat."""
+        from django.conf import settings
+        now = now or timezone.now()
+        return (
+            now - timedelta(hours=settings.AUTH_TOKEN_IDLE_HOURS),
+            now - timedelta(days=settings.AUTH_TOKEN_MAX_AGE_DAYS),
+        )
+
+    def is_expired(self, now=None):
+        idle_limit, age_limit = self.expiration_limits(now)
+        return self.last_used < idle_limit or self.created < age_limit
+
+    @classmethod
+    def purge_expired(cls, user=None):
+        """Esborra els tokens caducats (d'un usuari o de tots)."""
+        idle_limit, age_limit = cls.expiration_limits()
+        queryset = cls.objects.filter(models.Q(last_used__lt=idle_limit) | models.Q(created__lt=age_limit))
+        if user is not None:
+            queryset = queryset.filter(user=user)
+        return queryset.delete()

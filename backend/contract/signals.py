@@ -130,16 +130,30 @@ def contract_pre_save(sender, instance, **kwargs):
         except Contract.DoesNotExist:
             pass
 
+@receiver(pre_save, sender=ContractTerminationRequest)
+def remember_termination_status(sender, instance, **kwargs):
+    instance._previous_status_id = (
+        ContractTerminationRequest.objects.filter(pk=instance.pk).values_list('status_id', flat=True).first()
+        if instance.pk else None
+    )
+
+
 @receiver(post_save, sender=ContractTerminationRequest)
 def update_termination_status(sender, instance, **kwargs):
-    if instance.id:
-        if instance.status and instance.status.token!="3" and instance.status.token!="1":
-            order_status = ConfigProject.objects.get(token = 'order_status_completed_token').value
-            orders = Order.objects.filter(contract_termination_request=instance).exclude(status__token=order_status)
-            for order in orders:
-                order.status = OrderStatus.objects.get(token="1")
-                order.save()
-        
+    """Quan la baixa passa a Pendent, les seves ordres en esborrany passen a Pendent.
+
+    Només en el canvi d'estat, no a cada desada. Les ordres en marxa i les d'una
+    baixa cancel·lada o finalitzada no es toquen (amb GMAO, l'estat el porta el GMAO).
+    """
+    if not instance.status_id or instance.status_id == getattr(instance, '_previous_status_id', None):
+        return
+    pending_token = ConfigProject.objects.filter(
+        token='contract_termination_pending_token'
+    ).values_list('value', flat=True).first()
+    if pending_token and instance.status.token == pending_token:
+        from contract.utils.contract_termination_service import release_termination_draft_orders
+        release_termination_draft_orders(instance)
+
      
 @receiver(post_save, sender=BonificationType)
 def deactivate_bonification_type(sender, instance, **kwargs):

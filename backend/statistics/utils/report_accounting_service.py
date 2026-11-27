@@ -1,3 +1,4 @@
+from django.utils.translation import gettext
 import datetime
 from django.http import HttpResponse
 from rest_framework import status
@@ -60,13 +61,20 @@ def generate_general_accounting_report(request, black_fill=None, white_bold_font
         request.data['start_date'] = start_dt.strftime('%Y-%m-%d')
         request.data['end_date'] = end_dt.strftime('%Y-%m-%d')
 
-        content_file = generate_general_accounting(request)
+        content_file, document_format = generate_general_accounting(request)
         if content_file is None:
             return None, None, None
 
-        filename = f"{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+        stamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        if document_format == 'csv':
+            filename = f"{stamp}.csv"
+            content_type = "text/csv"
+        else:
+            # Existing fixed-width SGT/XML export (unchanged).
+            filename = f"{stamp}.txt"
+            content_type = "text/plain"
 
-        response = HttpResponse(content_file.getvalue(), content_type="text/plain")
+        response = HttpResponse(content_file.getvalue(), content_type=content_type)
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
 
         document_id = save_report(
@@ -81,4 +89,4 @@ def generate_general_accounting_report(request, black_fill=None, white_bold_font
         import traceback
         print("Error in generate_general_accounting_report: ", e)
         traceback.print_exc()
-        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None

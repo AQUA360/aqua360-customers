@@ -37,6 +37,7 @@ const searchByAddress = ref('');// Track which search input is active
 const searchEmailInput = ref('');
 const searchIbanInput = ref('');
 const searchMeterInput = ref('');
+const searchPhoneInput = ref('');
 
 const openIndexDropdown = ref(false);
 
@@ -63,6 +64,7 @@ const filter_has_virtual_office = ref([]);
 const selected_has_virtual_office = ref([]);
 const has_virtual_office = ref(null);
 const only_pending_termination = ref(false);
+const terminatedStatusToken = ref(null);
 
 const variables = ref([]);
 const bonifications = ref([]);
@@ -100,6 +102,7 @@ const showAddressSearch = ref(false);
 const showEmailSearch = ref(false);
 const showIbanSearch = ref(false);
 const showMeterSearch = ref(false);
+const showPhoneSearch = ref(false);
 const isFilterShown = ref([]);
 const filtersExtra = ref([]);
 
@@ -151,7 +154,8 @@ const getData = async (searchQuery = '', searchAllAddress = '', filters = [], pa
       use_types.value, categories.value, [], debt_management.value, false,
       comm_types.value, searchAllAddress, payment_types.value, [], searchByAddressQuery, totalPersonsMinQuery,
       companies.value, null, null, block_billing.value, has_debt.value, searchEmailQuery, searchIbanQuery, searchMeterQuery,
-      has_positive_balance.value, only_pending_termination.value ? 'true' : null, has_virtual_office.value
+      has_positive_balance.value, only_pending_termination.value ? 'true' : null, has_virtual_office.value,
+      searchPhoneInput.value
     );
 
     items.value = data.results;
@@ -160,7 +164,7 @@ const getData = async (searchQuery = '', searchAllAddress = '', filters = [], pa
       totalPages: Math.ceil(data.count / pagination.value.perPage),
       previous: data.previous,
       next: data.next,
-      isFiltered: String(searchQuery).trim() !== '' || String(searchAllAddress).trim() !== '' || String(searchByAddressQuery).trim() !== '' || String(searchEmailQuery).trim() !== '' || String(searchIbanQuery).trim() !== ''
+      isFiltered: String(searchQuery).trim() !== '' || String(searchAllAddress).trim() !== '' || String(searchByAddressQuery).trim() !== '' || String(searchEmailQuery).trim() !== '' || String(searchIbanQuery).trim() !== '' || String(searchPhoneInput.value).trim() !== ''
     });
 
     if (blockSearch.value) {
@@ -222,8 +226,12 @@ const loadSelectData = async () => {
 const getFilterStatus = async () => {
   error.value = null;
   try {
-    const data = await $ContractApiService.getFilterStatus();
+    const [data, terminatedToken] = await Promise.all([
+      $ContractApiService.getFilterStatus(),
+      $ConfigProjectApiService.get('contract_terminated_status').catch(() => null),
+    ]);
     filter_status.value = data;
+    terminatedStatusToken.value = terminatedToken;
   } catch (err) {
     console.error(err)
     console.log('Contract active status filter could not be established...')
@@ -301,69 +309,102 @@ const handleAddressChange = (addressString) => {
   debouncedGetData(searchInput.value, searchAllAddressInput.value, selectedFilters.value, sortBy.value, sortDesc.value, true, addressString, total_persons_min.value, searchEmailInput.value, searchIbanInput.value, searchMeterInput.value);
 }
 
-const toggleAddressFilter = () => {
-  // If we are hiding the address search and there are no extra filters, close the whole extra filters area
-  if (showAddressSearch.value) {
-    showAddressSearch.value = false;
-    if (!isFilterShown.value.length && !showEmailSearch.value && !showIbanSearch.value && !showMeterSearch.value) {
-      isFilterOpen.value = false;
-      return;
-    }
-  } else {
-    // Show address search and ensure filters area is open
-    showAddressSearch.value = true;
-    isFilterOpen.value = true;
+// null: panel opened with the additional filters button (shows everything).
+// Array: panel opened from a search icon while closed (shows only those searches).
+const soloSearches = ref(null);
+const searchFlags = {
+  address: showAddressSearch,
+  email: showEmailSearch,
+  iban: showIbanSearch,
+  meter: showMeterSearch,
+  phone: showPhoneSearch,
+};
+
+const isSearchVisible = (key) =>
+  isFilterOpen.value && searchFlags[key].value && (soloSearches.value === null || soloSearches.value.includes(key));
+
+const toggleFilterPanel = () => {
+  // Opened from the icons: first click shows the whole panel; next click closes it
+  if (isFilterOpen.value && soloSearches.value !== null) {
+    soloSearches.value = null;
+    return;
   }
+  isFilterOpen.value = !isFilterOpen.value;
+  soloSearches.value = null;
 }
 
-const toggleEmailFilter = () => {
-  if (showEmailSearch.value) {
-    showEmailSearch.value = false;
-    searchEmailInput.value = '';
-    handleSearch();
-    if (!isFilterShown.value.length && !showAddressSearch.value && !showIbanSearch.value && !showMeterSearch.value) {
-      isFilterOpen.value = false;
-      return;
-    }
-  } else {
-    showEmailSearch.value = true;
-    isFilterOpen.value = true;
-  }
+// Empties a search's value (the address search keeps its value, as before)
+const searchClears = {
+  email: () => { searchEmailInput.value = ''; },
+  iban: () => { searchIbanInput.value = ''; },
+  meter: () => { searchMeterInput.value = ''; },
+  phone: () => { searchPhoneInput.value = ''; },
+};
+
+const deactivateSearch = (key) => {
+  searchFlags[key].value = false;
+  searchClears[key]?.();
 }
 
-const toggleIbanFilter = () => {
-  if (showIbanSearch.value) {
-    showIbanSearch.value = false;
-    searchIbanInput.value = '';
-    handleSearch();
-    if (!isFilterShown.value.length && !showAddressSearch.value && !showEmailSearch.value && !showMeterSearch.value) {
-      isFilterOpen.value = false;
-      return;
+const toggleSearchFilter = (key) => {
+  if (isSearchVisible(key)) {
+    deactivateSearch(key);
+    if (searchClears[key]) handleSearch();
+    // Close the panel only if it was opened from the icons and none is left
+    if (soloSearches.value !== null) {
+      soloSearches.value = soloSearches.value.filter(k => k !== key);
+      if (!soloSearches.value.length) {
+        isFilterOpen.value = false;
+        soloSearches.value = null;
+      }
     }
-  } else {
-    showIbanSearch.value = true;
-    isFilterOpen.value = true;
+    return;
   }
+  if (!isFilterOpen.value) {
+    // Opening from an icon starts over: the searches left from before are dropped
+    const previous = Object.keys(searchFlags).filter(k => k !== key && searchFlags[k].value);
+    previous.forEach(deactivateSearch);
+    // Starting over also drops a hidden address, so it does not keep filtering
+    if (previous.includes('address')) searchByAddress.value = '';
+    if (previous.length) handleSearch();
+    isFilterOpen.value = true;
+    soloSearches.value = [key];
+  } else if (soloSearches.value !== null) {
+    soloSearches.value = [...soloSearches.value, key];
+  }
+  searchFlags[key].value = true;
 }
 
-const toggleMeterFilter = () => {
-  if (showMeterSearch.value) {
-    showMeterSearch.value = false;
-    searchMeterInput.value = '';
-    handleSearch();
-    if (!isFilterShown.value.length && !showAddressSearch.value && !showEmailSearch.value && !showIbanSearch.value) {
-      isFilterOpen.value = false;
-      return;
-    }
-  } else {
-    showMeterSearch.value = true;
-    isFilterOpen.value = true;
-  }
-}
+const toggleAddressFilter = () => toggleSearchFilter('address');
+const toggleEmailFilter = () => toggleSearchFilter('email');
+const toggleIbanFilter = () => toggleSearchFilter('iban');
+const toggleMeterFilter = () => toggleSearchFilter('meter');
+const togglePhoneFilter = () => toggleSearchFilter('phone');
 
 const handleFilterChange = () => {
   pagination.value.page = 1;
   handleSearch();
+}
+
+// «Baixa» i «Pendent de donar de baixa» són excloents: un contracte de baixa ja no té cap
+// baixa pendent, i el filtre de pendents restringeix els estats marcats (no en suma un altre).
+const terminatedStatusId = computed(() =>
+  filter_status.value.find(s => s.token === terminatedStatusToken.value)?.id ?? null
+);
+
+const handleStatusChange = (event) => {
+  const changedId = Number(event.target.value);
+  if (event.target.checked && changedId === Number(terminatedStatusId.value)) {
+    only_pending_termination.value = false;
+  }
+  handleFilterChange();
+}
+
+const handlePendingTerminationChange = () => {
+  if (only_pending_termination.value && terminatedStatusId.value !== null) {
+    selectedFilters.value = selectedFilters.value.filter(id => Number(id) !== Number(terminatedStatusId.value));
+  }
+  handleFilterChange();
 }
 
 const handleVariableChange = (event) => {
@@ -610,12 +651,15 @@ const resetFilters = () => {
   searchEmailInput.value = '';
   searchIbanInput.value = '';
   searchMeterInput.value = '';
+  searchPhoneInput.value = '';
   isFilterShown.value = [];
   isFilterOpen.value = false;
   showAddressSearch.value = false;
   showEmailSearch.value = false;
   showIbanSearch.value = false;
   showMeterSearch.value = false;
+  showPhoneSearch.value = false;
+  soloSearches.value = null;
   getData();
 };
 
@@ -625,6 +669,7 @@ const checkRouteQuery = () => {
   } else if (route.query?.action == 'filterPage') {
     if (route.query.advance_filters) {
       isFilterOpen.value = true;
+      soloSearches.value = null;
       for (let filter of route.query.advance_filters) {
         //CHECK HOW TO OPTIMIZE THIS
         if (filter == 'variable_type') {
@@ -729,6 +774,9 @@ const saveSearchState = () => {
     showIbanSearch: showIbanSearch.value,
     searchMeterInput: searchMeterInput.value,
     showMeterSearch: showMeterSearch.value,
+    searchPhoneInput: searchPhoneInput.value,
+    showPhoneSearch: showPhoneSearch.value,
+    soloSearches: soloSearches.value,
   };
   sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 };
@@ -795,6 +843,9 @@ const loadSearchState = () => {
       if (parsed.showIbanSearch !== undefined) showIbanSearch.value = parsed.showIbanSearch;
       if (parsed.searchMeterInput !== undefined) searchMeterInput.value = parsed.searchMeterInput;
       if (parsed.showMeterSearch !== undefined) showMeterSearch.value = parsed.showMeterSearch;
+      if (parsed.searchPhoneInput !== undefined) searchPhoneInput.value = parsed.searchPhoneInput;
+      if (parsed.showPhoneSearch !== undefined) showPhoneSearch.value = parsed.showPhoneSearch;
+      if (parsed.soloSearches !== undefined) soloSearches.value = parsed.soloSearches;
     } catch (e) {
       console.error('Error parsing search state', e);
     }
@@ -895,7 +946,8 @@ watch(
     has_virtual_office.value, selected_has_virtual_office.value,
     only_pending_termination.value,
     searchEmailInput.value, searchIbanInput.value, showEmailSearch.value, showIbanSearch.value,
-    searchMeterInput.value, showMeterSearch.value
+    searchMeterInput.value, showMeterSearch.value,
+    searchPhoneInput.value, showPhoneSearch.value, soloSearches.value
   ],
   () => {
     saveSearchState();
@@ -917,7 +969,7 @@ watch(
 // (que decideix quantes icones hi caben).
 const tokenIndicators = (item) => [
   ...(isFireContract(item) ? [{ key: 'fire', icon: 'mdi:fire-hydrant', iconClass: 'text-red-500', title: t('common.fire_hydrant') }] : []),
-  ...(isSupplyPointCut(item) ? [{ key: 'supply_cut', icon: 'fa6-solid:droplet-slash', iconClass: 'text-red-600', title: t('service_block.active_supply_cut_warning') }] : []),
+  ...(isSupplyPointCut(item) ? [{ key: 'supply_cut', icon: 'fa6-solid:scissors', iconClass: 'text-red-600', title: t('service_block.active_supply_cut_warning') }] : []),
 ];
 
 const tableColumns = computed(() => [
@@ -1003,7 +1055,8 @@ const exportExcel = async () => {
       searchMeterInput.value,
       has_positive_balance.value,
       only_pending_termination.value ? 'true' : null,
-      has_virtual_office.value
+      has_virtual_office.value,
+      searchPhoneInput.value
     );
 
     if (response && response.task_id) {
@@ -1147,47 +1200,61 @@ watch(() => route.query, async () => {
       <span class="flex gap-3" v-if="filter_status.length">
         <label v-for="status in filter_status" :key="status.id"
           class="text-slate-800 text-base flex items-center gap-1">
-          <input type="checkbox" v-model="selectedFilters" :value="status.id" @change="handleFilterChange" :disabled="blockSearch" /> {{
+          <input type="checkbox" v-model="selectedFilters" :value="status.id" @change="handleStatusChange" :disabled="blockSearch" /> {{
             status.name }}
-        </label>
-        <label class="text-slate-800 text-base flex items-center gap-1">
-          <input type="checkbox" v-model="only_pending_termination" @change="handleFilterChange" :disabled="blockSearch" />
-          {{ t('contract_block.pending_termination') }}
         </label>
       </span>
 
+      <label v-if="filter_status.length" :title="t('contract_block.pending_termination_filter_hint')"
+        class="inline-flex items-center gap-1.5 px-2 py-1 rounded border text-base select-none cursor-pointer transition-colors"
+        :class="only_pending_termination
+          ? 'bg-amber-50 text-amber-700 border-amber-300 font-medium'
+          : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'">
+        <input type="checkbox" v-model="only_pending_termination" @change="handlePendingTerminationChange" :disabled="blockSearch"
+          class="sr-only" />
+        <Icon name="fa6-solid:triangle-exclamation" :class="only_pending_termination ? 'text-amber-600' : 'text-slate-400'" />
+        {{ t('contract_block.only_pending_termination') }}
+      </label>
+
       <span class="flex items-center gap-1">
         <button id="filterShow" name="form_filter" type="button" class="px-2 py-1 hover:bg-slate-300 rounded"
-          @click="isFilterOpen = !isFilterOpen" title="show" :disabled="blockSearch">
+          @click="toggleFilterPanel" :title="t('common.additional_filters')" :disabled="blockSearch">
           <Icon name="fa:filter" class="text-slate-500" />
         </button>
         <button id="filterAddress" name="form_filter" type="button"
           class="px-2 py-1 hover:bg-slate-300 rounded"
-          :class="{ 'bg-slate-300': showAddressSearch }"
+          :class="{ 'bg-slate-300': isSearchVisible('address') }"
           @click="toggleAddressFilter" :disabled="blockSearch"
           :title="$t('address_block.address')">
           <span class="text-slate-500"><Icon name="fa6-solid:house"  />+</span>
         </button>
         <button id="filterEmail" name="form_filter" type="button"
           class="px-2 py-1 hover:bg-slate-300 rounded"
-          :class="{ 'bg-slate-300': showEmailSearch }"
+          :class="{ 'bg-slate-300': isSearchVisible('email') }"
           @click="toggleEmailFilter" :disabled="blockSearch"
           :title="$t('contract_block.search_email_info')">
           <span class="text-slate-500"><Icon name="fa6-solid:at" />+</span>
         </button>
         <button id="filterIban" name="form_filter" type="button"
           class="px-2 py-1 hover:bg-slate-300 rounded"
-          :class="{ 'bg-slate-300': showIbanSearch }"
+          :class="{ 'bg-slate-300': isSearchVisible('iban') }"
           @click="toggleIbanFilter" :disabled="blockSearch"
           :title="$t('contract_block.search_iban_info')">
           <span class="text-slate-500"><Icon name="fa6-solid:building-columns" />+</span>
         </button>
         <button id="filterMeter" name="form_filter" type="button"
           class="px-2 py-1 hover:bg-slate-300 rounded"
-          :class="{ 'bg-slate-300': showMeterSearch }"
+          :class="{ 'bg-slate-300': isSearchVisible('meter') }"
           @click="toggleMeterFilter" :disabled="blockSearch"
           :title="$t('contract_block.search_meter_info')">
           <span class="text-slate-500"><Icon name="fa6-solid:gauge" />+</span>
+        </button>
+        <button id="filterPhone" name="form_filter" type="button"
+          class="px-2 py-1 hover:bg-slate-300 rounded"
+          :class="{ 'bg-slate-300': isSearchVisible('phone') }"
+          @click="togglePhoneFilter" :disabled="blockSearch"
+          :title="$t('contract_block.search_phone_info')">
+          <span class="text-slate-500"><Icon name="fa6-solid:phone" />+</span>
         </button>
       </span>
 
@@ -1201,31 +1268,39 @@ watch(() => route.query, async () => {
 
     <div class="px-2 text-base flex flex-start gap-2 justify-start items-center flex-wrap" v-if="isFilterOpen">
 
-      <span v-if="showAddressSearch" class="flex items-center gap-2">
+      <span v-if="isSearchVisible('address')" class="flex items-center gap-2">
         <AtomsInputAddressSearch :value="searchByAddress" @change="handleAddressChange" />
       </span>
 
-      <span v-if="showEmailSearch" class="input-group flex flex-start items-center gap-2 w-60">
+      <span v-if="isSearchVisible('email')" class="input-group flex flex-start items-center gap-2 w-60">
         <Icon name="fa6-solid:at" class="text-slate-500" />
         <input v-model="searchEmailInput" @input="handleSearch" id="searchEmailInput" type="text" name="search"
           :placeholder="$t('contract_block.search_email_info')" :disabled="blockSearch"
           class="w-full p-1 rounded-md focus:outline-none focus-visible:border-0 " autocomplete="off" />
       </span>
 
-      <span v-if="showIbanSearch" class="input-group flex flex-start items-center gap-2 w-60">
+      <span v-if="isSearchVisible('iban')" class="input-group flex flex-start items-center gap-2 w-60">
         <Icon name="fa6-solid:building-columns" class="text-slate-500" />
         <input v-model="searchIbanInput" @input="handleSearch" id="searchIbanInput" type="text" name="search"
           :placeholder="$t('contract_block.search_iban_info')" :disabled="blockSearch"
           class="w-full p-1 rounded-md focus:outline-none focus-visible:border-0 " autocomplete="off" />
       </span>
 
-      <span v-if="showMeterSearch" class="input-group flex flex-start items-center gap-2 w-60">
+      <span v-if="isSearchVisible('meter')" class="input-group flex flex-start items-center gap-2 w-60">
         <Icon name="fa6-solid:gauge" class="text-slate-500" />
         <input v-model="searchMeterInput" @input="handleSearch" id="searchMeterInput" type="text" name="search"
           :placeholder="$t('contract_block.search_meter_info')" :disabled="blockSearch"
           class="w-full p-1 rounded-md focus:outline-none focus-visible:border-0 " autocomplete="off" />
       </span>
 
+      <span v-if="isSearchVisible('phone')" class="input-group flex flex-start items-center gap-2 w-60">
+        <Icon name="fa6-solid:phone" class="text-slate-500" />
+        <input v-model="searchPhoneInput" @input="handleSearch" id="searchPhoneInput" type="text" name="search"
+          :placeholder="$t('contract_block.search_phone_info')" :disabled="blockSearch"
+          class="w-full p-1 rounded-md focus:outline-none focus-visible:border-0 " autocomplete="off" />
+      </span>
+
+      <template v-if="soloSearches === null">
       <FilterSelect v-if="isFilterShown.some(filter => filter.id === 'variable_type')" :options="filter_variable_type"
         :filters="selected_elements" :multiple="true" :placeholder="t(`variables`)"
         @update:modelValue="handleVariableChange($event)">
@@ -1344,6 +1419,7 @@ watch(() => route.query, async () => {
           <Icon name="fa6-solid:plus" class="text-md ml-2 mr-1" size="10px" />
         </template>
       </FilterSelect>
+      </template>
 
     </div>
 

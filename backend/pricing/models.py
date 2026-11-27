@@ -518,6 +518,9 @@ class AccountingPricing(models.Model):
 
     accounting_concept = models.ForeignKey(AccountingConcept, on_delete=models.SET_NULL, related_name='accounting_pricings', null=True, blank=True)
     accounting_cost_center = models.ForeignKey(AccountingCostCenter, on_delete=models.SET_NULL, related_name='accounting_pricings', null=True, blank=True)
+    # Payment category: when True, the payment have/counterpart line also
+    # receives this pricing's cost center (normally only the payment line does).
+    cost_center_on_counterpart = models.BooleanField(default=False)
     #invoices category
     invoice_category = models.CharField(max_length=255, null=True, blank=True) # normal - irrecoverable - endownment
     # this value also works for payment to allow and detect if a marked invoice is being paid
@@ -559,6 +562,9 @@ class AccountingPricing(models.Model):
     payment_origin = models.CharField(max_length=20, choices=PAYMENT_ORIGIN_CHOICES, null=True, blank=True)
     # When grouped_lines and BANK_PAYMENT is among the payment types, split those lines by origin.
     separate_by_payment_origin = models.BooleanField(default=False)
+    # When grouped_lines, keep positive cobraments and negative returns on
+    # separate summed lines instead of netting them into one total.
+    separate_by_sign = models.BooleanField(default=False)
     # Payment category only. When set, the payment have counterpart uses this
     # pricing's account instead of the matched invoice clients account.
     counterpart_accounting_pricing = models.ForeignKey(
@@ -621,6 +627,14 @@ class AccountingAdditionalLine(models.Model):
     declared_as_return = models.CharField(max_length=255, null=True, blank=True)
     
     accounting_concept = models.ForeignKey(AccountingConcept, on_delete=models.SET_NULL, related_name='additional_lines', null=True, blank=True)
+    # Optional override; when empty, the emitted line keeps the parent pricing cost center.
+    accounting_cost_center = models.ForeignKey(
+        AccountingCostCenter,
+        on_delete=models.SET_NULL,
+        related_name='additional_lines',
+        null=True,
+        blank=True,
+    )
 
     is_negative = models.BooleanField(default=False)
     DECLARE_CHOICES = AccountingPricing.DECLARE_CHOICES
@@ -635,7 +649,7 @@ class AccountingAdditionalLine(models.Model):
 
 
 class AccountingConfig(models.Model):
-    """Singleton-style client settings for accounting declaration rules."""
+    """Per-exploitation settings for accounting declaration rules."""
 
     DECLARE_CHOICES = [
         ('debt', _('Debt')),
@@ -650,9 +664,23 @@ class AccountingConfig(models.Model):
         ('positive', _('Positive')),
         ('negative', _('Negative')),
     ]
+    DOCUMENT_FORMAT_CHOICES = [
+        ('xml', _('XML')),
+        ('csv', _('CSV')),
+    ]
 
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True, null=True, blank=True)
+
+    # Scoped like AccountingPricing: one active config per exploitation.
+    # Null exploitation keeps a legacy/global fallback for older rows.
+    exploitation = models.ForeignKey(
+        Exploitation,
+        on_delete=models.SET_NULL,
+        related_name='accounting_configs',
+        null=True,
+        blank=True,
+    )
 
     # When True, piggy-bank movement amounts stay negative (legacy style).
     # When False, amounts follow incoming_sign / return_sign (usually positive).
@@ -660,6 +688,14 @@ class AccountingConfig(models.Model):
     # Movements whose current_status matches payment_status_piggy_token are
     # always treated as piggy-bank and declared (even with invoice/commitment/BALANCE).
     include_piggy_status_payments = models.BooleanField(default=False)
+    # Export document type: fixed-width XML/SGT (default) or CSV with variable columns.
+    document_format = models.CharField(
+        max_length=10, choices=DOCUMENT_FORMAT_CHOICES, default='xml',
+    )
+    # HAS_IVA export block (only written on invoice lines with IVA). Fixed widths.
+    iva_document_code = models.CharField(max_length=2, default='IR', blank=True)
+    iva_series_code = models.CharField(max_length=2, default='02', blank=True)
+    iva_operation_code = models.CharField(max_length=15, default='SENSE', blank=True)
 
     # Incoming piggy-bank deposit (movement.is_positive=False)
     incoming_declare_as = models.CharField(max_length=10, choices=DECLARE_CHOICES, default='debt')
@@ -696,11 +732,58 @@ class AccountingConfig(models.Model):
         verbose_name_plural = 'Accounting configs'
 
     def __str__(self):
+        if self.exploitation_id:
+            return f"AccountingConfig #{self.pk} ({self.exploitation_id})"
         return f"AccountingConfig #{self.pk}"
 
     @classmethod
-    def get_solo(cls):
-        config = cls.objects.filter(is_active=True).order_by('id').first()
+    def _copy_settings(cls, source):
+        """Field values copied when seeding a new exploitation config."""
+        return {
+            'piggybank_as_negative': source.piggybank_as_negative,
+            'include_piggy_status_payments': source.include_piggy_status_payments,
+            'document_format': source.document_format or 'xml',
+            'iva_document_code': source.iva_document_code or 'IR',
+            'iva_series_code': source.iva_series_code or '02',
+            'iva_operation_code': source.iva_operation_code or 'SENSE',
+            'incoming_declare_as': source.incoming_declare_as or 'debt',
+            'incoming_sign': source.incoming_sign or 'positive',
+            'incoming_counter_declare_as': source.incoming_counter_declare_as or 'have',
+            'incoming_counter_pricing_id': source.incoming_counter_pricing_id,
+            'return_declare_as': source.return_declare_as or 'have',
+            'return_sign': source.return_sign or 'positive',
+            'return_counter_declare_as': source.return_counter_declare_as or 'debt',
+            'return_counter_pricing_id': source.return_counter_pricing_id,
+            'is_active': True,
+        }
+
+    @classmethod
+    def get_for_exploitation(cls, exploitation_id=None):
+        """Active config for an exploitation, creating one when missing."""
+        qs = cls.objects.filter(is_active=True).order_by('id')
+        if exploitation_id:
+            config = qs.filter(exploitation_id=exploitation_id).first()
+            if config:
+                return config
+            legacy = qs.filter(exploitation__isnull=True).first() or qs.first()
+            if legacy:
+                settings = cls._copy_settings(legacy)
+                # Counter pricings are exploitation-scoped; leave them unset
+                # so the UI picks accounts from the same exploitation.
+                settings['incoming_counter_pricing_id'] = None
+                settings['return_counter_pricing_id'] = None
+                return cls.objects.create(
+                    exploitation_id=exploitation_id,
+                    **settings,
+                )
+            return cls.objects.create(exploitation_id=exploitation_id)
+
+        config = qs.filter(exploitation__isnull=True).first() or qs.first()
         if config:
             return config
         return cls.objects.create()
+
+    @classmethod
+    def get_solo(cls):
+        """Backward-compatible alias: legacy/global or first active config."""
+        return cls.get_for_exploitation(None)

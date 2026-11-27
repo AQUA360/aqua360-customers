@@ -29,6 +29,12 @@ def check_token_exists(token, model, repeat=0):
     return token
 
 
+# Opcional, només a name_utils_personalized: contract_request_token_matches(token, **kwargs)
+# retorna True si el token actual d'una ContractRequest encara és coherent amb les dades
+# que el determinen (rep els mateixos kwargs que generate_token). Si el mòdul personalitzat
+# no la defineix, el token d'una sol·licitud no es regenera mai automàticament.
+contract_request_token_matches = None
+
 # Permet personalitzar les funcions per client: si existeix name_utils_personalized,
 # s'usen les seves generate_token i/o check_token_exists en lloc de les d'aquest mòdul.
 try:
@@ -37,5 +43,7 @@ try:
         generate_token = name_utils_personalized.generate_token
     if hasattr(name_utils_personalized, 'check_token_exists'):
         check_token_exists = name_utils_personalized.check_token_exists
+    if hasattr(name_utils_personalized, 'contract_request_token_matches'):
+        contract_request_token_matches = name_utils_personalized.contract_request_token_matches
 except ImportError:
     pass

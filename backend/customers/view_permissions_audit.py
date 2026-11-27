@@ -45,7 +45,12 @@ EXEMPT_ACTIONS = {
 # intern també les pot cridar, i per això són a la baseline.
 EXEMPT_VIEWS = {
     'auth.views.CustomAuthToken': 'login (obté el token)',
+    'auth.views.LogoutView': 'tanca la sessió pròpia (revoca el token de la petició)',
     'auth.views.UserPermissionsView': "permisos de l'usuari mateix",
+    'auth.views.OwnProfileView': "fitxa de l'usuari mateix (sempre request.user; canviar el correu demana la contrasenya)",
+    'auth.views.ChangeOwnPasswordView': "contrasenya de l'usuari mateix (sempre request.user; demana l'actual)",
+    'auth.views.PasswordResetRequestView': 'recuperació de contrasenya des del login (sense sessió, límit per IP)',
+    'auth.views.PasswordResetConfirmView': "enllaç de recuperació de contrasenya (sense sessió, token d'un sol ús, límit per IP)",
     'integrations.inbound.gmao.views.GMAOLoginView': 'login de la integració GMAO',
     'integrations.inbound.odoo.views.OdooBatchResultView': 'callback amb Bearer token propi',
     'integrations.inbound.signing.views.SigningCallbackView': 'callback de signatura amb clau pròpia',

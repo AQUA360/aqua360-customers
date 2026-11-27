@@ -1,9 +1,16 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useToast } from 'vue-toastification';
 import { checkPermission } from '~/middleware/permission';
 import H1Region from '~/components/atoms/H1Region.vue';
+
+const props = defineProps({
+  exploitationId: {
+    type: [Number, String],
+    default: null,
+  },
+});
 
 const emit = defineEmits(['close', 'changed']);
 
@@ -22,9 +29,24 @@ const error = ref(null);
 const loadingPricings = ref(false);
 const pricingOptions = ref([]);
 
+const resolvedExploitationId = computed(() => {
+  if (props.exploitationId !== null && props.exploitationId !== undefined && props.exploitationId !== '') {
+    return props.exploitationId;
+  }
+  try {
+    return localStorage.getItem('exploitation') || null;
+  } catch (err) {
+    return null;
+  }
+});
+
 const accountingConfig = ref({
   piggybank_as_negative: false,
   include_piggy_status_payments: false,
+  document_format: 'xml',
+  iva_document_code: 'IR',
+  iva_series_code: '02',
+  iva_operation_code: 'SENSE',
   incoming_declare_as: 'debt',
   incoming_sign: 'positive',
   incoming_counter_declare_as: 'have',
@@ -49,6 +71,11 @@ const counterDeclareOptions = computed(() => [
 const signOptions = computed(() => [
   { token: 'positive', name: t('pricing_block.accounting_sign_positive') },
   { token: 'negative', name: t('pricing_block.accounting_sign_negative') },
+]);
+
+const documentFormatOptions = computed(() => [
+  { token: 'xml', name: t('pricing_block.accounting_document_format_xml') },
+  { token: 'csv', name: t('pricing_block.accounting_document_format_csv') },
 ]);
 
 const pricingOptionLabel = (item) => {
@@ -78,7 +105,7 @@ const loadPricingOptions = async () => {
   loadingPricings.value = true;
   try {
     const response = await $AccountingPricingApiService.getAll(
-      '', 1, null, false, false, null, null, null, null, 200,
+      '', 1, null, false, false, null, resolvedExploitationId.value, null, null, 200,
     );
     const list = Array.isArray(response?.results) ? response.results : [];
     pricingOptions.value = list.map(toPricingOption);
@@ -94,10 +121,14 @@ const loadConfig = async () => {
   pending.value = true;
   error.value = null;
   try {
-    const response = await $AccountingConfigApiService.getCurrent();
+    const response = await $AccountingConfigApiService.getCurrent(resolvedExploitationId.value);
     accountingConfig.value = {
       piggybank_as_negative: !!response.piggybank_as_negative,
       include_piggy_status_payments: !!response.include_piggy_status_payments,
+      document_format: response.document_format === 'csv' ? 'csv' : 'xml',
+      iva_document_code: (response.iva_document_code || 'IR').slice(0, 2).trimEnd(),
+      iva_series_code: (response.iva_series_code || '02').slice(0, 2).trimEnd(),
+      iva_operation_code: (response.iva_operation_code || 'SENSE').slice(0, 15).trimEnd(),
       incoming_declare_as: response.incoming_declare_as || 'debt',
       incoming_sign: response.incoming_sign || 'positive',
       incoming_counter_declare_as: response.incoming_counter_declare_as || 'have',
@@ -115,6 +146,11 @@ const loadConfig = async () => {
   }
 };
 
+const reloadForExploitation = async () => {
+  await loadPricingOptions();
+  await loadConfig();
+};
+
 const saveConfig = async () => {
   if (!objectPermissions.value?.can_change || saving.value) return;
   if (!confirm(t('confirmation_text_block.confirm_save'))) return;
@@ -122,8 +158,13 @@ const saveConfig = async () => {
   saving.value = true;
   try {
     const payload = {
+      exploitation_id: resolvedExploitationId.value || null,
       piggybank_as_negative: !!accountingConfig.value.piggybank_as_negative,
       include_piggy_status_payments: !!accountingConfig.value.include_piggy_status_payments,
+      document_format: accountingConfig.value.document_format === 'csv' ? 'csv' : 'xml',
+      iva_document_code: (accountingConfig.value.iva_document_code || 'IR').slice(0, 2).padEnd(2, ' '),
+      iva_series_code: (accountingConfig.value.iva_series_code || '02').slice(0, 2).padEnd(2, ' '),
+      iva_operation_code: (accountingConfig.value.iva_operation_code || 'SENSE').slice(0, 15).padEnd(15, ' '),
       incoming_declare_as: accountingConfig.value.incoming_declare_as,
       incoming_sign: accountingConfig.value.incoming_sign,
       incoming_counter_declare_as: accountingConfig.value.incoming_counter_declare_as,
@@ -133,7 +174,10 @@ const saveConfig = async () => {
       return_counter_declare_as: accountingConfig.value.return_counter_declare_as,
       return_counter_pricing_id: accountingConfig.value.return_counter_pricing?.id ?? null,
     };
-    const response = await $AccountingConfigApiService.saveCurrent(payload);
+    const response = await $AccountingConfigApiService.saveCurrent(
+      payload,
+      resolvedExploitationId.value,
+    );
     accountingConfig.value.incoming_counter_pricing = hydratePricingSelection(
       response.incoming_counter_pricing,
     );
@@ -150,6 +194,12 @@ const saveConfig = async () => {
   }
 };
 
+watch(resolvedExploitationId, async (next, prev) => {
+  if (String(next) === String(prev)) return;
+  if (!objectPermissions.value?.can_view) return;
+  await reloadForExploitation();
+});
+
 onMounted(async () => {
   objectPermissions.value = await checkPermission($PriceRateApiService);
   if (!objectPermissions.value.can_view) {
@@ -157,8 +207,7 @@ onMounted(async () => {
     emit('close');
     return;
   }
-  await loadPricingOptions();
-  await loadConfig();
+  await reloadForExploitation();
 });
 </script>
 
@@ -207,6 +256,62 @@ onMounted(async () => {
             </span>
           </span>
         </label>
+
+        <div class="rounded-md border border-sky-100 bg-sky-50/40 px-3 py-3 space-y-3">
+          <div>
+            <p class="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+              {{ t('pricing_block.accounting_document_format') }}
+            </p>
+            <p class="mt-1 text-[11px] leading-snug text-slate-500">
+              {{ t('pricing_block.accounting_document_format_hint') }}
+            </p>
+          </div>
+          <div class="max-w-xs">
+            <v-select v-model="accountingConfig.document_format" :options="documentFormatOptions"
+              :reduce="(option) => option.token" label="name" class="block w-full" append-to-body
+              :clearable="false" :disabled="saving || !objectPermissions?.can_change" />
+          </div>
+        </div>
+
+        <div class="rounded-md border border-sky-100 bg-sky-50/40 px-3 py-3 space-y-3">
+          <div>
+            <p class="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+              {{ t('pricing_block.iva_export_codes') }}
+            </p>
+            <p class="mt-1 text-[11px] leading-snug text-slate-500">
+              {{ t('pricing_block.iva_export_codes_hint') }}
+            </p>
+          </div>
+          <div class="grid gap-3 sm:grid-cols-3">
+            <div>
+              <label class="mb-1 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                {{ t('pricing_block.iva_document_code') }}
+              </label>
+              <input v-model="accountingConfig.iva_document_code" type="text" maxlength="2"
+                class="input !w-full font-mono text-[13px] uppercase"
+                :disabled="saving || !objectPermissions?.can_change"
+                :placeholder="t('pricing_block.iva_document_code_placeholder')" autocomplete="off" />
+            </div>
+            <div>
+              <label class="mb-1 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                {{ t('pricing_block.iva_series_code') }}
+              </label>
+              <input v-model="accountingConfig.iva_series_code" type="text" maxlength="2"
+                class="input !w-full font-mono text-[13px] uppercase"
+                :disabled="saving || !objectPermissions?.can_change"
+                :placeholder="t('pricing_block.iva_series_code_placeholder')" autocomplete="off" />
+            </div>
+            <div>
+              <label class="mb-1 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                {{ t('pricing_block.iva_operation_code') }}
+              </label>
+              <input v-model="accountingConfig.iva_operation_code" type="text" maxlength="15"
+                class="input !w-full font-mono text-[13px] uppercase"
+                :disabled="saving || !objectPermissions?.can_change"
+                :placeholder="t('pricing_block.iva_operation_code_placeholder')" autocomplete="off" />
+            </div>
+          </div>
+        </div>
 
         <div class="rounded-md border border-sky-100 bg-sky-50/40 px-3 py-3 space-y-3">
           <p class="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">

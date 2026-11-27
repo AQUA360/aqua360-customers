@@ -475,7 +475,9 @@ class Contract(models.Model):
         ('E', 'EXEMPTS (PRESTACIÓ GRATUÏTA O REG D\'HORTS PÚBLICS)'),
         ('G', 'AGRÍCOLES'),
         ('X', 'EXTINCIÓ D\'INCENDIS'),
-        ('M', 'MÈSURES DIRECTES')
+        ('M', 'MÈSURES DIRECTES'),
+        # Es declara a part al FACTDETA d'alta; a la Declaració ACA compta com a industrial
+        ('L', 'ALTA'),
     ]
     use_aca = models.CharField(max_length=10, choices=USE_ACA_CHOICES, default=None, null=True, blank=True)
     

@@ -1,8 +1,25 @@
 from django_filters import rest_framework as filters
-from django.db.models import Q
-from service.models import Connection
+from django.db.models import Count, IntegerField, OuterRef, Q, Subquery, Value
+from django.db.models.functions import Coalesce
+from service.models import Connection, SupplyPoint
 from functools import reduce
 from operator import and_
+
+SUPPLY_POINTS_COUNT = 'supply_points_count'
+
+
+def annotate_supply_points_count(queryset):
+    """Afegeix el nombre de punts de subministrament actius de cada escomesa."""
+    if SUPPLY_POINTS_COUNT in queryset.query.annotations:
+        return queryset
+    count = (
+        SupplyPoint.objects.filter(connection=OuterRef('pk'), is_active=True)
+        .order_by().values('connection').annotate(n=Count('id')).values('n')
+    )
+    return queryset.annotate(**{
+        SUPPLY_POINTS_COUNT: Coalesce(Subquery(count, output_field=IntegerField()), Value(0)),
+    })
+
 
 class ConnectionFilter(filters.FilterSet):
     search = filters.CharFilter(method='filter_search')
@@ -15,10 +32,14 @@ class ConnectionFilter(filters.FilterSet):
     use_type = filters.CharFilter(method='filter_use_type')
     material = filters.CharFilter(method='filter_material')
     valve_type = filters.CharFilter(method='filter_valve_type')
-    
+    installation_type = filters.CharFilter(method='filter_installation_type')
+    # Nombre de punts de subministrament: 0 (cap), 1 (única) i 2 (dos o més, plurifamiliar)
+    supply_points = filters.CharFilter(method='filter_supply_points')
+
     class Meta:
         model = Connection
-        fields = ['search', 'exploitation','status', 'type', 'use_type', 'material', 'valve_type']
+        fields = ['search', 'exploitation','status', 'type', 'use_type', 'material', 'valve_type',
+                  'installation_type', 'supply_points']
 
     def filter_search(self, queryset, name, value):
         if not value:
@@ -79,6 +100,25 @@ class ConnectionFilter(filters.FilterSet):
             valve_type_values = value.split(',')
             return queryset.filter(valve_type__id__in=valve_type_values)
         return queryset
+
+    def filter_installation_type(self, queryset, name, value):
+        ids = [v for v in value.split(',') if v.isdigit()] if value else []
+        if ids:
+            return queryset.filter(installation_type__id__in=ids)
+        return queryset
+
+    def filter_supply_points(self, queryset, name, value):
+        options = {v.strip() for v in value.split(',')} if value else set()
+        condition = Q()
+        if '0' in options:
+            condition |= Q(**{SUPPLY_POINTS_COUNT: 0})
+        if '1' in options:
+            condition |= Q(**{SUPPLY_POINTS_COUNT: 1})
+        if '2' in options:
+            condition |= Q(**{f'{SUPPLY_POINTS_COUNT}__gte': 2})
+        if not condition:
+            return queryset
+        return annotate_supply_points_count(queryset).filter(condition)
 
     def filter_address(self, queryset, name, value):
         if not value:

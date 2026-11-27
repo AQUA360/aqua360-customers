@@ -128,3 +128,13 @@ def send_pending_webhooks():
     if failed:
         logger.warning("Webhooks: %s enviats, %s amb error", sent, failed)
     return {"status": "success", "sent": sent, "errors": failed}
+
+
+@shared_task
+def scan_invoice_status_webhooks():
+    """Avisos d'estat de pagament de les factures (invoice.paid, invoice.returned,
+    invoice.expired i invoice.cancelled): el beat la crida cada
+    WEBHOOKS_INVOICE_SCAN_MINUTES. Vegeu invoice_status.py."""
+    from .invoice_status import scan
+
+    return scan()

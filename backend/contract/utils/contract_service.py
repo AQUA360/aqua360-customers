@@ -1,4 +1,5 @@
 import datetime
+import logging
 import os
 import re
 import uuid
@@ -24,6 +25,8 @@ from datetime import datetime
 from service.models import Meter, MeterStatus, SupplyPointStatus
 from service.utils.supply_point_service import supply_point_change_meter
 
+logger = logging.getLogger(__name__)
+
 def _create_fictitious_meter(no_meter_status):
     from coredata.utils.name_utils import generate_token
     base_token = f"SC{generate_token(Meter)}"
@@ -33,6 +36,54 @@ def _create_fictitious_meter(no_meter_status):
         status=no_meter_status,
         installation_at=timezone.now().date(),
         is_active=True,
+    )
+
+
+def _create_meter_installation_order(user, contract, contract_request, supply_point):
+    """Alta «sense comptador»: ordre d'instal·lació de comptador del punt, vinculada al
+    contracte. Si la sol·licitud ja en porta una, només la vincula al contracte."""
+    from order.models import OrderStatus, OrderType
+    from order.services.change_meter import install_meter_order_type_token
+    from order.utils.claim_request_order_service import get_order_type_initials
+
+    type_token = install_meter_order_type_token()
+    order_type = OrderType.objects.filter(token__iexact=type_token).first()
+    if not order_type:
+        logger.warning("No existeix el tipus d'ordre d'instal·lació de comptador '%s'.", type_token)
+        return None
+
+    existing = contract_request.orders.filter(type=order_type).filter(
+        Q(supply_point=supply_point) | Q(supply_point__isnull=True)
+    ).first()
+    if existing:
+        existing.contract = contract
+        existing.supply_point = supply_point
+        existing.save(update_fields=['contract', 'supply_point', 'updated_at'])
+        return existing
+
+    pending_token = ConfigProject.objects.filter(token='order_status_pending_token').values_list('value', flat=True).first()
+    status = (
+        OrderStatus.objects.filter(token=pending_token).first() if pending_token else None
+    ) or OrderStatus.objects.filter(is_default=True).first()
+
+    last_order = Order.objects.order_by('-id').first()
+    next_id = (last_order.id if last_order else 0) + 1
+    token = (
+        f"{timezone.localtime().strftime('%y%m%d')}/CR{contract_request.id}/"
+        f"{get_order_type_initials(order_type.token)}{f'{next_id:03d}'[-3:]}"
+    )
+    if Order.objects.filter(token=token).exists():
+        token = f"{token}-{generate_token(Order)}"
+
+    return Order.objects.create(
+        token=token,
+        type=order_type,
+        status=status,
+        contract=contract,
+        contract_request=contract_request,
+        supply_point=supply_point,
+        created_by=user,
+        description="Instal·lació de comptador de l'alta sense comptador.",
     )
 
 
@@ -224,6 +275,8 @@ def _contract_create_locked(user, contract_request):
                     source='contract',
                     observation='Comptador fictici assignat en donar d\'alta el contracte',
                 )
+                if contract_request.meter_mode == 'none':
+                    _create_meter_installation_order(user, contract, contract_request, supply_point)
     
     """ if contract_request.contract_file:
         original_filename = os.path.basename(contract_request.contract_file.name)
@@ -298,6 +351,13 @@ def _contract_create_locked(user, contract_request):
                 termination_reading.save()
                 duplicate_initial_reading.delete()
         termination_readings.update(contract=contract, batch=None)
+
+    # Canvi de titular: la lectura de tall entrada a l'alta és també la lectura de
+    # tancament del contracte de sortida, vinculada a la seva baixa. Sense això la
+    # factura de baixa no té lectura de tancament.
+    from billing.utils.termination_close_reading_service import ensure_termination_close_readings
+    for termination_request in contract_request.contract_termination_requests.exclude(contract_id=contract.id):
+        ensure_termination_close_readings(termination_request)
 
     # Les Order (ordres de treball) creades mentre encara era una ContractRequest només
     # quedaven vinculades a aquesta. Ara que el Contract definitiu ja existeix, les hi vinculem.
@@ -836,29 +896,46 @@ def contract_bank_change(file, is_saving, user=None):
         }
 
 def _update_contract_payment(contract, new_person_bank, direct_debit, direct_debit_token, user=None):
-    try:
-        ContractDataChange.objects.create(
-            contract=contract,
-            previous_payment=contract.payment.IBAN if contract.payment and contract.payment.IBAN else None,
-            current_payment=new_person_bank,
-            new_payment_type=direct_debit,
-            previous_payment_type=contract.payment.type if contract.payment and contract.payment.type else None,
-            user=user,
-        )
-    except Exception as e:
-        pass
+    # Valors abans del canvi, per deixar-ne constància a l'historial del contracte
+    previous_payment = contract.payment.IBAN if contract.payment and contract.payment.IBAN else None
+    previous_payment_type = contract.payment.type if contract.payment and contract.payment.type else None
+    created_payment = None
+
     if contract.payment:
         if contract.payment.type.token != direct_debit_token:
             contract.payment.type = direct_debit
         contract.payment.IBAN = new_person_bank
         contract.payment.save()
     else:
-        contract.payment = GeneralPayment.objects.create(
+        created_payment = GeneralPayment.objects.create(
             token=f"{contract.token}_{new_person_bank.token}",
             type=direct_debit,
             IBAN=new_person_bank,
         )
+        contract.payment = created_payment
         contract.save()
+
+    new_payment_type = contract.payment.type
+    if previous_payment == new_person_bank and previous_payment_type == new_payment_type:
+        return
+
+    # El registre no ha d'aturar el canvi de compte, però si falla ha de quedar al log
+    try:
+        now = timezone.now()
+        ContractDataChange.objects.create(
+            token=f"CDC_{contract.token}_{ContractDataChange.objects.filter(contract=contract).count() + 1}",
+            requested_at=now,
+            approved_at=now,
+            contract=contract,
+            previous_payment=previous_payment,
+            new_payment=new_person_bank,
+            previous_payment_type=previous_payment_type,
+            new_payment_type=new_payment_type,
+            new_general_payment=created_payment,
+            user=user,
+        )
+    except Exception:
+        logger.exception("No s'ha pogut registrar el canvi de compte del contracte %s", contract.pk)
 
 def _get_new_person_bank(person, bank_account, bank, country, swift_code):
     person_banks_queryset = PersonBank.objects.filter(person=person)

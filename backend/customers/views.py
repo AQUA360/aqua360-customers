@@ -3,7 +3,8 @@ import os
 
 from django.conf import settings
 from django.http import FileResponse, Http404, HttpResponse, HttpResponseForbidden
-from rest_framework.authtoken.models import Token
+
+from coredata.authentication import get_user_from_token_key
 
 
 def root_view(request):
@@ -33,12 +34,13 @@ def _media_user(request):
     """
     auth_header = request.META.get('HTTP_AUTHORIZATION', '')
     if auth_header.startswith('Token '):
-        raw_token = auth_header.split(' ', 1)[1].strip()
-        token_obj = Token.objects.select_related('user').filter(key=raw_token).first()
-        if token_obj:
-            return token_obj.user
-    if request.user.is_authenticated:
-        return request.user
+        user = get_user_from_token_key(auth_header.split(' ', 1)[1].strip())
+        if user is not None:
+            return user
+    # El middleware deixa request.user a None si el token és invàlid o ha caducat.
+    session_user = getattr(request, 'user', None)
+    if session_user is not None and session_user.is_authenticated:
+        return session_user
     return None
 
 

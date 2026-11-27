@@ -1,5 +1,5 @@
 import datetime
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from datetime import date
 import logging
 import math
@@ -33,10 +33,16 @@ from billing.utils.connection_request_invoice import format_location, get_addres
 
 from billing.utils.adjustment_service import calc_consumption_responsible, get_contract_min_persons
 from .invoice_line_item_service import create_from_lineitemtype, create_from_lineitemtype_connection, constrain_total_value, get_last_reading
+from billing.utils.reading_filters import PENDING_READING_FILTER
+from billing.utils.termination_close_reading_service import ensure_termination_close_readings
 from faker import Faker
 fake = Faker()
 
 logger = logging.getLogger(__name__)
+
+
+class TerminationCloseReadingMissingError(Exception):
+    """La baixa no té cap lectura pendent de facturar: només en té de ja facturades."""
 
 origin_reading = None
 invoice_type_invoice = None
@@ -280,6 +286,54 @@ def get_totals(invoice, include_zero_percent=False, line_items=None):
         total_taxes += round_ceil(tax)
     total = round_ceil(subtotal) + round_ceil(total_taxes)
     return subtotal, taxes, taxes_base, round_ceil(total)
+
+
+def balance_line_taxes(invoice):
+    """Ajusta l'IVA de les línies perquè la suma de cada tipus coincideixi amb
+    l'IVA calculat sobre la base total d'aquell tipus, arrodonit una sola vegada.
+
+    L'IVA de cada línia s'arrodoneix per separat i la suma pot diferir en algun
+    cèntim de l'IVA de la base. Els cèntims de diferència es reparteixen, d'un
+    en un, entre les línies on l'arrodoniment s'ha allunyat més de l'import
+    exacte. Així el total de la factura és el de la base i la suma de les línies
+    continua quadrant (desglossaments, Verifactu, comptabilitat i informes).
+    """
+    cent = Decimal('0.01')
+    groups = {}
+    for line_item in invoice.line_items.filter(is_active=True):
+        if line_item.tax_percent is None or Decimal(line_item.tax_percent) == 0:
+            continue
+        if line_item.price is None or line_item.tax_price is None:
+            continue
+        groups.setdefault(Decimal(line_item.tax_percent), []).append(line_item)
+
+    changed = []
+    for percent, line_items in groups.items():
+        rate = percent / Decimal('100')
+        bases = {li.pk: Decimal(str(round_ceil(li.price))) for li in line_items}
+        taxes = {li.pk: Decimal(str(round_ceil(li.tax_price))) for li in line_items}
+        target = (sum(bases.values()) * rate).quantize(cent, rounding=ROUND_HALF_UP)
+        diff_cents = int((target - sum(taxes.values())) / cent)
+        # Una diferència més gran que un cèntim per línia no ve de l'arrodoniment
+        # (p. ex. un IVA posat a mà): no es toca.
+        if diff_cents == 0 or abs(diff_cents) > len(line_items):
+            continue
+        step = cent if diff_cents > 0 else -cent
+        # Primer les línies on l'IVA arrodonit s'allunya més de l'exacte en el
+        # sentit que cal corregir.
+        ordered = sorted(
+            line_items,
+            key=lambda li: (bases[li.pk] * rate - taxes[li.pk]) * (1 if diff_cents > 0 else -1),
+            reverse=True,
+        )
+        for line_item in ordered[:abs(diff_cents)]:
+            new_tax = taxes[line_item.pk] + step
+            line_item.tax_price = float(new_tax)
+            line_item.total = bases[line_item.pk] + new_tax
+            changed.append(line_item)
+
+    if changed:
+        InvoiceLineItem.objects.bulk_update(changed, ['tax_price', 'total'])
 
 
 
@@ -1080,6 +1134,7 @@ def generate_consumption_invoice_multiple(
                 previous_payment_type=blocked_from_payment_type.name,
                 current_payment_type=payment_type_instance.name,
                 observation=_("No es domicilia: el contracte té factures pendents de cobrar"),
+                auto_reason=LogInvoiceDataChange.AUTO_REASON_REMITTANCE_BLOCKED,
                 user=None,
                 timestamp=timezone.now(),
             )
@@ -1127,6 +1182,8 @@ def generate_consumption_invoice_multiple(
                     new_adjustment = AppliedAdjustment.objects.create(**adjustment)
                     line_item.adjustments.add(new_adjustment)
             # print(f"line item created: {line_item.id}")
+
+        balance_line_taxes(invoice)
 
         subtotal, taxes, taxes_base, total = get_totals(invoice)
         total_paid = check_piggy_bank(invoice, total)
@@ -1353,6 +1410,8 @@ def invoice_contract_generate(user, contract_request_id, title, payment_type, pa
         if reading:
             invoice.readings.set([reading])
 
+        balance_line_taxes(invoice)
+
         subtotal, taxes, taxes_base, total = get_totals(invoice)
         
         if is_budget and generate_budget_serie_final:
@@ -1557,6 +1616,8 @@ def invoice_generate_return_bail(user, contract_request_id, title, payment_type,
             line_item = InvoiceLineItem.objects.create(**line_item_data)
             pass  # log removed
 
+        balance_line_taxes(invoice)
+
         subtotal, taxes, taxes_base, total = get_totals(invoice)
 
         if is_budget and generate_budget_serie_final:
@@ -1723,6 +1784,8 @@ def invoice_return_charge(invoice, title, return_reason=None, fee_price_rates=No
             line_item = InvoiceLineItem.objects.create(**line_item_data)
             # print(f"line item created: {line_item.id}")
             
+
+        balance_line_taxes(surcharge)
 
         subtotal, taxes, taxes_base, total = get_totals(surcharge)
         serie_final = f"{serie.token}/{surcharge.id}" if serie else f"{surcharge.id}"
@@ -1894,6 +1957,8 @@ def invoice_connection_generate(user, connection_request_id, title, payment_type
             line_item = InvoiceLineItem.objects.create(**line_item_data)
             # print(f"line item created: {line_item.id}")
             
+
+        balance_line_taxes(invoice)
 
         subtotal, taxes, taxes_base, total = get_totals(invoice)
 
@@ -2368,6 +2433,8 @@ def invoice_claim_paid_generate(invoice_id, title):
             line_item = InvoiceLineItem.objects.create(**line_item_data)
             pass  # log removed
 
+        balance_line_taxes(invoice)
+
         subtotal, taxes, taxes_base, total = get_totals(invoice)
         serie_final = f"{serie.token}/{invoice.id}" if serie else f"{invoice.id}"
         invoice.serie_final = serie_final
@@ -2437,10 +2504,13 @@ def invoice_contract_termination_generate(
         contract = contract_termination.contract
         if contract.supply_point_default and contract.supply_point_default.connection and contract.supply_point_default.connection.exploitation:
             exploitation = contract.supply_point_default.connection.exploitation
+        # Canvi de titular: la lectura de tall entrada a l'alta és també la de tancament.
+        ensure_termination_close_readings(contract_termination)
         readings = contract_termination.readings.filter(is_active=True, is_control=False)
         meter = contract.supply_point_default.meter if contract.supply_point_default and contract.supply_point_default.meter else None
         if not readings or len(readings) == 0:
             readings = []
+            billed_supply_points = []
             for supply_point in contract.supply_points.all():
                 reading_query = Reading.objects.filter(
                     # batch__isnull=False, 
@@ -2456,10 +2526,19 @@ def invoice_contract_termination_generate(
                     reading_query = reading_query.filter(reading_date__gte=contract.registration_date)
                 elif contract.created_at:
                     reading_query = reading_query.filter(reading_date__gte=contract.created_at.date())
-                
-                reading = reading_query.order_by('-reading_date').first()
+
+                # Una lectura que ja té factura definitiva no es torna a facturar a la baixa:
+                # es cobraria dues vegades el mateix període.
+                reading = reading_query.filter(PENDING_READING_FILTER).order_by('-reading_date').first()
                 if reading:
                     readings.append(reading)
+                elif reading_query.exists():
+                    billed_supply_points.append(supply_point)
+            if billed_supply_points:
+                raise TerminationCloseReadingMissingError(
+                    f"Termination {contract_termination.id} has no closing reading pending to bill "
+                    f"(supply points {[sp.id for sp in billed_supply_points]})"
+                )
     except ContractTerminationRequest.DoesNotExist:
         raise Exception("Contract termination request not found")
 
@@ -2797,6 +2876,8 @@ def invoice_contract_termination_generate(
                     line_item.adjustments.add(new_adjustment)
             # print(f"line item created: {line_item.id}")
             
+
+        balance_line_taxes(invoice)
 
         subtotal, taxes, taxes_base, total = get_totals(invoice)
         total_paid = check_piggy_bank(invoice, total)
@@ -3241,8 +3322,15 @@ def check_person_piggy_bank(invoice, total, generate_payment=False):
         return 0
     
 
-def generate_empty_invoice(contract, connection_request, person, title, payment_data, exploitation_instance, billing=None, billing_batch=None, price_rates=None, is_budget=True, invoice=None):
-    pass  # log removed
+def generate_empty_invoice(contract, connection_request, person, title, payment_data, exploitation_instance, billing=None, billing_batch=None, price_rates=None, is_budget=True, invoice=None, origin=None):
+    """Crea un pressupost o factura personalitzada, sense lectures.
+
+    `origin` és el ProductOrigin triat; sense, «Altres» (`origin_other_token`).
+    L'origen d'aigua (`origin_reading_token`) és el de la facturació per
+    lectures i no s'hi admet.
+    """
+    if origin is not None and origin.token == ConfigProject.objects.get(token='origin_reading_token').value:
+        raise ValueError("L'origen d'aigua només és per a la facturació per lectures")
     simplified = contract.simplified_invoice if contract else False
     exploitation = exploitation_instance
     try:
@@ -3333,7 +3421,8 @@ def generate_empty_invoice(contract, connection_request, person, title, payment_
             address_fields = get_connection_request_billing_address(connection_request)
         else:
             address_fields = get_address_fields(address) if address else None
-        origin = ProductOrigin.objects.get(token=ConfigProject.objects.get(token='origin_other_token').value)
+        if origin is None:
+            origin = ProductOrigin.objects.get(token=ConfigProject.objects.get(token='origin_other_token').value)
         invoice_type = InvoiceType.objects.get(token=ConfigProject.objects.get(token='invoice_type_budget_token').value) if is_budget else InvoiceType.objects.get(token=ConfigProject.objects.get(token='invoice_type_invoice_token').value)
 
         # L'empresa emissora la mana el contracte, com a
@@ -3444,6 +3533,8 @@ def generate_empty_invoice(contract, connection_request, person, title, payment_
                     new_adjustment = AppliedAdjustment.objects.create(**adjustment)
                     line_item.adjustments.add(new_adjustment)
 
+        balance_line_taxes(invoice)
+
         subtotal, taxes, taxes_base, total = get_totals(invoice)
         total_paid = check_piggy_bank(invoice, total)
 
@@ -3495,6 +3586,8 @@ def update_invoice_totals(invoice):
                 price_changed = True
             if price_changed:
                 line_item.save()
+
+    balance_line_taxes(invoice)
 
     subtotal, taxes, taxes_base, total = get_totals(invoice)
     total_paid = check_piggy_bank(invoice, total)
@@ -3694,11 +3787,13 @@ def check_existing_token(token, exploitation_token='0'):
 _UNCHANGED = object()
 
 
-def log_invoice_data_change(user, invoice, new_address, new_payment_type, new_payment_bank=_UNCHANGED):
+def log_invoice_data_change(user, invoice, new_address, new_payment_type, new_payment_bank=_UNCHANGED,
+                            auto_reason=None, reject_motive=None):
     """Registra a l'historial de la factura un canvi d'adreça, de mètode de pagament o d'IBAN.
 
     L'IBAN només es registra si qui crida el passa: si el passa buit (el compte es retira),
-    queda l'anterior a l'historial.
+    queda l'anterior a l'historial. `auto_reason` (i `reject_motive`) marquen els canvis que fa
+    el sistema sol, perquè la factura en mostri l'avís.
     """
     bank_given = new_payment_bank is not _UNCHANGED
     new_bank = (new_payment_bank or None) if bank_given else None
@@ -3717,22 +3812,26 @@ def log_invoice_data_change(user, invoice, new_address, new_payment_type, new_pa
         current_iban=new_bank,
         # Amb un IBAN nou o quan es retira el compte, l'anterior queda a l'historial
         previous_iban=previous_bank if (new_bank or bank_changed) else None,
+        auto_reason=auto_reason,
+        reject_motive=reject_motive,
         user=user,
         timestamp=timezone.now()
     )
 
 
 def apply_invoice_payment_method(user, invoice, payment_type, payment_bank_final=None, payment_swift_final=None,
-                                 company_bank=_UNCHANGED):
+                                 company_bank=_UNCHANGED, auto_reason=None, reject_motive=None):
     """Canvia el mètode de pagament d'una factura i dels seus pagaments no cobrats.
 
-    Deixa constància del canvi a l'historial de la factura (`log_invoice_data_change`). No
-    comprova si la factura es pot canviar ni gestiona els senyals de pagaments: ho ha de fer
-    qui la crida. `company_bank` només es toca si es passa explícitament.
+    Deixa constància del canvi a l'historial de la factura (`log_invoice_data_change`), amb el
+    motiu si el canvi el fa el sistema (`auto_reason`). No comprova si la factura es pot canviar
+    ni gestiona els senyals de pagaments: ho ha de fer qui la crida. `company_bank` només es
+    toca si es passa explícitament.
     """
     payment_status_paid_token = ConfigProject.objects.get(token='payment_status_paid_token').value
 
-    log_invoice_data_change(user, invoice, None, payment_type.name, payment_bank_final)
+    log_invoice_data_change(user, invoice, None, payment_type.name, payment_bank_final,
+                            auto_reason=auto_reason, reject_motive=reject_motive)
 
     invoice.payment_bank_final = payment_bank_final
     # El SWIFT ha d'anar sempre amb l'IBAN nou: la remesa el fa servir com a BIC del deutor

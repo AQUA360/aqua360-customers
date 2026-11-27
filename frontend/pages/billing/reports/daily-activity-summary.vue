@@ -155,6 +155,104 @@ const downloadReport = async () => {
   }
 };
 
+// --- Excel de gestions per usuari i municipi (tots els usuaris, mateix rang) ---
+const generatingManagement = ref(false);
+const managementTaskId = ref(null);
+// El rang amb què s'ha demanat l'informe: els filtres es poden canviar mentre es genera.
+const managementRange = ref(null);
+// Canviar la clau torna a muntar el badge perquè continuï consultant la tasca.
+const managementBadgeKey = ref(0);
+const MAX_MANAGEMENT_CHECK_RETRIES = 3;
+let managementCheckRetries = 0;
+
+const generateManagementReport = async () => {
+  if (!isRangeValid.value) return;
+  generatingManagement.value = true;
+  const range = { from: dateFrom.value, to: dateTo.value };
+  try {
+    const response = await $DailyActivityApiService.generateUserCityManagementReport({
+      date_from: range.from,
+      date_to: range.to,
+      name: t('daily_activity_block.user_city_management_report'),
+    });
+    if (response && response.task_id) {
+      managementRange.value = range;
+      managementCheckRetries = 0;
+      managementTaskId.value = response.task_id;
+    }
+  } catch (error) {
+    console.error(error);
+    toast.error(t('reports_block.report_generation_failed', { name: t('daily_activity_block.user_city_management_report') }));
+  } finally {
+    generatingManagement.value = false;
+  }
+};
+
+const finishManagementReport = () => {
+  managementTaskId.value = null;
+  managementRange.value = null;
+};
+
+// El badge també avisa (refresh) quan una consulta falla amb la tasca encara en
+// curs: llavors no es dona per acabada, sinó que es torna a seguir (fins a uns
+// quants intents, perquè un servidor caigut no la deixi girant per sempre).
+const keepFollowingManagementReport = () => {
+  managementCheckRetries += 1;
+  if (managementCheckRetries > MAX_MANAGEMENT_CHECK_RETRIES) {
+    toast.error(t('reports_block.report_generation_failed', { name: t('daily_activity_block.user_city_management_report') }));
+    finishManagementReport();
+    return;
+  }
+  managementBadgeKey.value += 1;
+};
+
+const downloadManagementReport = async () => {
+  let response;
+  try {
+    response = await $apiManager.checkTask(managementTaskId.value);
+  } catch (error) {
+    // L'error de la consulta ja el mostra $apiManager.
+    console.error(error);
+    keepFollowingManagementReport();
+    return;
+  }
+
+  const documentId = response && response.result && response.result.document_id;
+  if (!documentId && !['SUCCESS', 'FAILURE'].includes(response && response.state)) {
+    keepFollowingManagementReport();
+    return;
+  }
+
+  const range = managementRange.value || { from: dateFrom.value, to: dateTo.value };
+  let apiCallFailed = true;
+  try {
+    if (documentId) {
+      const file = await $DocumentManagerApiService.viewDocument(documentId);
+      apiCallFailed = false;
+      const link = document.createElement('a');
+      const fileUrl = URL.createObjectURL(file);
+      link.href = fileUrl;
+      link.download = `gestions_usuari_municipi_${range.from}_${range.to}.xlsx`;
+      link.click();
+      setTimeout(() => window.URL.revokeObjectURL(fileUrl), 250);
+    } else if (response.state === 'SUCCESS') {
+      // Sense fitxer: no hi ha cap gestió al període o la generació ha fallat (la
+      // tasca acaba igualment i ho indica al resultat).
+      toast.warning(t('daily_activity_block.user_city_management_empty'));
+    } else {
+      toast.error(t('reports_block.report_generation_failed', { name: t('daily_activity_block.user_city_management_report') }));
+    }
+  } catch (error) {
+    console.error(error);
+    // Els errors de les crides a l'API ja els avisa $apiManager; la resta no.
+    if (!apiCallFailed) {
+      toast.error(t('reports_block.report_generation_failed', { name: t('daily_activity_block.user_city_management_report') }));
+    }
+  } finally {
+    finishManagementReport();
+  }
+};
+
 // --- Filtre de categoria sobre la cronologia ---
 const activeCategory = ref(null);
 
@@ -274,6 +372,16 @@ onMounted(() => {
         </button>
         <AtomsProcessColorBadge v-if="reportTaskId" class="w-fit" @refresh="downloadReport"
           :value="t('common.loading')" :color="'green'" :taskId="reportTaskId" />
+        <button v-if="canViewOtherUsers" type="button" class="button-secondary flex items-center gap-2"
+          :title="t('daily_activity_block.user_city_management_help')"
+          :disabled="!isRangeValid || generatingManagement || !!managementTaskId" @click="generateManagementReport">
+          <Icon :name="generatingManagement ? 'fa6-solid:spinner' : 'fa6-solid:map-location-dot'"
+            :class="{ 'animate-spin': generatingManagement }" />
+          {{ $t('daily_activity_block.user_city_management_report') }}
+        </button>
+        <AtomsProcessColorBadge v-if="managementTaskId" :key="managementBadgeKey" class="w-fit"
+          @refresh="downloadManagementReport"
+          :value="t('common.loading')" :color="'green'" :taskId="managementTaskId" />
       </div>
     </div>
 

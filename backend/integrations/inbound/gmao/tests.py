@@ -2,6 +2,8 @@ from django.contrib.auth.models import Group, User
 from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
+
+from coredata.models import AuthSessionToken
 from rest_framework.authtoken.models import Token
 
 from service.models import Property
@@ -72,8 +74,8 @@ class GMAOPropertySearchAccessTest(TestCase):
         self.gmao_user = User.objects.create_user(username="gmao", password="secret")
         self.gmao_user.groups.add(group)
         self.gmao_token = Token.objects.create(user=self.gmao_user)
-        self.other_token = Token.objects.create(
-            user=User.objects.create_user(username="altre", password="secret")
+        self.other_token = AuthSessionToken.create_for(
+            User.objects.create_user(username="altre", password="secret")
         )
         Property.objects.create(token="P1", name="Finca Prova", is_active=True)
 

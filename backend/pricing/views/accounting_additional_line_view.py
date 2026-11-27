@@ -19,6 +19,7 @@ class AccountingAdditionalLineViewSet(viewsets.ModelViewSet):
         'accounting_pricing',
         'accounting_concept',
         'accounting_concept__type',
+        'accounting_cost_center',
     ).order_by('accounting_pricing__token', 'token', 'name')
     serializer_class = AccountingAdditionalLineSerializer
     permission_classes = [IsAuthenticated, BillingPermission]

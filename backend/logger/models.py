@@ -311,6 +311,15 @@ class LogCommunicationProcessStatusChange(models.Model):
         return f"{self.timestamp} - From {self.previous_status} to {self.current_status} by {self.user.username}"
 
 class LogInvoiceDataChange(models.Model):
+    # Canvis de mètode de pagament que fa el sistema sol, no una persona: en queda el motiu
+    # perquè la factura i el contracte en puguin mostrar l'avís
+    AUTO_REASON_INVALID_ACCOUNT_RETURN = 'invalid_account_return'
+    AUTO_REASON_REMITTANCE_BLOCKED = 'remittance_blocked_unpaid'
+    AUTO_REASON_CHOICES = (
+        (AUTO_REASON_INVALID_ACCOUNT_RETURN, 'Retorn SEPA per compte invàlid'),
+        (AUTO_REASON_REMITTANCE_BLOCKED, 'No es domicilia: factures pendents de cobrar'),
+    )
+
     timestamp = models.DateTimeField(auto_now_add=True)
     object = models.ForeignKey(Invoice, on_delete=models.SET_NULL, null=True)
     previous_address = models.CharField(max_length=255, null=True, blank=True)
@@ -320,6 +329,10 @@ class LogInvoiceDataChange(models.Model):
     previous_iban = models.CharField(max_length=255, null=True, blank=True)
     current_iban = models.CharField(max_length=255, null=True, blank=True)
     observation = models.TextField(null=True, blank=True)
+    auto_reason = models.CharField(max_length=50, choices=AUTO_REASON_CHOICES, null=True, blank=True)
+    # Motiu del retorn SEPA que ha provocat el canvi (només amb AUTO_REASON_INVALID_ACCOUNT_RETURN)
+    reject_motive = models.ForeignKey('billing.RejectMotive', on_delete=models.SET_NULL, null=True, blank=True,
+                                      related_name='invoice_data_changes')
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
 
     def __str__(self):

@@ -2,7 +2,11 @@ from rest_framework import serializers
 from auth.serializers import UserMinimalSerializer
 from billing.models import GeneralPayment, GeneralPaymentMandateLog, GeneralPaymentSepaDocument
 from billing.serializers.general_payment_sepa_serializer import GeneralPaymentSepaDocumentSerializer
-from billing.utils.payment_service import generate_mandate_id
+from billing.utils.payment_service import (
+    generate_mandate_id,
+    general_payment_reference_count,
+    split_general_payment,
+)
 from contract.models import PaymentType
 from contract.serializers.value_objects_serializer import PaymentTypeSerializer
 from coredata.models import PersonBank
@@ -114,34 +118,10 @@ class GeneralPaymentSerializer(serializers.ModelSerializer):
         return instance
     
     def _reference_count(self, instance):
-        """Quantes entitats apunten a aquesta GeneralPayment.
-
-        `Contract.payment` és una FK normal, no un OneToOne: la importació
-        inicial va crear una GeneralPayment per (titular, compte) i hi va
-        vincular tots els contractes d'aquell titular, de manera que la fila
-        pot estar compartida.
-        """
-        from contract.models import Contract, ContractRequest, GeneralInvoice
-        from service.models import ConnectionRequest
-        return (
-            Contract.objects.filter(payment=instance).count()
-            + GeneralInvoice.objects.filter(payment=instance).count()
-            + ContractRequest.objects.filter(payment=instance).count()
-            + ConnectionRequest.objects.filter(payment=instance).count()
-        )
+        return general_payment_reference_count(instance)
 
     def _split(self, instance):
-        """Còpia la GeneralPayment per no arrossegar la resta de contractes.
-
-        Els mandate logs i el document SEPA es queden a la fila original:
-        pertanyen a l'historial dels contractes que no s'estan modificant. La
-        còpia arrenca sense document SEPA, que és el que toca quan hi ha un
-        compte nou (cal una ordre de domiciliació nova).
-        """
-        copy = GeneralPayment.objects.get(pk=instance.pk)
-        copy.pk = None
-        copy.save()
-        return copy
+        return split_general_payment(instance)
 
     def update(self, instance, validated_data):
         previous_iban = instance.IBAN.iban if instance.IBAN else None

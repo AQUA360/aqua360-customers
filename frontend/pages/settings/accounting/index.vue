@@ -4,6 +4,7 @@ import { useToast } from 'vue-toastification';
 import H1 from '~/components/atoms/H1.vue';
 import AppLoading from '~/components/atoms/AppLoading.vue';
 import AccountingReferenceCard from '~/components/molecules/AccountingReferenceCard.vue';
+import AccountingTypesRegion from '~/components/molecules/AccountingTypesRegion.vue';
 import AccountingConceptsRegion from '~/components/molecules/AccountingConceptsRegion.vue';
 import AccountingCostCentersRegion from '~/components/molecules/AccountingCostCentersRegion.vue';
 import AccountingConfigRegion from '~/components/molecules/AccountingConfigRegion.vue';
@@ -148,17 +149,22 @@ onMounted(async () => {
         </AtomsTabs>
 
         <div class="mb-3 flex flex-wrap items-stretch justify-start gap-4" :class="showExploitation ? 'mt-3' : ''">
-          <AccountingReferenceCard index="01" icon="fa6-solid:tags" accent="#0d9488" accent-soft="#99f6e4"
+          <AccountingReferenceCard index="01" icon="fa6-solid:layer-group" accent="#059669" accent-soft="#a7f3d0"
+            :title="t('pricing_block.accounting_types')"
+            :description="t('pricing_block.accounting_types_description')"
+            @check="openReferenceRegion('AccountingTypes')" />
+
+          <AccountingReferenceCard index="02" icon="fa6-solid:tags" accent="#0d9488" accent-soft="#99f6e4"
             :title="t('pricing_block.accounting_concepts')"
             :description="t('pricing_block.accounting_concepts_description')" :loading="conceptsLoading"
             @check="openReferenceRegion('AccountingConcepts')" />
 
-          <AccountingReferenceCard index="02" icon="fa6-solid:building" accent="#0369a1" accent-soft="#7dd3fc"
+          <AccountingReferenceCard index="03" icon="fa6-solid:building" accent="#0369a1" accent-soft="#7dd3fc"
             :title="t('pricing_block.accounting_cost_centers')"
             :description="t('pricing_block.accounting_cost_centers_description')"
             @check="openReferenceRegion('AccountingCostCenters')" />
 
-          <AccountingReferenceCard index="03" icon="fa6-solid:sliders" accent="#b45309" accent-soft="#fcd34d"
+          <AccountingReferenceCard index="04" icon="fa6-solid:sliders" accent="#b45309" accent-soft="#fcd34d"
             :title="t('pricing_block.accounting_settings')"
             :description="t('pricing_block.accounting_settings_description')"
             @check="openReferenceRegion('AccountingConfig')" />
@@ -188,11 +194,13 @@ onMounted(async () => {
       </button>
     </div>
     <div class="pl-10 h-full overflow-y-auto">
+      <AccountingTypesRegion v-if="regionComponent === 'AccountingTypes'" @close="toggleRegion(false)" />
       <AccountingConceptsRegion v-if="regionComponent === 'AccountingConcepts'" :items="accountingConcepts"
         :categories="accountingValues" @show-subregion="handleSubRegionEvent" @close="toggleRegion(false)"
         @changed="refreshConcepts" />
       <AccountingCostCentersRegion v-if="regionComponent === 'AccountingCostCenters'" @close="toggleRegion(false)" />
-      <AccountingConfigRegion v-if="regionComponent === 'AccountingConfig'" @close="toggleRegion(false)" />
+      <AccountingConfigRegion v-if="regionComponent === 'AccountingConfig'"
+        :exploitation-id="activeExploitationTab" @close="toggleRegion(false)" />
       <EditAccountingPricing v-if="regionComponent === 'EditAccountingPricing'" :id="selectedItemId"
         @close="toggleRegion(false)" @changed="refreshPricings" />
     </div>

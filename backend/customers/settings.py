@@ -329,6 +329,19 @@ EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD", default="")
 SMS_APP_URL = config("SMS_APP_URL", default="")
 SMS_API_KEY = config("SMS_API_KEY", default="")
 
+# Recuperació de la contrasenya des del login (auth/password_reset_service.py).
+# FRONTEND_URL: adreça de l'aplicació per a l'enllaç del correu (p. ex. https://app.exemple.cat).
+# Si no s'informa, https://FRONTEND_DOMAIN (el de l'stack amb domini); i si tampoc n'hi ha,
+# l'Origin de la petició només si és a CSRF_TRUSTED_ORIGINS.
+_frontend_domain = config("FRONTEND_DOMAIN", default="").strip().strip("/")
+# FRONTEND_DOMAIN sol ser només el domini; si ja porta l'esquema (http://...), es fa servir tal qual
+FRONTEND_URL = config("FRONTEND_URL", default="").strip() or (
+    _frontend_domain if "://" in _frontend_domain
+    else (f"https://{_frontend_domain}" if _frontend_domain else "")
+)
+# Validesa de l'enllaç (segons). El token també deixa de valer quan es canvia la contrasenya.
+PASSWORD_RESET_TIMEOUT = config("PASSWORD_RESET_TIMEOUT", default=3600, cast=int)
+
 customers01 = config("EMAIL_PASSWORD_01", default="")
 # Clau Fernet per xifrar les contrasenyes SMTP desades a la BD (CompanyConfigEmail.encrypted_password).
 # Admet diverses claus separades per comes per rotar-la: la primera xifra, totes desxifren.
@@ -368,6 +381,12 @@ DATABASES = {
         "PORT": config("DATABASE_PORT", cast=int, default=5432),
     }
 }
+
+# Comptes que, a més de `customers`, són superusuaris (gestionen usuaris i grups).
+# Llista de noms d'usuari separats per comes; per defecte cap.
+EXTRA_SUPERUSER_USERNAMES = [
+    username for username in config("EXTRA_SUPERUSER_USERNAMES", default="", cast=Csv()) if username
+]
 
 # Informes personalitzats (django-sql-explorer + statistics/custom-report).
 # Les consultes SQL dels usuaris s'executen SEMPRE amb un rol de PostgreSQL de només lectura i
@@ -471,13 +490,20 @@ REST_FRAMEWORK = {
     # NotFound). Renderer selection keeps working via Accept headers/suffixes.
     "URL_FORMAT_OVERRIDE": None,
     "DEFAULT_AUTHENTICATION_CLASSES": (
-        "rest_framework.authentication.TokenAuthentication",
+        "coredata.authentication.ExpiringTokenAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
     "DEFAULT_FILTER_BACKENDS": ["django_filters.rest_framework.DjangoFilterBackend"],
     # Límit d'intents de login per IP (els scopes s'apliquen amb ScopedRateThrottle)
     "DEFAULT_THROTTLE_RATES": {
         "login": "10/min",
+        # Canvi de la contrasenya pròpia (per usuari): limita endevinar l'actual
+        "password_change": "5/min",
+        # Recuperació de la contrasenya des del login (per IP): demanar el correu
+        "password_reset": "10/hour",
+        # Enllaç de recuperació (per IP): comprovar-lo i desar la nova (diverses peticions per
+        # recuperació; el token no es pot endevinar)
+        "password_reset_confirm": "30/hour",
     },
     # Nombre de proxys de confiança davant el backend (Cloudflare + nginx): DRF en deriva
     # la IP real de X-Forwarded-For sense fiar-se d'un valor falsejable pel client.
@@ -490,10 +516,31 @@ REST_FRAMEWORK = {
 REST_FRAMEWORK.update(
     {
         "DEFAULT_AUTHENTICATION_CLASSES": (
-            "rest_framework.authentication.TokenAuthentication",
+            "coredata.authentication.ExpiringTokenAuthentication",
         ),
     }
 )
+
+# Tokens d'accés: cada login d'una persona crea un token de sessió que caduca
+# per inactivitat o per antiguitat, el que arribi primer.
+AUTH_TOKEN_IDLE_HOURS = config("AUTH_TOKEN_IDLE_HOURS", default=24, cast=int)
+AUTH_TOKEN_MAX_AGE_DAYS = config("AUTH_TOKEN_MAX_AGE_DAYS", default=7, cast=int)
+# Caducitat del token de DRF dels usuaris d'integració: en caducar, cal tornar a fer login.
+AUTH_INTEGRATION_TOKEN_MAX_AGE_DAYS = config("AUTH_INTEGRATION_TOKEN_MAX_AGE_DAYS", default=15, cast=int)
+# Usuaris d'integració amb token de DRF: els de les variables que ja creen
+# aquests usuaris, els de AUTH_TOKEN_NON_EXPIRING_USERS i els dels grups indicats.
+AUTH_TOKEN_NON_EXPIRING_USERS = sorted({
+    username
+    for username in (
+        config("OV_USER_USERNAME", default=""),
+        config("GMAO_USER_USERNAME", default=""),
+        config("GISWATER_USER_USERNAME", default=""),
+        config("SMARTMETERING_USER_USERNAME", default=""),
+        *config("AUTH_TOKEN_NON_EXPIRING_USERS", default="", cast=Csv()),
+    )
+    if username
+})
+AUTH_TOKEN_NON_EXPIRING_GROUPS = ("ov", "gmao", "giswater", "smartmetering")
 
 # django-axes: bloqueig per nom d'usuari després de N intents fallits (login API i /admin/).
 # Els intents es guarden a la base de dades, així que es comparteixen entre workers.
@@ -676,6 +723,9 @@ OV_ACTIVE_CONTRACTS_ENDPOINT = config("OV_ACTIVE_CONTRACTS_ENDPOINT", default="/
 OV_SYNC_ENABLED = config("OV_SYNC_ENABLED", default=False, cast=bool)
 OV_SYNC_HOUR = config("OV_SYNC_HOUR", default=4, cast=int)
 OV_SYNC_MINUTE = config("OV_SYNC_MINUTE", default=0, cast=int)
+# Mida màxima del PDF del contracte signat que un sistema extern puja a una
+# sol·licitud d'alta (POST /ov/procedures/contract/<token>/signed/).
+OV_SIGNED_CONTRACT_MAX_BYTES = 10 * 1024 * 1024
 
 # Webhooks de sortida: avisen un sistema extern (POST) quan es crea un contracte,
 # es dona de baixa, s'anul·la una baixa o s'emeten factures. Vegeu
@@ -693,6 +743,10 @@ WEBHOOKS_RETRY_DELAYS = [60, 300, 900, 3600, 3 * 3600, 6 * 3600, 12 * 3600]
 WEBHOOKS_SEND_INTERVAL = 0.2  # segons entre enviaments: no saturar el receptor
 WEBHOOKS_SEND_BATCH = 100  # avisos per execució de la tasca; si en queden, es torna a encuar
 WEBHOOKS_BILLING_CHUNK_SIZE = 500  # factures per avís de facturació massiva
+# Avisos d'estat de pagament (invoice.paid, .returned, .expired, .cancelled): una tasca
+# compara cada tants minuts l'estat de les factures amb el darrer avisat.
+WEBHOOKS_INVOICE_SCAN_MINUTES = 5
+WEBHOOKS_INVOICE_SCAN_LIMIT = 5000  # factures canviades per execució; la resta, a la següent
 
 SIGNING_BASE_URL = config("SIGNING_BASE_URL", default="")
 SIGNING_API_KEY = config("SIGNING_API_KEY", default="")

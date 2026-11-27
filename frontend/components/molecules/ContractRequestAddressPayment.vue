@@ -203,16 +203,21 @@ const openInputSepa = () => {
   showRegion.value = true;
 };
 
-// Document SEPA (no domiciliat) per enviar per correu
+// Document SEPA generat des de la sol·licitud: «no domiciliat» per descarregar amb els altres
+// mètodes de pagament, i mandat de domiciliació per enviar per correu (encara sense pagament desat).
 const sendingSepaDocument = ref(false);
 const showSendSepaModal = ref(false);
 const noSepaDocumentId = ref(null);
+const noSepaDocumentPerson = ref(null);
 
 const generateDocumentNoSepa = async ({ sendByEmail = false } = {}) => {
   const contractId = props.request?.id ?? props.request?.contract?.id;
   if (!contractId) return;
 
-  const personId = holder.value?.id
+  // Amb domiciliació, el deutor del mandat és el titular del compte triat (com a les
+  // accions ràpides de l'indicador SEPA): nom, DNI, adreça i contactes de la mateixa persona.
+  const documentPerson = isDirectDebitSelected.value ? (selectedBankDebitPerson.value || holder.value) : holder.value;
+  const personId = documentPerson?.id
     ?? props.request?.holder?.id
     ?? props.request?.holder
     ?? null;
@@ -232,11 +237,15 @@ const generateDocumentNoSepa = async ({ sendByEmail = false } = {}) => {
         person_id: personId,
         bank_id: bankId,
         person_bank_id: bankId,
+        direct_debit: isDirectDebitSelected.value,
+        mandate_id: isDirectDebitSelected.value ? (mandateId.value || null) : null,
       },
       { is_request: props.sepaValue !== 'contract' },
     );
     if (sendByEmail) {
       noSepaDocumentId.value = sepa?.sepa_document_id ?? null;
+      // La persona del document generat, no la del compte triat en aquest moment.
+      noSepaDocumentPerson.value = documentPerson;
       showSendSepaModal.value = !!noSepaDocumentId.value;
       return;
     }
@@ -635,6 +644,28 @@ const onDigitalPersonContact = (contact) => {
   selectedDigitalPersonContact.value = contact;
   emitChange();
   closeAllRegions();
+};
+
+/**
+ * Un contacte esborrat des del selector deixa d'estar seleccionat (correu, telèfons i SMS) i
+ * desapareix de totes les persones carregades: una mateixa persona pot tenir diversos rols
+ * (titular, llogater...) i cada rol en porta una còpia pròpia.
+ */
+const onPersonContactDeleted = (contact) => {
+  const deletedId = Number(resolveId(contact));
+  if (!deletedId) return;
+  const isDeleted = (item) => Number(resolveId(item)) === deletedId;
+  [holder.value, owner.value, tenant.value, ...representatives.value].forEach((person) => {
+    if (Array.isArray(person?.contacts)) {
+      person.contacts = person.contacts.filter((item) => !isDeleted(item));
+    }
+  });
+  if (selectedDigitalPersonContact.value && isDeleted(selectedDigitalPersonContact.value)) {
+    selectedDigitalPersonContact.value = null;
+  }
+  selectedPhones.value = selectedPhones.value.filter((phone) => !isDeleted(phone));
+  selectedSMSPhones.value = selectedSMSPhones.value.filter((phone) => !isDeleted(phone));
+  emitChange();
 };
 
 // Funcions per gestionar la selecció de telèfons
@@ -1214,6 +1245,15 @@ const handleSubRegionEvent = (show) => {
                     {{ t('common.default_payment_needed_for_sepa') }}
                   </div>
                 </div>
+                <button @click="generateDocumentNoSepa({ sendByEmail: true })" :disabled="sendingSepaDocument"
+                  type="button" class="button-default-xs mt-2">
+                  <Icon :name="sendingSepaDocument ? 'fa6-solid:spinner' : 'fa6-solid:envelope'"
+                    :class="{ 'animate-spin': sendingSepaDocument }" class="text-slate-500 mr-1" />
+                  {{ t('contract_block.sepa_send_email') }}
+                </button>
+                <SendSepaEmailModal :show="showSendSepaModal" :sepa-document-id="noSepaDocumentId" :contract="request"
+                  :is-request="sepaValue !== 'contract'" :person="noSepaDocumentPerson || holder"
+                  @close="showSendSepaModal = false" />
 
               </fieldset>
             </div>
@@ -1245,21 +1285,11 @@ const handleSubRegionEvent = (show) => {
           </div>
 
           <div v-if="!isDirectDebitSelected">
-            
-
-            <button @click="generateDocumentNoSepa()" :disabled="generatingSepaDocument || sendingSepaDocument" name="" class="button-default-xs mt-4">
+            <button @click="generateDocumentNoSepa()" :disabled="generatingSepaDocument" name="" class="button-default-xs mt-4">
               <Icon v-if="generatingSepaDocument" name="fa6-solid:spinner" class="animate-spin text-slate-500 mr-1" />
               <Icon v-else name="fa-solid:plus" class="text-slate-500 mr-1" />
               {{ t('contract_block.generate_no_sepa_document')}}
             </button>
-            <button @click="generateDocumentNoSepa({ sendByEmail: true })" :disabled="generatingSepaDocument || sendingSepaDocument"
-              type="button" class="button-default-xs mt-4 ml-2">
-              <Icon :name="sendingSepaDocument ? 'fa6-solid:spinner' : 'fa6-solid:envelope'"
-                :class="{ 'animate-spin': sendingSepaDocument }" class="text-slate-500 mr-1" />
-              {{ t('contract_block.sepa_send_email') }}
-            </button>
-            <SendSepaEmailModal :show="showSendSepaModal" :sepa-document-id="noSepaDocumentId" :contract="request"
-              :is-request="sepaValue !== 'contract'" :person="holder" @close="showSendSepaModal = false" />
           </div>
 
         </div>
@@ -1479,13 +1509,13 @@ const handleSubRegionEvent = (show) => {
             :persons="rolePersons" @selected-item="onPersonBankSelected" />
           <PersonContactSelect ref="personContactSelectRef" v-if="showRegionComponent === 'DigitalPersonContactSelect'"
             :title="`${$t('common.select')} ${$t('common.email_long')}`" :persons="rolePersonsNoReps"
-            :onlyEmail="true" @selected-item="onDigitalPersonContact" />
+            :onlyEmail="true" @selected-item="onDigitalPersonContact" @deleted-item="onPersonContactDeleted" />
           <PersonContactSelect v-if="showRegionComponent === 'PhonePersonContactSelect'"
             :title="`${$t('common.select')} ${$t('common.tlf')}`" :persons="rolePersonsNoReps" :onlyPhone="true"
-            @selected-item="onPhoneSelected" />
+            @selected-item="onPhoneSelected" @deleted-item="onPersonContactDeleted" />
           <PersonContactSelect v-if="showRegionComponent === 'SMSPhonePersonContactSelect'"
             :title="`${$t('common.select')} ${$t('customer_service_block.tlf_sms')}`" :persons="rolePersonsNoReps"
-            :onlyPhone="true" @selected-item="onSMSPhoneSelected" />
+            :onlyPhone="true" @selected-item="onSMSPhoneSelected" @deleted-item="onPersonContactDeleted" />
           <PersonAddressSelect v-if="showRegionComponent === 'BillingAddressSelect'"
             :title="`${$t('common.select')} ${$t('common.fiscal_address')}`"
             :persons="rolePersons" :isBilling="true"

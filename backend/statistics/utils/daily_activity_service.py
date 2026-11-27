@@ -14,17 +14,20 @@ Dues sortides sobre el mateix càlcul (`build_daily_activity`):
 
 import datetime
 import traceback
+from collections import defaultdict
 
 from django.apps import apps
 from django.conf import settings
 from django.contrib.auth.models import User
-from django.db.models import Count, Exists, OuterRef, Q, Sum
+from django.db.models import Count, Exists, F, OuterRef, Q, Sum, Value
+from django.db.models.functions import Coalesce, NullIf
 from django.utils import timezone
 from django.utils.translation import gettext as _, ngettext
 
 from billing.models import PaymentMovement
 
 import openpyxl
+from openpyxl.styles import Alignment, Font
 
 from statistics.views.reports_views import add_row, adjust_column_widths, jump_row, save_report
 
@@ -64,6 +67,59 @@ def get_excluded_activity_user_ids():
     )
 
 
+def contract_city_lookups(prefix):
+    """Municipi del punt de subministrament per defecte d'un contracte o sol·licitud."""
+    return (
+        f'{prefix}__supply_point_default__address__city__name',
+        f'{prefix}__supply_point_default__address__street__city__name',
+        f'{prefix}__supply_point_default__address__city_name',
+    )
+
+
+def supply_point_city_lookups(prefix):
+    return (
+        f'{prefix}__address__city__name',
+        f'{prefix}__address__street__city__name',
+        f'{prefix}__address__city_name',
+    )
+
+
+def communication_city_lookups(prefix=''):
+    """Una comunicació: el contracte (n'hi pot haver més d'un), la incidència o, si no
+    n'hi ha, l'adreça de la persona."""
+    path = f'{prefix}__' if prefix else ''
+    return (
+        contract_city_lookups(f'{path}contracts')
+        + contract_city_lookups(f'{path}incident__contract')
+        + supply_point_city_lookups(f'{path}incident__supply_point')
+        + (f'{path}address__address__city__name', f'{path}address__address__street__city__name')
+    )
+
+
+def order_city_lookups(prefix=''):
+    """Una ordre: el contracte, el punt de subministrament, la sol·licitud o l'adreça
+    de l'ordre (moltes ordres no porten contracte)."""
+    path = f'{prefix}__' if prefix else ''
+    return (
+        contract_city_lookups(f'{path}contract')
+        + supply_point_city_lookups(f'{path}supply_point')
+        + contract_city_lookups(f'{path}contract_request')
+        + (f'{path}address__city__name', f'{path}address__street__city__name', f'{path}address__city_name')
+    )
+
+
+def invoice_city_lookups(prefix):
+    return contract_city_lookups(f'{prefix}__contract') + contract_city_lookups(f'{prefix}__contract_request')
+
+
+def incident_city_lookups(prefix):
+    return (
+        contract_city_lookups(f'{prefix}__contract')
+        + supply_point_city_lookups(f'{prefix}__supply_point')
+        + contract_city_lookups(f'{prefix}__invoice__contract')
+    )
+
+
 class ActivitySource:
     """Una font d'activitat: un model amb un camp d'usuari i un camp de data.
 
@@ -76,7 +132,7 @@ class ActivitySource:
     def __init__(self, key, category, label, model, user_field, date_field,
                  token_paths=(), contract_paths=(), detail_paths=(),
                  select_related=(), amount_aggregator=None, amount_resolver=None,
-                 queryset_filter=None, detail_resolver=None):
+                 queryset_filter=None, detail_resolver=None, city_paths=None):
         self.key = key
         self.category = category
         self.label = label
@@ -96,6 +152,17 @@ class ActivitySource:
         self.queryset_filter = queryset_filter
         # Callable(obj) -> str|None quan el detall no surt de camins (p. ex. "N rebuts").
         self.detail_resolver = detail_resolver
+        # Lookups ORM fins al nom del municipi, per repartir l'Excel per municipis. Per
+        # defecte surten de `contract_paths` (el municipi del punt de subministrament
+        # del contracte); `()` vol dir que la font no és de cap municipi (una remesa,
+        # un procés massiu...).
+        if city_paths is None:
+            city_paths = tuple(
+                lookup
+                for path in contract_paths
+                for lookup in contract_city_lookups(path.rsplit('.token', 1)[0].replace('.', '__'))
+            )
+        self.city_paths = tuple(city_paths)
 
     def get_model(self):
         app_label, model_name = self.model.split('.')
@@ -362,8 +429,10 @@ def get_activity_sources():
             token_paths=('token',), contract_paths=('contract.token',),
             detail_paths=('status.name',),
             select_related=('contract', 'status'),
-            amount_aggregator=_simple_amount_aggregator('amount'),
-            amount_resolver=_simple_amount_resolver('amount'),
+            # Agrupar rebuts no és cobrar: quan el pagament agrupat es paga, cada rebut
+            # deixa el seu PaymentMovement i ja es compta a `payment_collections`. Per
+            # això la font no suma al net; l'import només surt a la línia del detall.
+            amount_resolver=_simple_amount_resolver('total_final'),
         ),
         ActivitySource(
             key='joined_payment_status_changes', category=CATEGORY_COLLECTIONS,
@@ -386,6 +455,7 @@ def get_activity_sources():
         ActivitySource(
             key='piggy_bank_movements', category=CATEGORY_COLLECTIONS,
             label=_("Moviments de guardiola"),
+            city_paths=contract_city_lookups('payment__contract') + contract_city_lookups('bail__contract'),
             model='contract.PiggyBankMovement', user_field='user', date_field='created_at',
             token_paths=('token',),
             detail_paths=('payment.token', 'bail.token'),
@@ -414,6 +484,7 @@ def get_activity_sources():
         ActivitySource(
             key='orders_created', category=CATEGORY_ORDERS,
             label=_("Ordres de treball noves"),
+            city_paths=order_city_lookups(),
             model='order.Order', user_field='created_by', date_field='created_at',
             token_paths=('token',), contract_paths=('contract.token',),
             detail_paths=('type.name', 'reason.name', 'status.name'),
@@ -422,6 +493,7 @@ def get_activity_sources():
         ActivitySource(
             key='order_status_changes', category=CATEGORY_ORDERS,
             label=_("Canvis d'estat d'ordres"),
+            city_paths=order_city_lookups('object'),
             model='logger.LogOrderStatus', user_field='user', date_field='timestamp',
             token_paths=('object.token',), contract_paths=('object.contract.token',),
             detail_paths=('current_status.name', 'observation'),
@@ -430,6 +502,7 @@ def get_activity_sources():
         ActivitySource(
             key='order_observations', category=CATEGORY_ORDERS,
             label=_("Observacions d'ordres"),
+            city_paths=order_city_lookups('order'),
             model='order.OrderObservation', user_field='user', date_field='created_at',
             token_paths=('order.token',), contract_paths=('order.contract.token',),
             detail_paths=('observation',),
@@ -440,6 +513,7 @@ def get_activity_sources():
         ActivitySource(
             key='contract_request_status_changes', category=CATEGORY_CONTRACTS,
             label=_("Sol·licituds de contracte gestionades"),
+            city_paths=contract_city_lookups('object'),
             model='logger.LogContractRequestStatus', user_field='user', date_field='timestamp',
             token_paths=('object.token',),
             detail_paths=('current_status.name', 'observation'),
@@ -480,6 +554,7 @@ def get_activity_sources():
         ActivitySource(
             key='contract_request_observations', category=CATEGORY_CONTRACTS,
             label=_("Observacions de sol·licituds de contracte"),
+            city_paths=contract_city_lookups('contract_request'),
             model='contract.ContractRequestObservation', user_field='user', date_field='created_at',
             token_paths=('contract_request.token',),
             detail_paths=('observation',),
@@ -488,6 +563,7 @@ def get_activity_sources():
         ActivitySource(
             key='contract_termination_observations', category=CATEGORY_CONTRACTS,
             label=_("Observacions de baixes de contracte"),
+            city_paths=contract_city_lookups('contract_termination__contract'),
             model='contract.ContractTerminationRequestObservation', user_field='user',
             date_field='created_at',
             token_paths=('contract_termination.token',),
@@ -524,6 +600,7 @@ def get_activity_sources():
         ActivitySource(
             key='invoice_status_changes', category=CATEGORY_BILLING,
             label=_("Canvis d'estat de factures"),
+            city_paths=invoice_city_lookups('object'),
             model='logger.LogInvoiceChangeStatus', user_field='user', date_field='timestamp',
             token_paths=('object.serie_final', 'object.token'),
             contract_paths=('object.contract.token',),
@@ -533,6 +610,7 @@ def get_activity_sources():
         ActivitySource(
             key='invoice_data_changes', category=CATEGORY_BILLING,
             label=_("Canvis de dades de factures"),
+            city_paths=invoice_city_lookups('object'),
             model='logger.LogInvoiceDataChange', user_field='user', date_field='timestamp',
             token_paths=('object.serie_final', 'object.token'),
             contract_paths=('object.contract.token',),
@@ -542,6 +620,7 @@ def get_activity_sources():
         ActivitySource(
             key='invoice_logs', category=CATEGORY_BILLING,
             label=_("Modificacions de factures"),
+            city_paths=invoice_city_lookups('invoice'),
             model='billing.InvoiceLog', user_field='user', date_field='created_at',
             token_paths=('invoice.serie_final', 'invoice.token'),
             contract_paths=('invoice.contract.token',),
@@ -560,6 +639,7 @@ def get_activity_sources():
         ActivitySource(
             key='reading_changes', category=CATEGORY_READINGS,
             label=_("Canvis de lectura"),
+            city_paths=contract_city_lookups('contract') + ('meter__address_city__name',),
             model='logger.LogReadingChange', user_field='user', date_field='timestamp',
             token_paths=('meter.code', 'contract.token'),
             contract_paths=('contract.token',),
@@ -569,6 +649,7 @@ def get_activity_sources():
         ActivitySource(
             key='meter_logs', category=CATEGORY_READINGS,
             label=_("Modificacions de comptadors"),
+            city_paths=('meter__address_city__name',),
             model='service.MeterLog', user_field='user', date_field='created_at',
             token_paths=('meter.code',),
             detail_paths=('field_name',),
@@ -587,6 +668,7 @@ def get_activity_sources():
         ActivitySource(
             key='communications_created', category=CATEGORY_COMMUNICATIONS,
             label=_("Comunicacions creades"),
+            city_paths=communication_city_lookups(),
             model='communication.Communication', user_field='user', date_field='created_at',
             token_paths=('token',),
             detail_paths=('use_type.name', 'status.name'),
@@ -603,6 +685,7 @@ def get_activity_sources():
         ActivitySource(
             key='communication_status_changes', category=CATEGORY_COMMUNICATIONS,
             label=_("Canvis d'estat de comunicacions"),
+            city_paths=communication_city_lookups('object'),
             model='logger.LogCommunicationStatusChange', user_field='user', date_field='timestamp',
             token_paths=('object.token',),
             detail_paths=('current_status.name', 'observation'),
@@ -620,6 +703,7 @@ def get_activity_sources():
         ActivitySource(
             key='communication_changes', category=CATEGORY_COMMUNICATIONS,
             label=_("Canvis de canal de comunicacions"),
+            city_paths=communication_city_lookups('object'),
             model='logger.LogCommunicationChange', user_field='user', date_field='timestamp',
             token_paths=('object.token',),
             detail_paths=('observation',),
@@ -628,6 +712,7 @@ def get_activity_sources():
         ActivitySource(
             key='communication_observations', category=CATEGORY_COMMUNICATIONS,
             label=_("Observacions de comunicacions"),
+            city_paths=communication_city_lookups('communication'),
             model='communication.CommunicationObservation', user_field='user', date_field='created_at',
             token_paths=('communication.token',),
             detail_paths=('observation',),
@@ -666,6 +751,8 @@ def get_activity_sources():
         ActivitySource(
             key='vulnerability_request_observations', category=CATEGORY_CLAIMS,
             label=_("Observacions de sol·licituds de vulnerabilitat"),
+            city_paths=(contract_city_lookups('vulnerability_request__contract')
+                        + contract_city_lookups('vulnerability_request__contract_request')),
             model='claimrequest.VulnerabilityRequestObservation', user_field='user',
             date_field='created_at',
             token_paths=('vulnerability_request.token',),
@@ -675,6 +762,7 @@ def get_activity_sources():
         ActivitySource(
             key='incident_status_changes', category=CATEGORY_CLAIMS,
             label=_("Canvis d'estat d'incidències"),
+            city_paths=incident_city_lookups('object'),
             model='logger.LogIncidentStatusChange', user_field='user', date_field='timestamp',
             token_paths=('object.token',),
             detail_paths=('current_status.name', 'observation'),
@@ -683,6 +771,7 @@ def get_activity_sources():
         ActivitySource(
             key='incident_reports', category=CATEGORY_CLAIMS,
             label=_("Informes d'incidència"),
+            city_paths=incident_city_lookups('incident'),
             model='notification.IncidentReport', user_field='user', date_field='created_at',
             token_paths=('token', 'incident.token'),
             select_related=('incident',),
@@ -690,6 +779,7 @@ def get_activity_sources():
         ActivitySource(
             key='incident_observations', category=CATEGORY_CLAIMS,
             label=_("Observacions d'incidències"),
+            city_paths=incident_city_lookups('incident'),
             model='notification.IncidentObservation', user_field='user', date_field='created_at',
             token_paths=('incident.token',),
             detail_paths=('observation',),
@@ -698,6 +788,7 @@ def get_activity_sources():
         ActivitySource(
             key='fraud_status_changes', category=CATEGORY_CLAIMS,
             label=_("Canvis d'estat de fraus"),
+            city_paths=contract_city_lookups('object__contract') + supply_point_city_lookups('object__supply_point'),
             model='logger.LogFraudStatusChange', user_field='user', date_field='timestamp',
             token_paths=('object.token',),
             detail_paths=('current_status.name', 'observation'),
@@ -706,6 +797,7 @@ def get_activity_sources():
         ActivitySource(
             key='fraud_reports', category=CATEGORY_CLAIMS,
             label=_("Informes de frau"),
+            city_paths=contract_city_lookups('fraud__contract') + supply_point_city_lookups('fraud__supply_point'),
             model='fraud.FraudReport', user_field='user', date_field='created_at',
             token_paths=('token', 'fraud.token'),
             select_related=('fraud',),
@@ -713,6 +805,7 @@ def get_activity_sources():
         ActivitySource(
             key='fraud_observations', category=CATEGORY_CLAIMS,
             label=_("Observacions de fraus"),
+            city_paths=contract_city_lookups('fraud__contract') + supply_point_city_lookups('fraud__supply_point'),
             model='fraud.FraudObservation', user_field='user', date_field='created_at',
             token_paths=('fraud.token',),
             detail_paths=('observation',),
@@ -723,6 +816,7 @@ def get_activity_sources():
         ActivitySource(
             key='supply_point_changes', category=CATEGORY_SERVICE,
             label=_("Canvis de punt de subministrament"),
+            city_paths=supply_point_city_lookups('supply_point'),
             model='logger.LogSupplyPointChange', user_field='user', date_field='timestamp',
             token_paths=('supply_point.token',),
             detail_paths=('action', 'field_changed', 'observation'),
@@ -731,6 +825,7 @@ def get_activity_sources():
         ActivitySource(
             key='supply_point_observations', category=CATEGORY_SERVICE,
             label=_("Observacions de punts de subministrament"),
+            city_paths=supply_point_city_lookups('supply_point'),
             model='service.SupplyPointObservation', user_field='user', date_field='created_at',
             token_paths=('supply_point.token',),
             detail_paths=('observation',),
@@ -771,6 +866,7 @@ def get_activity_sources():
         ActivitySource(
             key='cluster_status_changes', category=CATEGORY_SERVICE,
             label=_("Canvis d'estat de bateries"),
+            city_paths=('object__address_city__name',),
             model='logger.LogClusterStatus', user_field='user', date_field='timestamp',
             token_paths=('object.token',),
             detail_paths=('current_status.name', 'observation'),
@@ -787,6 +883,7 @@ def get_activity_sources():
         ActivitySource(
             key='cluster_observations', category=CATEGORY_SERVICE,
             label=_("Observacions de bateries"),
+            city_paths=('cluster__address_city__name',),
             model='service.ClusterObservation', user_field='user', date_field='created_at',
             token_paths=('cluster.token',),
             detail_paths=('observation',),
@@ -1093,9 +1190,139 @@ def build_daily_activity(user_ids, date_from=None, date_to=None, include_details
     }
 
 
+def build_activity_by_city(user_ids, date_from=None, date_to=None):
+    """Els mateixos comptadors que `build_daily_activity`, repartits per municipi.
+
+    Retorna `{municipi: {source_key: {user_id: n}}}`; el municipi és `None` quan la
+    font no en té (remeses, processos massius...) o el registre no porta a cap
+    contracte, punt de subministrament o adreça. Cada registre compta una sola
+    vegada encara que el camí passi per una relació múltiple (una comunicació amb
+    diversos contractes): es queda el primer municipi que troba.
+    """
+    date_from, date_to = parse_activity_dates(date_from, date_to)
+    user_ids = [int(uid) for uid in user_ids]
+    by_city = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
+
+    for source in get_activity_sources():
+        queryset = source.queryset(user_ids, date_from, date_to)
+        if not source.city_paths:
+            for row in queryset.values(source.user_field).annotate(activity_count=Count('id')):
+                by_city[None][source.key][row[source.user_field]] += row['activity_count']
+            continue
+
+        # Un municipi en blanc ('') no ha d'aturar el Coalesce: es passa a nul perquè
+        # agafi el camí següent.
+        city_lookups = [NullIf(F(path), Value('')) for path in source.city_paths]
+        if len(city_lookups) > 1:
+            city_expression = Coalesce(*city_lookups)
+        else:
+            city_expression = city_lookups[0]
+        chosen = {}
+        rows = (
+            queryset.order_by()
+            .annotate(activity_city=city_expression)
+            .values_list('pk', source.user_field, 'activity_city')
+        )
+        for pk, user_id, city in rows.iterator(chunk_size=5000):
+            previous = chosen.get(pk)
+            if previous is None or (previous[1] is None and city):
+                chosen[pk] = (user_id, city)
+        for user_id, city in chosen.values():
+            by_city[city or None][source.key][user_id] += 1
+
+    return by_city
+
+
 # ---------------------------------------------------------------------------
 # Excel
 # ---------------------------------------------------------------------------
+
+BOLD_FONT = Font(bold=True)
+RIGHT_ALIGNMENT = Alignment(horizontal='right')
+
+
+def _write_concept_table(sheet, row, categories, columns, values_for, black_fill=None, white_bold_font=None):
+    """Taula "Concepte" com la del resum de la pantalla: les accions de cada categoria
+    i, a sota, el subtotal de la categoria en negreta; al final, el total.
+
+    `categories` és la llista de categories de `build_daily_activity` (amb les fonts
+    ja ordenades) i `values_for(source_key)` retorna una llista de valors alineada amb
+    `columns`. Les categories que queden a zero (en un municipi) no s'escriuen.
+    """
+    row = add_row(sheet, row, [_("Concepte")] + list(columns), fill=black_fill, font=white_bold_font)
+    grand_total = [0] * len(columns)
+    for category in categories:
+        source_rows = []
+        subtotal = [0] * len(columns)
+        for source in category['sources']:
+            values = values_for(source['key'])
+            if not any(values):
+                continue
+            source_rows.append((source['label'], values))
+            subtotal = [a + b for a, b in zip(subtotal, values)]
+        if not source_rows:
+            continue
+        for label, values in source_rows:
+            row = add_row(sheet, row, [label] + values)
+        row = add_row(sheet, row, [category['label']] + subtotal)
+        for column in range(1, len(columns) + 2):
+            sheet.cell(row=row, column=column).font = BOLD_FONT
+        sheet.cell(row=row, column=1).alignment = RIGHT_ALIGNMENT
+        grand_total = [a + b for a, b in zip(grand_total, subtotal)]
+    row = add_row(sheet, row, [_("TOTAL")] + grand_total)
+    for column in range(1, len(columns) + 2):
+        sheet.cell(row=row, column=column).font = BOLD_FONT
+    sheet.cell(row=row, column=1).alignment = RIGHT_ALIGNMENT
+    return row
+
+
+def _write_city_sheet(workbook, activity, by_city, black_fill=None, white_bold_font=None):
+    """Full "Per municipi": una matriu municipi × categoria i, a sota, la taula de
+    conceptes de cada municipi amb una columna per usuari."""
+    sheet = workbook.create_sheet(title=_("Per municipi"))
+    no_city = _("Sense municipi")
+    users = [user for user in activity['by_user'] if user['total']]
+    categories = activity['categories']
+    source_category = {
+        source['key']: category['key'] for category in categories for source in category['sources']
+    }
+
+    def city_total(city):
+        return sum(sum(counts.values()) for counts in by_city[city].values())
+
+    cities = sorted(
+        (city for city in by_city if city is not None and city_total(city)),
+        key=lambda city: (-city_total(city), city),
+    )
+    if None in by_city and city_total(None):
+        cities.append(None)
+
+    row = 0
+    row = add_row(sheet, row, [_("Municipi"), _("Total")] + [category['label'] for category in categories],
+                  fill=black_fill, font=white_bold_font)
+    for city in cities:
+        per_category = defaultdict(int)
+        for source_key, counts in by_city[city].items():
+            per_category[source_category.get(source_key)] += sum(counts.values())
+        row = add_row(sheet, row, [city or no_city, city_total(city)] + [
+            per_category.get(category['key'], 0) for category in categories
+        ])
+
+    columns = [user['name'] or user['username'] for user in users] + [_("Total")]
+    for city in cities:
+        row = jump_row(row)
+        row = add_row(sheet, row, [city or no_city], fill=black_fill, font=white_bold_font)
+        city_counts = by_city[city]
+
+        def values_for(source_key, city_counts=city_counts):
+            counts = city_counts.get(source_key, {})
+            return [counts.get(user['id'], 0) for user in users] + [sum(counts.values())]
+
+        row = _write_concept_table(sheet, row, categories, columns, values_for, black_fill, white_bold_font)
+
+    adjust_column_widths(sheet)
+    return sheet
+
 
 def _format_moment(value):
     """Data i hora sense zona, tal com espera openpyxl per escriure-ho com a data."""
@@ -1163,6 +1390,28 @@ def generate_daily_activity_summary_report(request, black_fill=None, white_bold_
         ])
         row = jump_row(row)
 
+        # Primer, la taula de conceptes com la de la pantalla (accions de cada
+        # categoria, subtotal i total), que és la que fa servir l'oficina, amb una
+        # columna per persona i el total.
+        sources_by_key = {
+            source['key']: source
+            for category in activity['categories'] for source in category['sources']
+        }
+        active_users = [user for user in activity['by_user'] if user['total']]
+
+        def summary_values(source_key):
+            source = sources_by_key.get(source_key)
+            if not source:
+                return [0] * (len(active_users) + 1)
+            return [source['counts_by_user'].get(user['id'], 0) for user in active_users] + [source['count']]
+
+        row = _write_concept_table(
+            summary_sheet, row, activity['categories'],
+            [user['name'] or user['username'] for user in active_users] + [_("Total")],
+            summary_values, black_fill, white_bold_font,
+        )
+        row = jump_row(row)
+
         totals = activity['totals']
         row = add_row(summary_sheet, row, [_("Totals")], fill=black_fill, font=white_bold_font)
         row = add_row(summary_sheet, row, [_("Accions registrades"), totals['total_actions']])
@@ -1180,20 +1429,6 @@ def generate_daily_activity_summary_report(request, black_fill=None, white_bold_
         row = add_row(summary_sheet, row, [_("Gestions de contracte"), totals['contracts_count']])
         row = jump_row(row)
 
-        row = add_row(summary_sheet, row, [
-            _("Categoria"), _("Acció"), _("Nombre"), _("Import"),
-        ], fill=black_fill, font=white_bold_font)
-        for category in activity['categories']:
-            row = add_row(summary_sheet, row, [
-                category['label'], '', category['count'],
-                category['amounts'].get('net', ''),
-            ], font=white_bold_font, fill=black_fill)
-            for source in category['sources']:
-                row = add_row(summary_sheet, row, [
-                    '', source['label'], source['count'],
-                    source['amounts'].get('net', ''),
-                ])
-
         # Matriu per usuari: només té sentit quan l'informe agrupa més d'un usuari.
         if len(activity['users']) > 1:
             row = jump_row(row)
@@ -1206,6 +1441,11 @@ def generate_daily_activity_summary_report(request, black_fill=None, white_bold_
                 row = add_row(summary_sheet, row, [
                     user['name'] or user['username'], user['total'],
                 ] + [user['categories'].get(key, 0) for key in visible_categories])
+
+        _write_city_sheet(
+            workbook, activity, build_activity_by_city(user_ids, activity['date_from'], activity['date_to']),
+            black_fill, white_bold_font,
+        )
 
         detail_sheet = workbook.create_sheet(title=_("Detall"))
         add_row(detail_sheet, 0, [

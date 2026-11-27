@@ -126,6 +126,8 @@ class ConnectionListSerializer(serializers.ModelSerializer):
     dma_token = serializers.CharField(source='dma.token', read_only=True)
     exploitation_name = serializers.CharField(source='exploitation.name', read_only=True)
     exploitation_token = serializers.CharField(source='exploitation.token', read_only=True)
+    installation_type_name = serializers.CharField(read_only=True, default=None)
+    supply_points_count = serializers.IntegerField(read_only=True, default=None)
     class Meta:
         model = Connection
         fields = [
@@ -146,7 +148,9 @@ class ConnectionListSerializer(serializers.ModelSerializer):
             'dma_name',
             'dma_token',
             'exploitation_name',
-            'exploitation_token'
+            'exploitation_token',
+            'installation_type_name',
+            'supply_points_count',
         ]
         
 class ConnectionReducedSerializer(serializers.ModelSerializer):

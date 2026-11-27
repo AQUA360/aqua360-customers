@@ -25,6 +25,9 @@ import InvoiceMiniDetail from '../molecules/InvoiceMiniDetail.vue';
 import InvoiceRegion from './InvoiceRegion.vue';
 import Pagination from '~/components/molecules/Pagination.vue';
 import PersonChangeHistory from '../molecules/PersonChangeHistory.vue';
+import PersonAnomalyList from '../molecules/PersonAnomalyList.vue';
+import AddPersonAnomaly from '../molecules/AddPersonAnomaly.vue';
+import PersonInsolvencyProcesses from '../molecules/PersonInsolvencyProcesses.vue';
 
 const { t } = useI18n();
 
@@ -42,7 +45,7 @@ const pending = ref(true);
 const reload = ref(false);
 const error = ref(null);
 const data = ref(null);
-const activeTab = ref('observations');
+const activeTab = ref('contracts');
 const SubRegion = ref(props.isSubRegionOpen);
 const vulnerabilityRequestNumber = ref(0)
 const modificationsCount = ref(0);
@@ -56,7 +59,7 @@ const new_call = ref(null);
 
 const objectPermissions = ref(null);
 
-const loadedTabs = ref(new Set(['observations']));
+const loadedTabs = ref(new Set(['contracts']));
 const addresses = ref([]);
 const contacts = ref([]);
 const banks = ref([]);
@@ -121,6 +124,32 @@ const updateVulnerabilityRequestCount = (num) => {
 
 const updateObservationCount = (num) => {
   totalObservations.value = num;
+}
+
+const anomaliesReload = ref(0);
+
+// Desada una anomalia nova: tanca la subregió, mostra la pestanya i en refresca la llista
+const handleAnomalyAdded = async () => {
+  closeSubRegion();
+  anomaliesReload.value++;
+  setActiveTab('anomalies');
+  await refreshAnomalies();
+}
+
+// Refresca les anomalies vigents i el comptador sense recarregar tota la fitxa
+const refreshAnomalies = async () => {
+  const personId = props.id;
+  try {
+    const result = await $PersonApiService.getDetail(personId);
+    // Si mentrestant s'ha obert una altra persona, la resposta ja no és seva
+    if (data.value && props.id === personId) {
+      data.value.current_anomalies = result.current_anomalies;
+      data.value.anomalies_count = result.anomalies_count;
+      data.value.insolvency_processes_count = result.insolvency_processes_count;
+    }
+  } catch (err) {
+    console.error(err);
+  }
 }
 
 const updateCallRegisterCount = (num) => {
@@ -319,6 +348,15 @@ const newCommunication = () => {
             <Icon name="fa6-solid:user-pen" class="display-inline mr-2" />
             {{ t('common.modify') }} {{ t('person') }}
           </DropdownOption>
+          <DropdownOption @click="showDetail('AddPersonAnomaly', props.id)">
+            <Icon name="fa6-solid:triangle-exclamation" class="display-inline mr-2" />
+            {{ t('person_anomaly.add') }}
+          </DropdownOption>
+          <DropdownOption v-if="permissions?.permissions?.view_billing"
+            @click="navigateTo({ path: '/contract/persons/insolvency/add', query: { person_id: props.id } })">
+            <Icon name="fa6-solid:scale-balanced" class="display-inline mr-2" />
+            {{ t('insolvency.start') }}
+          </DropdownOption>
           <DropdownOption @click="newCommunication">
             <Icon name="fa6-solid:envelope" class="display-inline mr-2" />
             {{ t('customer_service_block.new_comm') }}
@@ -348,6 +386,20 @@ const newCommunication = () => {
               aria-current="page">
               <Icon name="fa6-solid:file-contract" class="display-inline mr-2" />{{ $t("common.observations") }} ({{
                 data.observations_count || 0 }})
+            </a>
+          </li>
+          <li class="me-2">
+            <a href="#tab_anomalies" @click.prevent="setActiveTab('anomalies')"
+              :class="{ 'text-sky-600 border-sky-600': activeTab === 'anomalies', 'hover:text-gray-600 hover:border-gray-300': activeTab !== 'anomalies' }">
+              <Icon name="fa6-solid:triangle-exclamation" class="display-inline mr-2" />{{ $t("person_anomaly.title") }} ({{
+                data.anomalies_count || 0 }})
+            </a>
+          </li>
+          <li v-if="data.insolvency_processes_count" class="me-2">
+            <a href="#tab_insolvency" @click.prevent="setActiveTab('insolvency')"
+              :class="{ 'text-sky-600 border-sky-600': activeTab === 'insolvency', 'hover:text-gray-600 hover:border-gray-300': activeTab !== 'insolvency' }">
+              <Icon name="fa6-solid:scale-balanced" class="display-inline mr-2" />{{ $t("insolvency.tab") }} ({{
+                data.insolvency_processes_count }})
             </a>
           </li>
           <li class="me-2">
@@ -492,6 +544,22 @@ const newCommunication = () => {
               parent_entity="person" url_entity="person" :id="props.id" module="coredata" :allow_mark="true">
             </MoleculesObservationList>
           </section>
+          <section v-if="activeTab === 'anomalies'" role="tabpanel" id="tab_anomalies"
+            class="bg-white antialiased py-3">
+            <div v-if="objectPermissions?.can_change" class="flex flex-wrap items-center justify-end mx-4 mb-2 gap-2">
+              <button type="button" @click="showDetail('AddPersonAnomaly', props.id)"
+                class="button-primary !px-2.5 !py-1 text-xs flex items-center">
+                <Icon name="fa6-solid:plus" />
+                <span class="ml-1">{{ t('person_anomaly.add') }}</span>
+              </button>
+            </div>
+            <PersonAnomalyList :person-id="props.id" :can-change="!!objectPermissions?.can_change"
+              :reload="anomaliesReload" @changed="refreshAnomalies" />
+          </section>
+          <section v-if="activeTab === 'insolvency'" role="tabpanel" id="tab_insolvency"
+            class="bg-white antialiased py-3">
+            <PersonInsolvencyProcesses :person-id="props.id" @change="refreshAnomalies" />
+          </section>
           <section v-if="activeTab === 'payment_methods'" role="tabpanel" id="tab_payment_methods"
             class="bg-white antialiased py-3">
             <div v-if="banks && banks.length != 0" class="m-4 rounded-md border border-gray-300 divide-y bg-white">
@@ -627,7 +695,8 @@ const newCommunication = () => {
 
           <section v-if="activeTab === 'communication' && permissions?.permissions?.view_customer_service"
             role="tabpanel" id="tab_communication" class="bg-white antialiased p-3">
-            <CommunicationMiniDetail :person_ids="[props.id]" @show-detail="showDetail" :max_height="'60vh'" />
+            <CommunicationMiniDetail :person_ids="[props.id]" @show-detail="showDetail" :max_height="'60vh'"
+              :isSubRegion="isSubRegion" />
           </section>
 
           <section v-if="data.deliquency" v-show="activeTab === 'deliquency'" role="tabpanel" id="tab_deliquency"
@@ -686,6 +755,8 @@ const newCommunication = () => {
           :isSubRegion="true" @changed="handleChange"></CommunicationRegion>
         <AddPiggyBankBalance v-if="showRegionDetailComponent === 'AddPiggyBankBalance'"
           :personId="parseInt(regionDetailId)" :data="data.piggy_bank" @change="handleChange" @close="closeSubRegion" />
+        <AddPersonAnomaly v-if="showRegionDetailComponent === 'AddPersonAnomaly'"
+          :personId="parseInt(regionDetailId)" @change="handleAnomalyAdded" @close="closeSubRegion" />
         <MassiveInvoiceDownload v-if="showRegionDetailComponent === 'MassiveInvoiceDownload'"
           :person_id="parseInt(props.id)" />
         <InvoiceRegion v-if="showRegionDetailComponent === 'InvoiceRegion'" :id="regionDetailId" :isSubRegion="true"

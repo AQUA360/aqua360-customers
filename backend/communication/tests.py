@@ -704,8 +704,8 @@ class ClaimDocumentsWithGroupedPaymentsTests(TestCase):
     def setUp(self):
         from billing.models import Invoice, JoinedPayment, Payment
         from claimrequest.models import (
-            ClaimRequest, ClaimRequestPayment, ClaimRequestStep, ClaimRequestStepTemplate,
-            ClaimRequestTemplate,
+            ClaimDocumentType, ClaimRequest, ClaimRequestPayment, ClaimRequestStep,
+            ClaimRequestStepTemplate, ClaimRequestTemplate,
         )
         from documentmanager.models import Document
 
@@ -720,6 +720,7 @@ class ClaimDocumentsWithGroupedPaymentsTests(TestCase):
         self.claim = ClaimRequest.objects.create()
         step = ClaimRequestStep.objects.create(
             claim_request=self.claim, step_template=step_template, communication_process=self.process,
+            document_type=ClaimDocumentType.objects.create(name='Avís'),
         )
         self.claim.current_step = step
         self.claim.save()
@@ -757,26 +758,88 @@ class ClaimDocumentsWithGroupedPaymentsTests(TestCase):
         self.assertEqual(files, [d.id for d in self.invoice_docs] + [self.claim_doc.id])
         self.assertEqual(self.comm.invoices.count(), 2)
 
-    def test_without_extra_docs_only_claim_document_is_attached(self):
+    def run_task(self, attached_documents=None, group_payments=True):
         from unittest.mock import patch
 
         from communication.tasks import generate_claim_document_pdf_task
+        from documentmanager.models import Document
 
-        ConfigProject.objects.update_or_create(token='attach_extra_docs_in_claims', defaults={'value': 'false'})
+        # La BD de tests ja té el configProject de la migració
+        ConfigProject.objects.filter(token='claim_attached_documents').delete()
+        if attached_documents is not None:
+            ConfigProject.objects.create(token='claim_attached_documents', value=attached_documents)
+        self.claim.current_step.step_template.group_payments = group_payments
+        self.claim.current_step.step_template.save()
+        self.slip_doc = Document.objects.create(entity_id=1, service='hdd', document_name='full-pagament')
 
         def claim_step_file(claim_request, contract, comm, *args):
             return CommunicationFile(communication=comm, file=self.claim_doc)
 
         with patch('communication.tasks._create_claim_step_communication_file', side_effect=claim_step_file), \
-                patch('communication.tasks.generate_report_payment_pdf') as payment_pdf:
+                patch('communication.tasks.generate_report_payment_pdf', return_value=(self.slip_doc, None)) as payment_pdf:
             result = generate_claim_document_pdf_task([self.comm.id], self.process.id, claim_id=self.claim.id)
-
         self.assertEqual(result['status'], 'success')
-        payment_pdf.assert_not_called()
-        files = list(self.comm.files.order_by('id').values_list('file_id', flat=True))
-        self.assertEqual(files, [self.claim_doc.id])
-        # Les factures es vinculen igualment per resoldre les variables %invoice.*
+        # Les factures es vinculen sempre per resoldre les variables %invoice.*
         self.assertEqual(self.comm.invoices.count(), 2)
+        return list(self.comm.files.order_by('id').values_list('file_id', flat=True)), payment_pdf
+
+    def test_without_extra_docs_only_claim_document_is_attached(self):
+        files, payment_pdf = self.run_task('', group_payments=False)
+        payment_pdf.assert_not_called()
+        self.assertEqual(files, [self.claim_doc.id])
+
+    def test_without_config_invoices_and_payment_slips_are_attached(self):
+        files, _payment_pdf = self.run_task(None, group_payments=False)
+        doc_a, doc_b = self.invoice_docs
+        slip = self.slip_doc.id
+        self.assertEqual(files, [doc_a.id, slip, doc_b.id, slip, self.claim_doc.id])
+
+    def test_only_invoices(self):
+        files, payment_pdf = self.run_task('invoices', group_payments=False)
+        payment_pdf.assert_not_called()
+        self.assertEqual(files, [d.id for d in self.invoice_docs] + [self.claim_doc.id])
+
+    def test_step_without_document_attaches_nothing(self):
+        self.claim.current_step.document_type = None
+        self.claim.current_step.save()
+        files, payment_pdf = self.run_task(None, group_payments=False)
+        payment_pdf.assert_not_called()
+        self.assertEqual(files, [self.claim_doc.id])
+
+    def test_only_payment_slips(self):
+        files, payment_pdf = self.run_task(' Payment_Slips ', group_payments=False)
+        self.assertEqual(payment_pdf.call_count, 2)
+        self.assertEqual(files, [self.slip_doc.id, self.slip_doc.id, self.claim_doc.id])
+
+
+class ClaimAttachedDocumentsMigrationTests(TestCase):
+    """La migració 0162 uneix els dos configProject d'adjunts d'impagats en un."""
+
+    def run_migration(self, invoices=None, extra_docs=None):
+        from importlib import import_module
+        from django.apps import apps
+        ConfigProject.objects.filter(token='claim_attached_documents').delete()
+        for token, value in (('attach_invoices_in_claims', invoices), ('attach_extra_docs_in_claims', extra_docs)):
+            if value is not None:
+                ConfigProject.objects.create(token=token, value=value)
+        migration = import_module('coredata.migrations.0162_claim_attached_documents_config')
+        migration.merge_claim_attachment_configs(apps, None)
+        self.assertFalse(ConfigProject.objects.filter(
+            token__in=['attach_invoices_in_claims', 'attach_extra_docs_in_claims'],
+        ).exists())
+        return ConfigProject.objects.get(token='claim_attached_documents').value
+
+    def test_both_enabled_or_missing_attach_everything(self):
+        self.assertEqual(self.run_migration('true', 'true'), 'invoices,payment_slips')
+
+    def test_missing_configs_attach_everything(self):
+        self.assertEqual(self.run_migration(), 'invoices,payment_slips')
+
+    def test_extra_docs_disabled_attaches_nothing(self):
+        self.assertEqual(self.run_migration('true', 'false'), '')
+
+    def test_invoices_disabled_attaches_nothing(self):
+        self.assertEqual(self.run_migration('false', 'true'), '')
 
 
 class SepaReturnDocumentsTests(TestCase):
@@ -1392,6 +1455,29 @@ class ClaimDocumentsAttachDefaultTests(SupplyCutProcessTestCase):
 
     def test_without_template_it_is_attached(self):
         self.assertTrue(self.save_and_get_attach())
+
+    def make_claim(self, with_document):
+        from claimrequest.models import ClaimDocumentType, ClaimRequest, ClaimRequestStep
+        claim = ClaimRequest.objects.create()
+        claim.current_step = ClaimRequestStep.objects.create(
+            claim_request=claim,
+            document_type=ClaimDocumentType.objects.create(name='Avís') if with_document else None,
+        )
+        claim.save()
+        return claim
+
+    def test_step_without_document_is_never_attached(self):
+        # Sense document del pas, la carta postal ha de ser la del missatge
+        claim = self.make_claim(with_document=False)
+        self.assertFalse(self.save_and_get_attach(
+            fixed_data='claimrequest', fixed_data_id=str(claim.id), attach_claim_documents=True,
+        ))
+
+    def test_step_with_document_keeps_the_choice(self):
+        claim = self.make_claim(with_document=True)
+        self.assertTrue(self.save_and_get_attach(
+            fixed_data='claimrequest', fixed_data_id=str(claim.id), attach_claim_documents=True,
+        ))
 
 
 class ClaimDocumentsAttachMigrationTests(TestCase):

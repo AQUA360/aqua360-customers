@@ -118,28 +118,27 @@ const fillCrumbs = () => {
 
 fillCrumbs();
 
+// Comptadors del menú (notificacions i documents diaris). Sense sessió no es demanen: en
+// sortir, la ruta canvia al login abans que es desmunti el layout. Són informatius: si fallen,
+// l'api-manager ja n'avisa i aquí no es torna a llançar l'error (el gestor global en mostraria un altre).
+const refreshCounters = async () => {
+  if (!process.client || !localStorage.getItem('auth_token')) return;
+  try {
+    const newNotifications = await $NotificationApiService.checkNewNotifications();
+    sidebarStore.newNotificationsFound(newNotifications);
+    const newDailyDocuments = await $DailyDocumentApiService.checkNewDailyDocuments();
+    sidebarStore.newDailyDocumentsFound(newDailyDocuments);
+  } catch (error) {
+    console.error('Error refreshing menu counters:', error);
+  }
+};
+
 watch(() => route.path, async () => {
   fillCrumbs();
-  let newNotifications = await $NotificationApiService.checkNewNotifications();
-  sidebarStore.newNotificationsFound(newNotifications);
-  let newDailyDocuments = await $DailyDocumentApiService.checkNewDailyDocuments();
-  sidebarStore.newDailyDocumentsFound(newDailyDocuments);
+  await refreshCounters();
 });
 
-let authToken = '';
-
-if (process.client) {
-  authToken = localStorage.getItem('auth_token') || '';
-}
-
-onMounted(async () => {
-  if (authToken != '') {
-    let newNotifications = await $NotificationApiService.checkNewNotifications();
-    sidebarStore.newNotificationsFound(newNotifications);
-    let newDailyDocuments = await $DailyDocumentApiService.checkNewDailyDocuments();
-    sidebarStore.newDailyDocumentsFound(newDailyDocuments);
-  }
-});
+onMounted(refreshCounters);
 
 </script>
 

@@ -4,7 +4,12 @@ from rest_framework import routers
 from documentmanager.views_export.generic_export_view import GenericExportView
 
 from .views import (
+    ChangeOwnPasswordView,
     CustomAuthToken,
+    LogoutView,
+    OwnProfileView,
+    PasswordResetConfirmView,
+    PasswordResetRequestView,
     UserViewSet,
     GroupViewSet,
     UserPermissionsView
@@ -22,6 +27,11 @@ urlpatterns = [
     # re-envien la redirecció com a GET i perden el cos, fallant l'auth.
     # Mateixa vista; nom distint perquè `reverse('login')` no canvia.
     path('login', CustomAuthToken.as_view(), name='login-no-slash'),
+    path('logout/', LogoutView.as_view(), name='logout'),
+    path('change-password/', ChangeOwnPasswordView.as_view(), name='change-own-password'),
+    path('profile/', OwnProfileView.as_view(), name='own-profile'),
+    path('password-reset/', PasswordResetRequestView.as_view(), name='password-reset'),
+    path('password-reset/confirm/', PasswordResetConfirmView.as_view(), name='password-reset-confirm'),
     # Han d'anar abans d'`include(router.urls)`: el router registra `<recurs>/<pk>/`
     # amb un patró de pk genèric que, si es col·loca abans, capturaria "export" com a pk.
     path('group/export/', GenericExportView.as_view(entity='group'), name='group-export'),

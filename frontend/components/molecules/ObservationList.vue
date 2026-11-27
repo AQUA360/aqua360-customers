@@ -1,9 +1,11 @@
 <script setup>
 import { ref, watch, onMounted, nextTick } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { useToast } from 'vue-toastification';
 
 const { $ObservationApiService, $OperatorApiService } = useNuxtApp();
 const { t } = useI18n();
+const toast = useToast();
 // Define an object for your plugin
 const props = defineProps({
   module: String,
@@ -11,6 +13,7 @@ const props = defineProps({
   parent_entity: String,
   url_entity: String,
   allow_mark: Boolean,
+  allow_edit: Boolean,
   reload: Boolean
 });
 
@@ -68,7 +71,8 @@ const loadObservations = async (data) => {
       date: element.created_at,
       observation: element.observation,
       status_name: element.status_name,
-      is_important: element.is_important
+      is_important: element.is_important,
+      editable: !!element.user && !element.status_name
     }
     observations.value.push(observation);
   }
@@ -112,6 +116,30 @@ const markObservation = async (item) => {
   }
 }
 
+const editObservation = async ({ id, observation, done }) => {
+  try {
+    let data = {
+      id: id,
+      observation: observation
+    };
+
+    data[props.parent_entity] = props.id;
+
+    const res = await $ObservationApiService.updateObservation(data, props.module, props.url_entity || props.parent_entity);
+
+    const item = observations.value.find(element => element.id === id);
+    if (item) {
+      item.observation = res?.observation ?? observation;
+    }
+    done?.(true);
+    emit('update:important-observations');
+  } catch (err) {
+    console.error(err);
+    toast.error(t('common.error_save'));
+    done?.(false);
+  }
+};
+
 const addObservation = async (observation) => {
   if (!observation?.trim()) {
     return;
@@ -149,6 +177,7 @@ const addObservation = async (observation) => {
       date: res.created_at,
       observation: observation,
       status_name: res.status_name,
+      editable: !!res.user && !res.status_name,
     };
     if (props.allow_mark) {
       new_observation.is_important = res.is_important;
@@ -171,16 +200,19 @@ watch(() => props.reload, (newValue) => {
   <div class="px-2">
     <AtomsInputTextarea @update:text="addObservation" text="" :autosave="true" :rows="1.25" />
     <MoleculesObservation 
-      v-for="observation in observations" 
+      v-for="observation in observations"
+      :key="observation.id"
       @delete:observation="deleteObservation"
       @mark:observation="markObservation"
+      @edit:observation="editObservation"
       :id="observation.id" 
       :object="observation"
       :user="observation.user" 
       :datetime="observation.date" 
       :observation="observation.observation"
       :status_name="observation.status"
-      :allow_mark="props.allow_mark">
+      :allow_mark="props.allow_mark"
+      :allow_edit="props.allow_edit">
     </MoleculesObservation>
   </div>
 </template>

@@ -2,7 +2,7 @@ from rest_framework import permissions
 from rest_framework import exceptions
 
 from auth.permissions import DjangoModelViewPermissions
-from auth.roles import is_canonical_superuser
+from auth.roles import is_customers_account
 from billing.permissions import InvoicePermission
 from claimrequest.permissions import ClaimRequestPermission
 from contract.permissions import ContractPermission, RelatedModuleReadMixin
@@ -31,14 +31,14 @@ class ConfigProjectPermission(permissions.BasePermission):
 class MainPermissionPermission(permissions.BasePermission):
     """Catàleg de permisos per rol (MainPermission): el llegeixen les pantalles de
     grups de qualsevol usuari autenticat, però només el pot modificar el
-    superusuari canònic, com la gestió d'usuaris i grups."""
+    compte `customers`, com la configuració del projecte."""
 
     def has_permission(self, request, view):
         if not request.user or not request.user.is_authenticated:
             return False
         if request.method in permissions.SAFE_METHODS:
             return True
-        return is_canonical_superuser(request.user)
+        return is_customers_account(request.user)
 
 class PersonPermission(permissions.BasePermission):
     

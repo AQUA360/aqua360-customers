@@ -11,23 +11,28 @@ from unittest.mock import patch
 
 from django.conf import settings
 from django.contrib.auth.models import Group, Permission, User
+from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.cache import cache
 from django.db import connection
+from django.template import TemplateDoesNotExist
 from django.test import TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
 from django.urls import resolve, reverse
 from django.utils import timezone, translation
+from rest_framework.exceptions import ParseError
 from rest_framework.test import APIClient
 
 from billing.models import (
     Biller,
     GeneralPayment,
+    GeneralPaymentMandateLog,
     GeneralPaymentSepaDocument,
     Invoice,
     InvoiceStatus,
     Payment,
     PaymentMovement,
+    PaymentRemittance,
     PaymentRemittanceReturn,
     PaymentStatus,
     Reading,
@@ -52,6 +57,7 @@ from coredata.models import (
 from contract.models import (
     ContractDataChange,
     Contract,
+    ContractObservation,
     ContractPriceRate,
     ContractRequest,
     ContractRequestStatus,
@@ -64,8 +70,9 @@ from contract.models import (
     PaymentType,
     Variable,
 )
+from contract.utils.contract_pdf_service import ContractPdfGenerationError
 from documentmanager.models import Document
-from logger.models import LogContractRequestStatus, LogIncidentStatusChange
+from logger.models import LogContractRequestStatus, LogIncidentStatusChange, LogInvoiceDataChange
 from notification.models import Incident, IncidentStatus, IncidentType
 from order.models import OrderType
 from pricing.models import (
@@ -88,11 +95,13 @@ from service.models import (
     RoutePosition,
     SupplyPoint,
 )
+from ov.parsers import LimitedJSONParser, RequestBodyTooLarge
 from ov.throttles import (
     ContractChangeProcedureThrottle,
     ContractProcedureThrottle,
     ContractTerminationProcedureThrottle,
     PaymentReceiptThrottle,
+    PersonContractsThrottle,
     PersonDataThrottle,
     PersonInvoicesThrottle,
     QuickPayThrottle,
@@ -104,6 +113,7 @@ from ov.views import (
     ContractTerminationProcedureOVView,
     InvoiceReturnRequestOVView,
     PaymentReceiptOVView,
+    PersonContractsOVView,
     PersonDataOVView,
     PersonInvoicesOVView,
     QuickPayOVView,
@@ -113,7 +123,7 @@ SLASH_TOKEN = "12345678/001"
 PLAIN_TOKEN = "12345678"
 HOLDER_TOKEN = "12345678Z"
 PAYER_DNI = "87654321Y"
-NIC = "12345/1234"
+NIC = "123456000001"
 
 
 class ContractOVViewTests(TestCase):
@@ -426,6 +436,8 @@ class ContractDetailRoleFlagsTests(TestCase):
         for token, value in (
             ("contract_termination_completed_token", "3"),
             ("contract_terminated_status", "-1"),
+            # El NIC el comparteixen dos contractes: by-nic tria el d'alta.
+            ("contract_active_token", "1"),
         ):
             if not ConfigProject.objects.filter(token=token).exists():
                 ConfigProject.objects.create(token=token, value=value)
@@ -442,7 +454,7 @@ class ContractDetailRoleFlagsTests(TestCase):
         )
         cls.payment_type = PaymentType.objects.create(token="DIRECT_DEBIT")
         cls.payment = GeneralPayment.objects.create(
-            type=cls.payment_type, IBAN=cls.person_bank
+            type=cls.payment_type, IBAN=cls.person_bank, mandate_id=NIC
         )
         cls.supply_point = SupplyPoint.objects.create(token=NIC)
         cls.contract = Contract.objects.create(
@@ -537,6 +549,138 @@ class ContractDetailRoleFlagsTests(TestCase):
         self.assertEqual(response.data["status"], {"token": "1", "name": "Activo"})
         self.assertTrue(response.data["is_payer"])
         self.assertFalse(response.data["is_holder"])
+
+
+class ContractByNicOVTests(TestCase):
+    """GET /ov/contract/by-nic/<nic>/: el NIC és la referència de mandat de 12
+    xifres de la forma de pagament; el NIC antic es troba per l'historial de
+    mandats i, si el comparteixen diversos contractes, mana el d'alta."""
+
+    ACTIVE = "1"
+    TERMINATED = "-1"
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(
+            username="ov-contract-by-nic-test", password="not-used"
+        )
+        for token, value in (
+            ("contract_active_token", cls.ACTIVE),
+            ("contract_terminated_status", cls.TERMINATED),
+            ("contract_termination_completed_token", "3"),
+        ):
+            ConfigProject.objects.update_or_create(
+                token=token, defaults={"value": value}
+            )
+        cls.active = ContractStatus.objects.create(token=cls.ACTIVE, name="Alta")
+        cls.terminated = ContractStatus.objects.create(
+            token=cls.TERMINATED, name="Baja"
+        )
+        cls.holder = Person.objects.create(token=HOLDER_TOKEN, name="Test")
+        cls.payment = GeneralPayment.objects.create(mandate_id=NIC)
+
+    def setUp(self):
+        cache.clear()
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def _get(self, nic):
+        return self.client.get(reverse("contract-by-nic-ov", kwargs={"nic": nic}))
+
+    def _contract(self, token, status, payment=None):
+        contract = Contract.objects.create(
+            token=token, holder=self.holder, payment=payment or self.payment
+        )
+        # update() evita el senyal de baixa (fiances), aliè a aquesta cerca.
+        Contract.objects.filter(pk=contract.pk).update(status=status)
+        return contract
+
+    def test_finds_contract_by_mandate_reference(self):
+        self._contract("C-NIC-1", self.active)
+
+        response = self._get(NIC)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["contract_token"], "C-NIC-1")
+
+    def test_prefers_active_contract_over_newer_terminated_one(self):
+        # El contracte de baixa és més recent, però el NIC és del d'alta.
+        self._contract("C-NIC-ACTIVE", self.active)
+        self._contract("C-NIC-TERMINATED", self.terminated)
+
+        response = self._get(NIC)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["contract_token"], "C-NIC-ACTIVE")
+
+    def test_without_active_contract_returns_most_recent(self):
+        self._contract("C-NIC-OLD", self.terminated)
+        self._contract("C-NIC-NEW", self.terminated)
+
+        response = self._get(NIC)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["contract_token"], "C-NIC-NEW")
+
+    def test_finds_contract_by_previous_mandate_after_iban_change(self):
+        payment = GeneralPayment.objects.create(mandate_id="CTR-NEW-MANDATE")
+        GeneralPaymentMandateLog.objects.create(
+            general_payment=payment,
+            previous_mandate_id="654321000002",
+            new_mandate_id="CTR-NEW-MANDATE",
+        )
+        self._contract("C-NIC-CHANGED", self.active, payment=payment)
+
+        response = self._get("654321000002")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["contract_token"], "C-NIC-CHANGED")
+
+    def test_current_mandate_wins_over_history(self):
+        # Un altre pagament havia tingut aquest NIC abans: mana el vigent.
+        old_payment = GeneralPayment.objects.create(mandate_id="OTHER-MANDATE")
+        GeneralPaymentMandateLog.objects.create(
+            general_payment=old_payment,
+            previous_mandate_id=NIC,
+            new_mandate_id="OTHER-MANDATE",
+        )
+        self._contract("C-NIC-HISTORY", self.active, payment=old_payment)
+        self._contract("C-NIC-CURRENT", self.active)
+
+        response = self._get(NIC)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["contract_token"], "C-NIC-CURRENT")
+
+    def test_active_contract_in_history_wins_over_terminated_with_current_nic(self):
+        # Canvi d'IBAN des de l'OV d'un contracte que compartia la forma de
+        # pagament amb un de baixa: el d'alta passa a una forma de pagament nova
+        # (el NIC queda a l'historial) i el de baixa es queda la referència.
+        self._contract("C-NIC-TERMINATED", self.terminated)
+        new_payment = GeneralPayment.objects.create(mandate_id="CTR-SPLIT-MANDATE")
+        GeneralPaymentMandateLog.objects.create(
+            general_payment=new_payment,
+            previous_mandate_id=NIC,
+            new_mandate_id="CTR-SPLIT-MANDATE",
+        )
+        self._contract("C-NIC-SPLIT-ACTIVE", self.active, payment=new_payment)
+
+        response = self._get(NIC)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["contract_token"], "C-NIC-SPLIT-ACTIVE")
+
+    def test_unknown_nic_returns_404(self):
+        response = self._get("999999999999")
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_invalid_formats_return_400(self):
+        for nic in ("12345/1234", "012345/654321/12345678", "12345678901", "1234567890123", "12345678901A"):
+            with self.subTest(nic=nic):
+                response = self._get(nic)
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(response.data, {"error": "Invalid NIC format"})
 
 
 class InvoiceStatusObjectTests(TestCase):
@@ -699,6 +843,180 @@ class InvoiceStatusObjectTests(TestCase):
         self.invoice.readings.add(reading)
 
         self.assertIsNone(self._billing_period("INV-001")["days"])
+
+
+class InvoicePaymentTypeTokenOVTests(TestCase):
+    """`payment_type`: token de la forma de pagament (`payment_type_token_final`)
+    al llistat, al detall, a les impagades i a les factures d'una persona.
+    Torna `null` si el token no és de cap `PaymentType`, i els tokens vàlids es
+    consulten una sola vegada per petició."""
+
+    DNI = "11111111H"
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(
+            username="ov-invoice-payment-type-test", password="not-used"
+        )
+        cls.user.groups.add(Group.objects.get_or_create(name="ov")[0])
+        for token, value in (
+            ("contract_termination_completed_token", "3"),
+            ("contract_terminated_status", "-1"),
+            ("invoice_status_paid_token", "0"),
+            ("invoice_status_cancelled_token", "-1"),
+        ):
+            if not ConfigProject.objects.filter(token=token).exists():
+                ConfigProject.objects.create(token=token, value=value)
+        for token in ("DIRECT_DEBIT", "CASH", "BANK_TRANSFER"):
+            PaymentType.objects.get_or_create(token=token)
+
+        cls.holder = Person.objects.create(
+            token=HOLDER_TOKEN, name="Test", surname="Holder"
+        )
+        cls.contract = Contract.objects.create(
+            token=PLAIN_TOKEN,
+            holder=cls.holder,
+            status=ContractStatus.objects.create(token="1", name="Alta"),
+        )
+        cls.status = InvoiceStatus.objects.create(token="3", name="Enviada")
+
+        tokens = {
+            "PT-DD": "DIRECT_DEBIT",
+            "PT-CASH": "CASH",
+            "PT-BT": "BANK_TRANSFER",
+            "PT-DASH": "-",
+            "PT-TEXT": "Sense pagament configurat",
+            "PT-EMPTY": "",
+            "PT-NONE": None,
+        }
+        for index, (invoice_token, payment_token) in enumerate(tokens.items()):
+            Invoice.objects.create(
+                token=invoice_token,
+                serie_final=f"F-{invoice_token}",
+                contract=cls.contract,
+                status=cls.status,
+                issue_date=date(2026, 1, 1) + timedelta(days=index),
+                customer_token_final=cls.DNI,
+                payment_type_token_final=payment_token,
+                payment_type_final="Nom de la forma de pagament",
+                total_final=Decimal("100.00"),
+                left_to_pay=Decimal("40.00"),
+            )
+        cls.expected = {
+            "PT-DD": "DIRECT_DEBIT",
+            "PT-CASH": "CASH",
+            "PT-BT": "BANK_TRANSFER",
+            "PT-DASH": None,
+            "PT-TEXT": None,
+            "PT-EMPTY": None,
+            "PT-NONE": None,
+        }
+
+    def setUp(self):
+        cache.clear()
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    @staticmethod
+    def _by_token(items):
+        return {item["invoice_token"]: item for item in items}
+
+    @staticmethod
+    def _payment_type_queries(queries):
+        return [
+            q
+            for q in queries.captured_queries
+            if 'FROM "contract_paymenttype"' in q["sql"]
+        ]
+
+    def test_list_returns_payment_type_token_or_null(self):
+        response = self.client.get(
+            reverse("invoices-ov"), {"contract_token": PLAIN_TOKEN}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        items = self._by_token(response.data)
+        for token, expected in self.expected.items():
+            self.assertEqual(items[token]["payment_type"], expected, token)
+
+    def test_list_loads_payment_types_once_per_request(self):
+        with CaptureQueriesContext(connection) as queries:
+            response = self.client.get(
+                reverse("invoices-ov"), {"contract_token": PLAIN_TOKEN}
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), len(self.expected))
+        self.assertEqual(len(self._payment_type_queries(queries)), 1)
+
+    def test_single_invoice_returns_payment_type(self):
+        for token, expected in (("PT-CASH", "CASH"), ("PT-DASH", None)):
+            response = self.client.get(
+                reverse("invoice-ov"),
+                {"contract_token": PLAIN_TOKEN, "invoice_token": token},
+            )
+
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.data["payment_type"], expected, token)
+
+    def test_unpaid_invoices_return_payment_type(self):
+        response = self.client.get(
+            reverse("unpayed-invoices-ov"),
+            {"contract_token": PLAIN_TOKEN, "statuses": "3"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        items = self._by_token(response.data)
+        for token, expected in self.expected.items():
+            self.assertEqual(items[token]["payment_type"], expected, token)
+
+    def test_full_detail_returns_payment_type_and_keeps_payment_method(self):
+        for token, expected in (
+            ("PT-DD", "DIRECT_DEBIT"),
+            ("PT-BT", "BANK_TRANSFER"),
+            ("PT-TEXT", None),
+            ("PT-NONE", None),
+        ):
+            response = self.client.get(
+                reverse("invoice-detail-by-token-ov", kwargs={"token": token})
+            )
+
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.data["payment_type"], expected, token)
+            self.assertEqual(
+                response.data["payment_method"], "Nom de la forma de pagament"
+            )
+
+    def test_full_detail_loads_payment_types_once(self):
+        with CaptureQueriesContext(connection) as queries:
+            response = self.client.get(
+                reverse("invoice-detail-by-token-ov", kwargs={"token": "PT-DD"})
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(self._payment_type_queries(queries)), 1)
+
+    def test_person_invoices_return_payment_type(self):
+        response = self.client.get(reverse("person-invoices-ov"), {"dni": self.DNI})
+
+        self.assertEqual(response.status_code, 200)
+        items = self._by_token(
+            item
+            for group in response.data["results"]
+            for item in group["invoices"]
+        )
+        self.assertEqual(set(items), set(self.expected))
+        for token, expected in self.expected.items():
+            self.assertEqual(items[token]["payment_type"], expected, token)
+
+    def test_person_invoices_load_payment_types_once_per_request(self):
+        with CaptureQueriesContext(connection) as queries:
+            response = self.client.get(
+                reverse("person-invoices-ov"), {"dni": self.DNI}
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(self._payment_type_queries(queries)), 1)
 
 
 class InvoiceFilterAlignmentTests(TestCase):
@@ -1255,6 +1573,259 @@ class ConsumptionBilledFilterTests(TestCase):
         self.assertEqual(timestamps, {"2026-01-15", "2026-01-20"})
 
 
+class ConsumptionPersonDniFilterTests(TestCase):
+    """Tiquet 2963: amb `dni`, els endpoints de consums només retornen les
+    lectures facturades en factures del contracte on aquella persona és
+    titular o pagadora (criteri de `/ov/person-invoices/`). Sense `dni`, o
+    buit, tot funciona com abans."""
+
+    TOKEN = "DNI-CTR"
+    OTHER_TOKEN = "DNI-OTHER"
+    OLD_HOLDER = "00000001R"
+    NEW_HOLDER = "00000002W"
+    PAYER = "00000003A"
+    STRANGER = "00000004G"
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(
+            username="ov-consumption-dni-test", password="not-used"
+        )
+        for token, value in (
+            ("contract_termination_completed_token", "3"),
+            ("contract_terminated_status", "-1"),
+            ("invoice_status_paid_token", "0"),
+            ("invoice_status_cancelled_token", "-1"),
+        ):
+            ConfigProject.objects.get_or_create(
+                token=token, defaults={"value": value}
+            )
+        status = ContractStatus.objects.create(token="1", name="Activo")
+        cls.sent_status = InvoiceStatus.objects.create(token="3", name="Enviada")
+        cls.preinvoice_status = InvoiceStatus.objects.create(
+            token="1", name="Prefactura"
+        )
+        holder = Person.objects.create(token=cls.NEW_HOLDER, name="Nou")
+        cls.meter = Meter.objects.create(code="MTR-DNI")
+        supply_point = SupplyPoint.objects.create(token="88888/8888", meter=cls.meter)
+        cls.contract = Contract.objects.create(
+            token=cls.TOKEN,
+            status=status,
+            holder=holder,
+            supply_point_default=supply_point,
+        )
+        cls.other_contract = Contract.objects.create(
+            token=cls.OTHER_TOKEN,
+            status=status,
+            holder=holder,
+            supply_point_default=supply_point,
+        )
+
+        # Factura de l'antic titular, amb el DNI desat sense normalitzar
+        # (dada heretada): ha de coincidir igualment.
+        old_invoice = cls._invoice(
+            "DNI-INV-OLD", cls.contract, date(2025, 6, 28), customer="0000 0001-r"
+        )
+        # Factura del titular actual amb un pagador diferent.
+        new_invoice = cls._invoice(
+            "DNI-INV-NEW",
+            cls.contract,
+            date(2026, 3, 28),
+            customer=cls.NEW_HOLDER,
+            payer=cls.PAYER,
+        )
+        # Prefactura i factura futura de l'antic titular: no compten amb DNI.
+        preinvoice = cls._invoice(
+            "DNI-INV-PRE",
+            cls.contract,
+            date(2025, 9, 28),
+            customer=cls.OLD_HOLDER,
+            status=cls.preinvoice_status,
+        )
+        future_invoice = cls._invoice(
+            "DNI-INV-FUT",
+            cls.contract,
+            timezone.localdate() + timedelta(days=30),
+            customer=cls.OLD_HOLDER,
+        )
+        # Factura de l'antic titular en un altre contracte.
+        other_invoice = cls._invoice(
+            "DNI-INV-OTH",
+            cls.other_contract,
+            date(2025, 6, 28),
+            customer=cls.OLD_HOLDER,
+        )
+
+        cls.old_reading = cls._reading(cls.contract, date(2025, 6, 30), old_invoice)
+        cls.new_reading = cls._reading(cls.contract, date(2026, 3, 31), new_invoice)
+        cls.pre_reading = cls._reading(cls.contract, date(2025, 9, 30), preinvoice)
+        cls.future_reading = cls._reading(
+            cls.contract, date(2025, 12, 31), future_invoice
+        )
+        cls.other_reading = cls._reading(
+            cls.other_contract, date(2025, 6, 30), other_invoice
+        )
+
+    @classmethod
+    def _invoice(cls, token, contract, issue_date, customer, payer=None, status=None):
+        return Invoice.objects.create(
+            token=token,
+            contract=contract,
+            status=status or cls.sent_status,
+            issue_date=issue_date,
+            billing_period_year=issue_date.year,
+            billing_period_month=issue_date.month,
+            customer_token_final=customer,
+            payer_token_final=payer,
+        )
+
+    @classmethod
+    def _reading(cls, contract, reading_date, invoice):
+        reading = Reading.objects.create(
+            contract=contract,
+            meter=cls.meter,
+            reading_date=reading_date,
+            reading_value=100.0,
+            real_consumption=10.0,
+        )
+        invoice.readings.add(reading)
+        return reading
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def _list_ids(self, **params):
+        response = self.client.get(
+            reverse("consumptions-ov"), {"contract_token": self.TOKEN, **params}
+        )
+        self.assertEqual(response.status_code, 200)
+        return [item["id"] for item in response.data["results"]]
+
+    def _csv_ids(self, response):
+        self.assertEqual(response.status_code, 200)
+        content = b"".join(response.streaming_content).decode("utf-8")
+        return {int(row["id"]) for row in csv.DictReader(StringIO(content))}
+
+    def _single(self, reading, **params):
+        return self.client.get(
+            reverse("consumption-download-ov", kwargs={"id": reading.id}),
+            {"contract_token": self.TOKEN, "format": "csv", **params},
+        )
+
+    def _bulk(self, **body):
+        return self.client.post(
+            reverse("consumptions-download-ov"),
+            {"contract_token": self.TOKEN, "format": "csv", **body},
+            format="json",
+        )
+
+    @property
+    def all_ids(self):
+        """Lectures facturades del contracte, sense filtre de persona."""
+        return [
+            self.new_reading.id,
+            self.future_reading.id,
+            self.pre_reading.id,
+            self.old_reading.id,
+        ]
+
+    def test_without_dni_behaviour_is_unchanged(self):
+        self.assertEqual(self._list_ids(), self.all_ids)
+
+    def test_blank_dni_is_ignored(self):
+        self.assertEqual(self._list_ids(dni=""), self.all_ids)
+        self.assertEqual(self._list_ids(dni=" - . "), self.all_ids)
+
+    def test_previous_holder_sees_only_their_readings(self):
+        """L'antic titular veu les seves lectures (DNI desat sense normalitzar),
+        però no les prefactures, les factures futures ni les del nou titular."""
+        self.assertEqual(self._list_ids(dni="00000001-r"), [self.old_reading.id])
+
+    def test_current_holder_sees_only_their_readings(self):
+        self.assertEqual(self._list_ids(dni=self.NEW_HOLDER), [self.new_reading.id])
+
+    def test_payer_different_from_holder_sees_their_readings(self):
+        self.assertEqual(self._list_ids(dni=self.PAYER), [self.new_reading.id])
+
+    def test_dni_without_invoices_in_contract_returns_empty_list(self):
+        response = self.client.get(
+            reverse("consumptions-ov"),
+            {"contract_token": self.TOKEN, "dni": self.STRANGER},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["count"], 0)
+        self.assertEqual(response.data["results"], [])
+
+    def test_dni_never_reaches_other_contracts(self):
+        self.assertNotIn(self.other_reading.id, self._list_ids(dni=self.OLD_HOLDER))
+
+    def test_period_comes_from_person_invoice(self):
+        response = self.client.get(
+            reverse("consumptions-ov"),
+            {"contract_token": self.TOKEN, "dni": self.OLD_HOLDER},
+        )
+
+        self.assertEqual(response.data["results"][0]["period"], "2025-2T")
+
+    def test_reading_in_invoices_of_two_people_takes_each_period(self):
+        """Una lectura facturada en dues factures de persones diferents surt un
+        sol cop per a cadascuna, amb el període de la seva factura."""
+        old_invoice = self._invoice(
+            "DNI-INV-SHARED-OLD",
+            self.contract,
+            date(2025, 3, 28),
+            customer=self.OLD_HOLDER,
+        )
+        new_invoice = self._invoice(
+            "DNI-INV-SHARED-NEW",
+            self.contract,
+            date(2025, 10, 28),
+            customer=self.NEW_HOLDER,
+        )
+        shared = self._reading(self.contract, date(2025, 3, 31), old_invoice)
+        new_invoice.readings.add(shared)
+
+        for dni, period in (
+            (self.OLD_HOLDER, "2025-1T"),
+            (self.NEW_HOLDER, "2025-4T"),
+        ):
+            response = self.client.get(
+                reverse("consumptions-ov"),
+                {"contract_token": self.TOKEN, "dni": dni},
+            )
+            rows = [row for row in response.data["results"] if row["id"] == shared.id]
+            self.assertEqual(len(rows), 1, dni)
+            self.assertEqual(rows[0]["period"], period, dni)
+
+    def test_single_download_with_dni(self):
+        response = self._single(self.old_reading, dni=self.OLD_HOLDER)
+        self.assertEqual(self._csv_ids(response), {self.old_reading.id})
+
+        response = self._single(self.new_reading, dni=self.OLD_HOLDER)
+        self.assertEqual(response.status_code, 404)
+
+        response = self._single(self.new_reading, dni="")
+        self.assertEqual(self._csv_ids(response), {self.new_reading.id})
+
+    def test_bulk_download_with_dni(self):
+        self.assertEqual(
+            self._csv_ids(self._bulk(dni=self.OLD_HOLDER)), {self.old_reading.id}
+        )
+        self.assertEqual(
+            self._csv_ids(
+                self._bulk(
+                    dni=self.PAYER,
+                    reading_ids=[self.old_reading.id, self.new_reading.id],
+                )
+            ),
+            {self.new_reading.id},
+        )
+        self.assertEqual(self._csv_ids(self._bulk(dni="")), set(self.all_ids))
+        self.assertEqual(self._csv_ids(self._bulk(dni=None)), set(self.all_ids))
+
+
 class SepaDocumentUploadTests(TestCase):
     """Phase 2: `upload-sepa-signed` desa el mandat al gestor documental i el
     vincula a la forma de pagament del contracte."""
@@ -1440,6 +2011,9 @@ class SepaDocumentUploadTests(TestCase):
     def test_update_iban_locks_and_modifies_reloaded_payment(self):
         from ov.serializers import UpdateBillingDataOVIBANSerializer
 
+        ConfigProject.objects.update_or_create(
+            token="direct_debit_token", defaults={"value": "DIRECT_DEBIT"}
+        )
         contract = Contract.objects.select_related("payment__IBAN").get(pk=self.contract.pk)
         current_bank = PersonBank.objects.create(
             person=self.holder, iban="ES00000000000000000000", name="Current holder"
@@ -1768,6 +2342,21 @@ class DictionaryEndpointsTests(TestCase):
         rate_blank = PriceRate.objects.create(
             token="dict-rate-blank", name="  ", is_active=True, product=product_blank
         )
+        # Cost de les tarifes de contractació i de canvi de nom: imports
+        # fixos (dos conceptes al canvi de nom per comprovar-ne la suma).
+        for rate, prices in ((rate_reg, (50.0,)), (rate_cn, (20.5, 4.25))):
+            billing_range = BillingRange.objects.create(
+                price_rate=rate, start=date(2026, 1, 1), is_active=True
+            )
+            for index, price in enumerate(prices):
+                LineItemType.objects.create(
+                    billing_range=billing_range,
+                    token=f"{rate.token}-lit-{index}",
+                    name=f"Concepte {index}",
+                    price=price,
+                )
+            rate.billing_range_active = billing_range
+            rate.save(update_fields=["billing_range_active"])
         cls.crt_b.registration_price_rates.set([rate_general, rate_blank])
         cls.crt_a.registration_price_rates.set([rate_reg, rate_off])
         cls.crt_a.price_rates.set([rate_water, rate_off])
@@ -2132,6 +2721,8 @@ class DictionaryEndpointsTests(TestCase):
                 "registration_tariffs",
                 "water_tariffs",
                 "change_of_name_tariffs",
+                "registration_price",
+                "change_of_name_price",
             },
         )
         names = [item["name"] or "" for item in response.data]
@@ -2149,16 +2740,68 @@ class DictionaryEndpointsTests(TestCase):
 
         self.assertEqual(
             [dict(r) for r in populated["registration_tariffs"]],
-            [{"token": "dict-rate-reg", "name": "Alta"}],
+            [
+                {
+                    "token": "dict-rate-reg",
+                    "name": "Alta",
+                    "type_price": "fixed",
+                    "price": 50.0,
+                }
+            ],
         )
+        # Les tarifes d'aigua són periòdiques: sense preu.
         self.assertEqual(
             [dict(r) for r in populated["water_tariffs"]],
             [{"token": "dict-rate-water", "name": "Aigua"}],
         )
         self.assertEqual(
             [dict(r) for r in populated["change_of_name_tariffs"]],
-            [{"token": "dict-rate-cn", "name": "Canvi de nom"}],
+            [
+                {
+                    "token": "dict-rate-cn",
+                    "name": "Canvi de nom",
+                    "type_price": "fixed",
+                    "price": 24.75,
+                }
+            ],
         )
+
+    def test_contract_request_types_return_package_prices(self):
+        _, ours = self._request_types_by_token()
+        populated = ours["dict-test-a"]
+
+        self.assertEqual(populated["registration_price"], 50.0)
+        self.assertEqual(populated["change_of_name_price"], 24.75)
+
+    def test_contract_request_types_sum_several_fixed_tariffs(self):
+        self.crt_a.registration_price_rates.add(
+            PriceRate.objects.get(token="TR-FIXED")
+        )
+
+        _, ours = self._request_types_by_token()
+
+        self.assertEqual(ours["dict-test-a"]["registration_price"], 150.0)
+
+    def test_contract_request_types_without_fixed_price_return_null_total(
+        self,
+    ):
+        # Tarifa per trams (calibre): el total depèn del punt de subministrament.
+        self.crt_a.registration_price_rates.add(
+            PriceRate.objects.get(token="TR-VAR")
+        )
+
+        _, ours = self._request_types_by_token()
+        populated = ours["dict-test-a"]
+
+        self.assertIsNone(populated["registration_price"])
+        by_token = {
+            item["token"]: item for item in populated["registration_tariffs"]
+        }
+        self.assertEqual(by_token["TR-VAR"]["type_price"], "variable")
+        self.assertIsNone(by_token["TR-VAR"]["price"])
+        self.assertEqual(by_token["dict-rate-reg"]["price"], 50.0)
+        # Les tarifes sense cap concepte tampoc tenen preu: total null.
+        self.assertIsNone(ours["dict-test-b"]["registration_price"])
 
     def test_contract_request_types_without_tariffs_return_empty_lists(self):
         _, ours = self._request_types_by_token()
@@ -2166,6 +2809,7 @@ class DictionaryEndpointsTests(TestCase):
 
         self.assertEqual(empty["water_tariffs"], [])
         self.assertEqual(empty["change_of_name_tariffs"], [])
+        self.assertEqual(empty["change_of_name_price"], 0)
 
     def test_contract_request_types_resolve_generic_tariff_names_from_product(
         self,
@@ -2173,10 +2817,13 @@ class DictionaryEndpointsTests(TestCase):
         _, ours = self._request_types_by_token()
 
         self.assertEqual(
-            [dict(r) for r in ours["dict-test-b"]["registration_tariffs"]],
             [
-                {"token": "dict-rate-blank", "name": "Producte alta buit"},
-                {"token": "dict-rate-general", "name": "Producte alta general"},
+                (r["token"], r["name"])
+                for r in ours["dict-test-b"]["registration_tariffs"]
+            ],
+            [
+                ("dict-rate-blank", "Producte alta buit"),
+                ("dict-rate-general", "Producte alta general"),
             ],
         )
 
@@ -2188,13 +2835,36 @@ class DictionaryEndpointsTests(TestCase):
         extra = ContractRequestType.objects.create(
             token="dict-test-c", name="Gamma tipus", is_active=True
         )
-        extra.registration_price_rates.set(
-            PriceRate.objects.filter(token="dict-rate-reg")
+        # Una tarifa amb període actiu, una sense període seleccionat i una
+        # sense cap període: el càlcul del preu no ha de fer més consultes.
+        fallback_rate = PriceRate.objects.create(
+            token="dict-rate-fallback", name="Reserva", is_active=True
         )
+        fallback_range = BillingRange.objects.create(
+            price_rate=fallback_rate, start=date(2026, 1, 1), is_active=True
+        )
+        LineItemType.objects.create(
+            billing_range=fallback_range,
+            token="dict-rate-fallback-lit",
+            name="Concepte reserva",
+            price=7.5,
+        )
+        extra.registration_price_rates.set(
+            PriceRate.objects.filter(
+                token__in=["dict-rate-reg", "dict-rate-general"]
+            )
+        )
+        extra.change_of_name_registration_price_rates.set([fallback_rate])
         with CaptureQueriesContext(connection) as after:
-            self.client.get(url)
+            response = self.client.get(url)
 
         self.assertEqual(len(before), len(after))
+        added = next(
+            item for item in response.data if item["token"] == "dict-test-c"
+        )
+        # El preu de la tarifa sense període seleccionat surt del període
+        # actiu de reserva.
+        self.assertEqual(added["change_of_name_price"], 7.5)
 
     def test_dictionary_endpoints_require_authentication(self):
         anonymous = APIClient()
@@ -4558,6 +5228,12 @@ class ContractProcedureOVTests(TestCase):
                 defaults={"name": "Industrial", "is_active": False},
             )
         )
+        cls.type_without_tariffs, _ = (
+            ContractRequestType.objects.update_or_create(
+                token="agricultural",
+                defaults={"name": "Agrícola", "is_active": True},
+            )
+        )
 
         cls.payment_type, _ = PaymentType.objects.update_or_create(
             token="DIRECT_DEBIT", defaults={"name": "Domiciliació bancària"}
@@ -4579,9 +5255,11 @@ class ContractProcedureOVTests(TestCase):
             token="OT-ALTA", name="Alta"
         )
 
-        # El tipus té una altra tarifa enllaçada: la triada per l'OV ha de
-        # guanyar igualment (Option 2a).
-        cls.procedure_type.price_rates.set([cls.type_tariff])
+        # Paquet amb dues tarifes periòdiques actives i una d'inactiva: la
+        # sol·licitud rep les dues actives.
+        cls.procedure_type.price_rates.set(
+            [cls.tariff, cls.type_tariff, cls.inactive_tariff]
+        )
         cls.procedure_type.registration_price_rates.set([cls.type_tariff])
         cls.procedure_type.order_types.set([cls.order_type])
 
@@ -4636,7 +5314,6 @@ class ContractProcedureOVTests(TestCase):
             "holder_dni": "12345678A",
             "property_token": "PROP-1",
             "procedure_type_token": "domestic",
-            "tariff_token": "TR-CHOSEN",
             "payment_type_token": "DIRECT_DEBIT",
             "iban": "ES91 2100 0418 4502 0005 1332",
             "iban_holder_name": "Anna Prova",
@@ -4689,7 +5366,7 @@ class ContractProcedureOVTests(TestCase):
             "ES912100********00051332",
         )
 
-    def test_chosen_tariff_wins_over_procedure_type_tariffs(self):
+    def test_assigns_every_active_periodic_tariff_of_the_type(self):
         response = self._post()
 
         self.assertEqual(response.status_code, 201)
@@ -4699,17 +5376,165 @@ class ContractProcedureOVTests(TestCase):
                 "price_rate", "supply_point"
             )
         )
-        self.assertEqual(len(contract_price_rates), 1)
         self.assertEqual(
-            contract_price_rates[0].price_rate, self.tariff
+            {cpr.price_rate for cpr in contract_price_rates},
+            {self.tariff, self.type_tariff},
+        )
+        self.assertEqual(len(contract_price_rates), 2)
+        for cpr in contract_price_rates:
+            self.assertEqual(cpr.supply_point, self.supply_point)
+            self.assertTrue(cpr.is_active)
+
+    def test_tariff_token_is_ignored(self):
+        # Les integracions que encara l'envien no fallen, però no compta.
+        response = self._post(tariff_token="TR-UNKNOWN")
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(
+            {
+                cpr.price_rate
+                for cpr in self._created_request(response).price_rates.all()
+            },
+            {self.tariff, self.type_tariff},
+        )
+
+    def _second_package(self, tariff_product=None):
+        """Paquet addicional amb una tarifa periòdica, una de contractació i
+        una ordre pròpies."""
+        package = ContractRequestType.objects.create(
+            token="sewer", name="Clavegueram", is_active=True
+        )
+        tariff = PriceRate.objects.create(
+            token="TR-SEWER",
+            name="Clavegueram",
+            is_active=True,
+            product=tariff_product,
+        )
+        registration = PriceRate.objects.create(
+            token="TR-SEWER-REG", name="Escomesa", is_active=True
+        )
+        order_type = OrderType.objects.create(token="OT-SEWER", name="Obra")
+        package.price_rates.set([tariff])
+        package.registration_price_rates.set([registration])
+        package.order_types.set([order_type])
+        return package, tariff, registration, order_type
+
+    def test_several_packages_get_the_union_of_their_tariffs(self):
+        package, tariff, registration, order_type = self._second_package()
+
+        response = self._post(procedure_type_token=["domestic", "sewer"])
+
+        self.assertEqual(response.status_code, 201)
+        request_obj = self._created_request(response)
+        self.assertEqual(request_obj.type, self.procedure_type)
+        self.assertEqual(response.data["type"]["token"], "domestic")
+        self.assertEqual(
+            {cpr.price_rate for cpr in request_obj.price_rates.all()},
+            {self.tariff, self.type_tariff, tariff},
         )
         self.assertEqual(
-            contract_price_rates[0].supply_point, self.supply_point
+            set(request_obj.registration_price_rates.all()),
+            {self.type_tariff, registration},
         )
-        self.assertNotIn(
-            self.type_tariff,
-            [cpr.price_rate for cpr in contract_price_rates],
+        self.assertEqual(
+            set(request_obj.order_types.all()),
+            {self.order_type, order_type},
         )
+
+    def test_first_package_is_the_request_type(self):
+        self._second_package()
+
+        response = self._post(procedure_type_token=["sewer", "domestic"])
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(
+            self._created_request(response).type.token, "sewer"
+        )
+
+    def test_shared_tariff_between_packages_is_assigned_once(self):
+        package, _, _, _ = self._second_package()
+        package.price_rates.add(self.tariff)
+
+        response = self._post(
+            procedure_type_token=["domestic", "sewer", "domestic"]
+        )
+
+        self.assertEqual(response.status_code, 201)
+        rates = list(self._created_request(response).price_rates.all())
+        self.assertEqual(len(rates), 3)
+
+    def test_different_tariffs_of_the_same_product_return_400(self):
+        product = Product.objects.create(token="WATER", name="Aigua")
+        PriceRate.objects.filter(pk=self.tariff.pk).update(product=product)
+        self._second_package(tariff_product=product)
+        count = ContractRequest.objects.count()
+
+        response = self._post(procedure_type_token=["domestic", "sewer"])
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.data,
+            {
+                "error": (
+                    "Procedure types have different tariffs for the same "
+                    "product"
+                ),
+                "products": ["WATER"],
+            },
+        )
+        self.assertEqual(ContractRequest.objects.count(), count)
+
+    def test_package_without_tariffs_is_allowed_with_another_package(self):
+        response = self._post(
+            procedure_type_token=["agricultural", "domestic"]
+        )
+
+        self.assertEqual(response.status_code, 201)
+        request_obj = self._created_request(response)
+        self.assertEqual(request_obj.type, self.type_without_tariffs)
+        self.assertEqual(
+            {cpr.price_rate for cpr in request_obj.price_rates.all()},
+            {self.tariff, self.type_tariff},
+        )
+
+    def test_unknown_or_inactive_package_in_list_returns_404(self):
+        for tokens in (["domestic", "unknown"], ["domestic", "industrial"]):
+            with self.subTest(tokens=tokens):
+                response = self._post(procedure_type_token=tokens)
+                self.assertEqual(response.status_code, 404)
+                self.assertEqual(
+                    response.data, {"error": "Procedure type not found"}
+                )
+
+    def test_invalid_procedure_type_token_returns_400(self):
+        for value in (
+            [],
+            [""],
+            [1],
+            {"token": "domestic"},
+            1,
+            ["x" * 256],
+            "domestic\x00",
+            ["domestic\x00"],
+            ["domestic"] * 21,
+        ):
+            with self.subTest(value=value):
+                response = self._post(procedure_type_token=value)
+                self.assertEqual(response.status_code, 400)
+                self.assertIn("procedure_type_token", response.data)
+
+    def test_type_without_active_periodic_tariffs_returns_400(self):
+        self.type_without_tariffs.price_rates.set([self.inactive_tariff])
+        count = ContractRequest.objects.count()
+
+        response = self._post(procedure_type_token="agricultural")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.data,
+            {"error": "Procedure type has no active periodic tariffs"},
+        )
+        self.assertEqual(ContractRequest.objects.count(), count)
 
     def test_reuses_an_active_contract_price_rate_when_duplicates_exist(self):
         inactive = ContractPriceRate.objects.create(
@@ -4726,10 +5551,13 @@ class ContractProcedureOVTests(TestCase):
         response = self._post()
 
         self.assertEqual(response.status_code, 201)
-        chosen = self._created_request(response).price_rates.get()
+        chosen = self._created_request(response).price_rates.get(
+            price_rate=self.tariff
+        )
         self.assertIn(chosen, active_rates)
         self.assertTrue(chosen.is_active)
-        self.assertEqual(ContractPriceRate.objects.count(), count)
+        # Només es crea la de l'altra tarifa del paquet.
+        self.assertEqual(ContractPriceRate.objects.count(), count + 1)
         inactive.refresh_from_db()
         self.assertFalse(inactive.is_active)
 
@@ -4742,12 +5570,15 @@ class ContractProcedureOVTests(TestCase):
         response = self._post()
 
         self.assertEqual(response.status_code, 201)
-        chosen = self._created_request(response).price_rates.get()
+        chosen = self._created_request(response).price_rates.get(
+            price_rate=self.tariff
+        )
         self.assertNotEqual(chosen.pk, inactive.pk)
         self.assertTrue(chosen.is_active)
         self.assertEqual(chosen.supply_point, self.supply_point)
         self.assertEqual(chosen.price_rate, self.tariff)
-        self.assertEqual(ContractPriceRate.objects.count(), count + 1)
+        # La de la tarifa triada i la de l'altra tarifa del paquet.
+        self.assertEqual(ContractPriceRate.objects.count(), count + 2)
         inactive.refresh_from_db()
         self.assertFalse(inactive.is_active)
 
@@ -5119,15 +5950,6 @@ class ContractProcedureOVTests(TestCase):
                     response.data, {"error": "Procedure type not found"}
                 )
 
-    def test_unknown_or_inactive_tariff_returns_404(self):
-        for tariff_token in ("TR-UNKNOWN", "TR-OFF"):
-            with self.subTest(tariff_token=tariff_token):
-                response = self._post(tariff_token=tariff_token)
-                self.assertEqual(response.status_code, 404)
-                self.assertEqual(
-                    response.data, {"error": "Tariff not found"}
-                )
-
     def test_unknown_payment_type_returns_404(self):
         response = self._post(payment_type_token="UNKNOWN")
 
@@ -5141,7 +5963,6 @@ class ContractProcedureOVTests(TestCase):
             "holder_dni",
             "property_token",
             "procedure_type_token",
-            "tariff_token",
             "payment_type_token",
         ):
             for value in ("", "   "):
@@ -5187,7 +6008,6 @@ class ContractProcedureOVTests(TestCase):
                 "holder_dni": "12345678A",
                 "property_token": "PROP-1",
                 "procedure_type_token": "domestic",
-                "tariff_token": "TR-CHOSEN",
                 "payment_type_token": "DIRECT_DEBIT",
             },
             format="json",
@@ -5212,6 +6032,274 @@ class ContractProcedureOVTests(TestCase):
             reverse("upload-sepa-signed-ov", args=["CONTRACT-1"])
         )
         self.assertNotEqual(sepa_match.url_name, "contract-procedure-ov")
+
+
+@override_settings(OV_SIGNED_CONTRACT_MAX_BYTES=1024)
+class ContractProcedureSepaSignedOVTests(TestCase):
+    """`POST /ov/procedures/contract/` amb el mandat SEPA signat en base64
+    (`sepa_signed`): es desa com a mandat de la forma de pagament de la
+    sol·licitud, i si el document no és vàlid no es crea res."""
+
+    PDF = b"%PDF-1.4 mandat signat de prova"
+
+    @classmethod
+    def setUpClass(cls):
+        cls._storage_dir = tempfile.mkdtemp()
+        cls._storage_override = override_settings(
+            DOCUMENT_STORAGE_PATH=cls._storage_dir
+        )
+        cls._storage_override.enable()
+        super().setUpClass()
+
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+        cls._storage_override.disable()
+        shutil.rmtree(cls._storage_dir, ignore_errors=True)
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(
+            username="ov-contract-procedure-sepa-test", password="not-used"
+        )
+        ContractRequestStatus.objects.update_or_create(
+            token="1", defaults={"name": "Esborrany", "is_default": True}
+        )
+        procedure_type, _ = ContractRequestType.objects.update_or_create(
+            token="domestic", defaults={"name": "Domèstic", "is_active": True}
+        )
+        PaymentType.objects.update_or_create(
+            token="DIRECT_DEBIT", defaults={"name": "Domiciliació bancària"}
+        )
+        PaymentType.objects.update_or_create(
+            token="CASH", defaults={"name": "Efectiu"}
+        )
+        procedure_type.price_rates.set(
+            [PriceRate.objects.create(token="TR-CHOSEN", name="Tarifa", is_active=True)]
+        )
+        cls.holder = Person.objects.create(
+            token="12345678A", name="Anna", surname="Prova"
+        )
+        _new_holder_identification_types()
+        prop = Property.objects.create(token="PROP-1", name="Finca", is_active=True)
+        SupplyPoint.objects.create(token="SP-1", property=prop, is_active=True)
+
+    def setUp(self):
+        cache.clear()
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def _post(self, **overrides):
+        payload = {
+            "holder_dni": "12345678A",
+            "property_token": "PROP-1",
+            "procedure_type_token": "domestic",
+            "payment_type_token": "DIRECT_DEBIT",
+            "iban": "ES91 2100 0418 4502 0005 1332",
+            "iban_holder_name": "Anna Prova",
+            "iban_holder_dni": "12345678A",
+            "iban_holder_swift": "CAIXESBBXXX",
+            "sepa_signed": base64.b64encode(self.PDF).decode(),
+        }
+        payload.update(overrides)
+        return self.client.post(
+            reverse("contract-procedure-ov"), payload, format="json"
+        )
+
+    def _mandate(self, response):
+        contract_request = ContractRequest.objects.get(
+            token=response.data["contract_request_token"]
+        )
+        return GeneralPaymentSepaDocument.objects.get(
+            general_payment=contract_request.payment
+        )
+
+    def _assert_nothing_created(self, response, expected_status):
+        self.assertEqual(response.status_code, expected_status)
+        self.assertFalse(ContractRequest.objects.exists())
+        self.assertFalse(GeneralPayment.objects.exists())
+        self.assertFalse(GeneralPaymentSepaDocument.objects.exists())
+        self.assertFalse(Document.objects.exists())
+
+    def test_without_document_works_as_before(self):
+        for overrides in ({"sepa_signed": None}, {"sepa_signed": ""}):
+            with self.subTest(overrides=overrides):
+                ContractRequest.objects.all().delete()
+                response = self._post(**overrides)
+
+                self.assertEqual(response.status_code, 201)
+                self.assertFalse(GeneralPaymentSepaDocument.objects.exists())
+
+        ContractRequest.objects.all().delete()
+        payload_without_fields = self._post()
+        self.assertEqual(payload_without_fields.status_code, 201)
+
+    def test_valid_document_is_archived_as_the_request_payment_mandate(self):
+        response = self._post(sepa_signed_filename="mandat.pdf")
+
+        self.assertEqual(response.status_code, 201)
+        mandate = self._mandate(response)
+        self.assertTrue(mandate.checked)
+        self.assertEqual(mandate.file.entity, "SEPA")
+        self.assertEqual(mandate.file.field, "CONTRACT")
+        self.assertEqual(mandate.file.document_name, "mandat.pdf")
+        with open(mandate.file.location, "rb") as stored:
+            self.assertEqual(stored.read(), self.PDF)
+        # La resposta no canvia: no exposa res del document.
+        self.assertNotIn("sepa_signed", response.data)
+
+    def test_default_filename_and_sanitized_filename(self):
+        cases = (
+            ({}, "mandat_sepa_signat.pdf"),
+            ({"sepa_signed_filename": None}, "mandat_sepa_signat.pdf"),
+            ({"sepa_signed_filename": "  "}, "mandat_sepa_signat.pdf"),
+            ({"sepa_signed_filename": "../../etc/mandat"}, "mandat.pdf"),
+            ({"sepa_signed_filename": "mandat signat.PDF"}, "mandat_signat.PDF"),
+        )
+        for overrides, expected in cases:
+            with self.subTest(overrides=overrides):
+                ContractRequest.objects.all().delete()
+                response = self._post(**overrides)
+
+                self.assertEqual(response.status_code, 201)
+                document = self._mandate(response).file
+                self.assertEqual(document.document_name, expected)
+                self.assertTrue(
+                    os.path.realpath(document.location).startswith(
+                        os.path.realpath(self._storage_dir) + os.sep
+                    )
+                )
+
+    def test_base64_with_line_breaks_is_accepted(self):
+        encoded = base64.encodebytes(self.PDF * 3).decode()
+        self.assertIn("\n", encoded)
+
+        response = self._post(sepa_signed=encoded)
+
+        self.assertEqual(response.status_code, 201)
+        with open(self._mandate(response).file.location, "rb") as stored:
+            self.assertEqual(stored.read(), self.PDF * 3)
+
+    def test_invalid_base64_returns_400_and_creates_nothing(self):
+        response = self._post(sepa_signed="no és base64!!")
+
+        self._assert_nothing_created(response, 400)
+        self.assertIn("sepa_signed", response.data)
+
+    def test_non_pdf_returns_400_and_creates_nothing(self):
+        response = self._post(
+            sepa_signed=base64.b64encode(b"PK\x03\x04 un zip").decode()
+        )
+
+        self._assert_nothing_created(response, 400)
+        self.assertIn("sepa_signed", response.data)
+
+    def test_too_large_document_returns_413_and_creates_nothing(self):
+        # Tant si el text en base64 ja passa del límit com si només el passen
+        # els bytes descodificats (1025 bytes caben en 1368 caràcters).
+        for content in (b"%PDF-" + b"x" * 2000, b"%PDF-" + b"x" * 1020):
+            with self.subTest(size=len(content)):
+                response = self._post(
+                    sepa_signed=base64.b64encode(content).decode()
+                )
+
+                self._assert_nothing_created(response, 413)
+                self.assertIn("sepa_signed", response.data)
+
+    def test_document_at_the_limit_is_accepted(self):
+        content = b"%PDF-" + b"x" * 1019
+
+        response = self._post(sepa_signed=base64.b64encode(content).decode())
+
+        self.assertEqual(response.status_code, 201)
+
+    @override_settings(OV_SIGNED_CONTRACT_MAX_BYTES=10 * 1024 * 1024)
+    def test_document_over_django_memory_limit_is_accepted(self):
+        # El JSON passa de DATA_UPLOAD_MAX_MEMORY_SIZE (2,5 MiB): el middleware
+        # de registre no pot llegir `request.body`, però DRF llegeix el cos
+        # igualment i l'alta es crea.
+        content = b"%PDF-" + os.urandom(3 * 1024 * 1024)
+        self.assertGreater(
+            len(base64.b64encode(content)), settings.DATA_UPLOAD_MAX_MEMORY_SIZE
+        )
+
+        response = self._post(sepa_signed=base64.b64encode(content).decode())
+
+        self.assertEqual(response.status_code, 201)
+        with open(self._mandate(response).file.location, "rb") as stored:
+            self.assertEqual(stored.read(), content)
+
+    def test_body_without_content_length_is_limited_by_the_parser(self):
+        class TinyParser(LimitedJSONParser):
+            def get_max_bytes(self):
+                return 20
+
+        parser = TinyParser()
+        self.assertEqual(parser.parse(BytesIO(b'{"a": "b"}')), {"a": "b"})
+        with self.assertRaises(RequestBodyTooLarge):
+            parser.parse(BytesIO(b'{"a": "' + b"x" * 30 + b'"}'))
+        with self.assertRaises(ParseError) as raised:
+            parser.parse(BytesIO(b"{no json"))
+        # Sense el detall de l'excepció de Python.
+        self.assertEqual(str(raised.exception.detail), "JSON parse error.")
+
+    def test_view_uses_the_limited_json_parser(self):
+        json_parsers = [
+            parser
+            for parser in ContractProcedureOVView.parser_classes
+            if parser.media_type == "application/json"
+        ]
+        self.assertEqual(len(json_parsers), 1)
+        self.assertTrue(issubclass(json_parsers[0], LimitedJSONParser))
+
+    def test_too_large_body_returns_413_before_reading_it(self):
+        response = self.client.post(
+            reverse("contract-procedure-ov"),
+            data=b"{}",
+            content_type="application/json",
+            CONTENT_LENGTH=str(10 * 1024 * 1024),
+        )
+
+        self.assertEqual(response.status_code, 413)
+        self.assertFalse(ContractRequest.objects.exists())
+
+    def test_new_holder_not_created_when_document_is_invalid(self):
+        response = self._post(
+            holder_dni="87654321X",
+            holder_name="Nou",
+            holder_surname="Titular",
+            holder_email="nou@example.com",
+            holder_phone="600000000",
+            sepa_signed="%%%",
+        )
+
+        self._assert_nothing_created(response, 400)
+        self.assertFalse(Person.objects.filter(token="87654321X").exists())
+
+    def test_document_with_non_direct_debit_returns_400_and_creates_nothing(self):
+        response = self._post(payment_type_token="CASH")
+
+        self._assert_nothing_created(response, 400)
+        self.assertIn("sepa_signed", response.data)
+
+    def test_archive_failure_rolls_back_the_request(self):
+        with patch(
+            "ov.views.upload_document", side_effect=OSError("disc ple")
+        ):
+            with self.assertRaises(OSError):
+                self._post()
+
+        self.assertFalse(ContractRequest.objects.exists())
+        self.assertFalse(GeneralPaymentSepaDocument.objects.exists())
+
+    def test_post_log_masks_the_document(self):
+        with self.assertLogs("post_requests", level="INFO") as logs:
+            response = self._post()
+
+        self.assertEqual(response.status_code, 201)
+        output = "\n".join(logs.output)
+        self.assertNotIn(base64.b64encode(self.PDF).decode(), output)
+        self.assertIn("***REDACTED***", output)
 
 
 class ContractRequestStatusOVTests(TestCase):
@@ -5304,6 +6392,327 @@ class ContractRequestStatusOVTests(TestCase):
 
     def test_inactive_request_returns_404(self):
         self.assertEqual(self._get("CR-OFF").status_code, 404)
+
+
+
+class ContractRequestPdfOVTests(TestCase):
+    """`GET /ov/procedures/contract/<contract_request_token>/pdf/` — PDF del
+    contracte d'una sol·licitud d'alta per signar-lo fora d'Aqua360: es
+    reutilitza el ja generat o es genera (i es desa) amb la plantilla de
+    l'enviament a signar."""
+
+    PDF_BYTES = b"%PDF-1.4 contracte generat"
+
+    @classmethod
+    def setUpClass(cls):
+        cls._media_dir = tempfile.mkdtemp()
+        cls._media_override = override_settings(MEDIA_ROOT=cls._media_dir)
+        cls._media_override.enable()
+        super().setUpClass()
+
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+        cls._media_override.disable()
+        shutil.rmtree(cls._media_dir, ignore_errors=True)
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(
+            username="ov-contract-request-pdf-test", password="not-used"
+        )
+        cls.user.groups.add(Group.objects.get_or_create(name="ov")[0])
+        cls.other_user = User.objects.create_user(
+            username="ov-contract-request-pdf-other", password="not-used"
+        )
+        cls.status, _ = ContractRequestStatus.objects.update_or_create(
+            token="1", defaults={"name": "Esborrany", "is_default": True}
+        )
+        cls.contract_request = ContractRequest.objects.create(
+            token="CR-PDF", status=cls.status
+        )
+        cls.inactive_request = ContractRequest.objects.create(
+            token="CR-PDF-OFF", status=cls.status, is_active=False
+        )
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def _get(self, token="CR-PDF"):
+        return self.client.get(reverse("contract-request-pdf-ov", args=[token]))
+
+    @staticmethod
+    def _content(response):
+        return b"".join(response.streaming_content)
+
+    @patch("ov.views.generate_contract_pdf_bytes")
+    def test_generates_saves_and_returns_pdf_when_missing(self, generate):
+        generate.return_value = self.PDF_BYTES
+
+        response = self._get()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/pdf")
+        self.assertIn('filename="CR-PDF.pdf"', response["Content-Disposition"])
+        self.assertEqual(self._content(response), self.PDF_BYTES)
+        # Mateixes opcions que l'enviament a signar (Aqua360 Sign).
+        generate.assert_called_once_with(
+            self.contract_request, include_requested_at=True
+        )
+        self.contract_request.refresh_from_db()
+        self.assertTrue(self.contract_request.contract_file_template)
+        with self.contract_request.contract_file_template.open("rb") as stored:
+            self.assertEqual(stored.read(), self.PDF_BYTES)
+
+    @patch("ov.views.generate_contract_pdf_bytes")
+    def test_reuses_already_generated_pdf(self, generate):
+        self.contract_request.contract_file_template.save(
+            "CR-PDF.pdf", ContentFile(b"%PDF-1.4 ja generat")
+        )
+
+        response = self._get()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self._content(response), b"%PDF-1.4 ja generat")
+        generate.assert_not_called()
+
+    @patch("ov.views.generate_contract_pdf_bytes")
+    def test_regenerates_when_stored_file_is_missing(self, generate):
+        generate.return_value = self.PDF_BYTES
+        self.contract_request.contract_file_template.save(
+            "CR-PDF.pdf", ContentFile(b"%PDF-1.4 perdut")
+        )
+        os.remove(self.contract_request.contract_file_template.path)
+
+        response = self._get()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self._content(response), self.PDF_BYTES)
+        generate.assert_called_once()
+
+    @patch("ov.views.generate_contract_pdf_bytes")
+    def test_generation_error_returns_500(self, generate):
+        generate.side_effect = ContractPdfGenerationError("plantilla")
+
+        response = self._get()
+
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(
+            response.data, {"error": "Contract PDF could not be generated"}
+        )
+        self.contract_request.refresh_from_db()
+        self.assertFalse(self.contract_request.contract_file_template)
+
+    @patch("ov.views.generate_contract_pdf_bytes")
+    def test_unexpected_generation_error_returns_same_500(self, generate):
+        # P. ex. la plantilla configurada no existeix: peta abans de pisa.
+        generate.side_effect = TemplateDoesNotExist("contract_template.html")
+
+        response = self._get()
+
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(
+            response.data, {"error": "Contract PDF could not be generated"}
+        )
+
+    def test_unknown_request_returns_404(self):
+        self.assertEqual(self._get("CR-NOPE").status_code, 404)
+
+    def test_inactive_request_returns_404(self):
+        self.assertEqual(self._get("CR-PDF-OFF").status_code, 404)
+
+    def test_user_outside_ov_group_gets_403(self):
+        self.client.force_authenticate(self.other_user)
+        self.assertEqual(self._get().status_code, 403)
+
+    def test_anonymous_gets_401(self):
+        self.client.force_authenticate(None)
+        self.assertEqual(self._get().status_code, 401)
+
+class ContractRequestSignedUploadOVTests(TestCase):
+    """`POST /ov/procedures/contract/<contract_request_token>/signed/` —
+    contracte d'una sol·licitud d'alta signat fora d'Aqua360: es desa com el
+    que torna Aqua360 Sign (sol·licitud i, si n'hi ha, contracte) i no canvia
+    l'estat de la sol·licitud."""
+
+    PDF_BYTES = b"%PDF-1.4 contracte signat"
+
+    @classmethod
+    def setUpClass(cls):
+        cls._storage_dir = tempfile.mkdtemp()
+        cls._storage_override = override_settings(
+            DOCUMENT_STORAGE_PATH=cls._storage_dir,
+            DOCUMENT_MANAGER_SERVICES={
+                **settings.DOCUMENT_MANAGER_SERVICES,
+                "contract": "hdd",
+            },
+        )
+        cls._storage_override.enable()
+        super().setUpClass()
+
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+        cls._storage_override.disable()
+        shutil.rmtree(cls._storage_dir, ignore_errors=True)
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(
+            username="ov-contract-request-signed-test", password="not-used"
+        )
+        cls.user.groups.add(Group.objects.get_or_create(name="ov")[0])
+        cls.other_user = User.objects.create_user(
+            username="ov-contract-request-signed-other", password="not-used"
+        )
+        cls.status, _ = ContractRequestStatus.objects.update_or_create(
+            token="1", defaults={"name": "Esborrany", "is_default": True}
+        )
+        cls.contract_request = ContractRequest.objects.create(
+            token="CR-SIGNED", status=cls.status
+        )
+        cls.inactive_request = ContractRequest.objects.create(
+            token="CR-SIGNED-OFF", status=cls.status, is_active=False
+        )
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def _post(self, token="CR-SIGNED", content=None, name="signat.pdf", **data):
+        if content is not None or name is not None:
+            data.setdefault(
+                "file",
+                SimpleUploadedFile(
+                    name,
+                    self.PDF_BYTES if content is None else content,
+                    content_type="application/pdf",
+                ),
+            )
+        return self.client.post(
+            reverse("contract-request-signed-ov", args=[token]),
+            data,
+            format="multipart",
+        )
+
+    @staticmethod
+    def _stored_bytes(document):
+        with open(document.location, "rb") as stored:
+            return stored.read()
+
+    def test_saves_signed_pdf_on_request(self):
+        response = self._post()
+
+        self.assertEqual(response.status_code, 201)
+        self.contract_request.refresh_from_db()
+        document = self.contract_request.contract_file
+        self.assertIsNotNone(document)
+        self.assertEqual(
+            response.data,
+            {
+                "contract_request_token": "CR-SIGNED",
+                "document_id": document.id,
+                "success": True,
+            },
+        )
+        self.assertEqual(self._stored_bytes(document), self.PDF_BYTES)
+        # Només s'afegeix el document: l'estat no canvia ni es registra.
+        self.assertEqual(self.contract_request.status, self.status)
+        self.assertFalse(
+            LogContractRequestStatus.objects.filter(
+                object=self.contract_request
+            ).exists()
+        )
+
+    def test_also_saves_on_contract_if_created(self):
+        # El signal `terminate_contract_update_bail` el llegeix en desar el
+        # contracte.
+        ConfigProject.objects.get_or_create(
+            token="contract_terminated_status", defaults={"value": "-1"}
+        )
+        contract = Contract.objects.create(
+            token="C-SIGNED",
+            status=ContractStatus.objects.get_or_create(
+                token="1", defaults={"name": "Active"}
+            )[0],
+            contract_request=self.contract_request,
+        )
+
+        response = self._post()
+
+        self.assertEqual(response.status_code, 201)
+        contract.refresh_from_db()
+        self.assertEqual(contract.contract_file_id, response.data["document_id"])
+
+    def test_new_upload_replaces_previous(self):
+        first = self._post(content=b"%PDF-1.4 primer").data["document_id"]
+
+        response = self._post(content=b"%PDF-1.4 segon")
+
+        self.assertEqual(response.status_code, 201)
+        self.assertNotEqual(response.data["document_id"], first)
+        self.contract_request.refresh_from_db()
+        self.assertEqual(
+            self.contract_request.contract_file_id, response.data["document_id"]
+        )
+        self.assertEqual(
+            self._stored_bytes(self.contract_request.contract_file),
+            b"%PDF-1.4 segon",
+        )
+
+    def test_missing_file_returns_400(self):
+        response = self._post(name=None)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("file", response.data)
+
+    def test_non_pdf_extension_returns_400(self):
+        response = self._post(name="signat.png")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("file", response.data)
+
+    def test_non_pdf_content_returns_400(self):
+        response = self._post(content=b"no soc un pdf")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("file", response.data)
+
+    @override_settings(OV_SIGNED_CONTRACT_MAX_BYTES=10)
+    def test_too_large_file_returns_400(self):
+        response = self._post()
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("file", response.data)
+        self.contract_request.refresh_from_db()
+        self.assertIsNone(self.contract_request.contract_file)
+
+    @override_settings(OV_SIGNED_CONTRACT_MAX_BYTES=10)
+    @patch("ov.views.SignedContractUploadSerializer")
+    def test_body_larger_than_limit_returns_413_without_parsing(self, serializer):
+        # Més gran que el límit + el marge del multipart: es rebutja per la
+        # capçalera, abans de llegir el cos.
+        response = self._post(content=b"%PDF-" + b"0" * (70 * 1024))
+
+        self.assertEqual(response.status_code, 413)
+        serializer.assert_not_called()
+        self.contract_request.refresh_from_db()
+        self.assertIsNone(self.contract_request.contract_file)
+
+    def test_unknown_request_returns_404(self):
+        self.assertEqual(self._post("CR-NOPE").status_code, 404)
+
+    def test_inactive_request_returns_404(self):
+        self.assertEqual(self._post("CR-SIGNED-OFF").status_code, 404)
+
+    def test_user_outside_ov_group_gets_403(self):
+        self.client.force_authenticate(self.other_user)
+        self.assertEqual(self._post().status_code, 403)
+
+    def test_anonymous_gets_401(self):
+        self.client.force_authenticate(None)
+        self.assertEqual(self._post().status_code, 401)
 
 
 class BillingPeriodsViewTests(TestCase):
@@ -6894,6 +8303,7 @@ class FutureInvoiceVisibilityOVTests(TestCase):
         cls.user = User.objects.create_user(
             username="ov-future-invoices-test", password="not-used"
         )
+        cls.user.groups.add(Group.objects.get_or_create(name="ov")[0])
         for token, value in (
             ("contract_termination_completed_token", "3"),
             ("contract_terminated_status", "-1"),
@@ -7271,7 +8681,7 @@ class PersonInvoicesOVTests(TestCase):
         self.assertIn("PINV-1", self._invoices(response))
 
     def test_unknown_dni_returns_empty_results(self):
-        response = self._get(dni="99999999R")
+        response = self._get(dni="87654321X")
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data, {"results": []})
@@ -7320,14 +8730,15 @@ class PersonInvoicesOVTests(TestCase):
             q for q in queries.captured_queries if "ov_pdf_from" in q["sql"]
         ]
         self.assertEqual(len(config_queries), 1)
-        # Factures + configuració, sense consultes per factura (N+1). Es
-        # descompten les dels middlewares (grups de l'usuari i auditoria).
+        # Factures + configuració (data dels PDF i token de rebut retornat),
+        # sense consultes per factura (N+1). Es descompten les dels
+        # middlewares (grups de l'usuari i auditoria).
         data_queries = [
             q["sql"]
             for q in queries.captured_queries
             if q["sql"].startswith('SELECT "') and "auth_" not in q["sql"]
         ]
-        self.assertEqual(len(data_queries), 2, data_queries)
+        self.assertEqual(len(data_queries), 3, data_queries)
 
     # --- filtre de dates ---------------------------------------------------
 
@@ -7400,3 +8811,1389 @@ class PersonInvoicesOVTests(TestCase):
         self.assertIs(
             resolve(reverse(self.URL_NAME)).func.view_class, PersonInvoicesOVView
         )
+
+
+class PersonContractsOVTests(TestCase):
+    """`GET /ov/person-contracts/?dni=` — contractes actuals i antics d'una
+    persona amb el seu paper (titular/pagadora) i si hi està vinculada avui."""
+
+    URL_NAME = "person-contracts-ov"
+    DNI = "11111111H"
+    OTHER_DNI = "22222222J"
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(
+            username="ov-person-contracts-test", password="not-used"
+        )
+        cls.user.groups.add(Group.objects.get_or_create(name="ov")[0])
+        cls.internal_user = User.objects.create_user(
+            username="ov-person-contracts-internal", password="not-used"
+        )
+        for token, value in (
+            ("contract_termination_completed_token", "3"),
+            ("contract_terminated_status", "-1"),
+            # Un contracte de baixa amb compte busca fiances per retornar.
+            ("bail_status_unreturned_token", "UNRETURNED"),
+            ("invoice_status_paid_token", "0"),
+            ("invoice_status_cancelled_token", "-1"),
+        ):
+            if not ConfigProject.objects.filter(token=token).exists():
+                ConfigProject.objects.create(token=token, value=value)
+        ConfigProject.objects.update_or_create(
+            token="contract_active_token", defaults={"value": "1"}
+        )
+        cls.active_status = ContractStatus.objects.create(token="1", name="Alta")
+        cls.dropped_status = ContractStatus.objects.create(token="-1", name="Baixa")
+        invoice_status = InvoiceStatus.objects.create(token="3", name="Enviada")
+        preinvoice_status = InvoiceStatus.objects.create(token="1", name="Prefactura")
+
+        cls.person = Person.objects.create(token=cls.DNI, name="Persona")
+        cls.other = Person.objects.create(token=cls.OTHER_DNI, name="Altra")
+        payment_type = PaymentType.objects.create(token="DIRECT_DEBIT")
+        person_account = GeneralPayment.objects.create(
+            type=payment_type,
+            IBAN=PersonBank.objects.create(
+                person=cls.person, dni=cls.DNI, iban="ES1111111111111111111111"
+            ),
+        )
+        other_account = GeneralPayment.objects.create(
+            type=payment_type,
+            IBAN=PersonBank.objects.create(
+                person=cls.other, dni=cls.OTHER_DNI, iban="ES2222222222222222222222"
+            ),
+        )
+
+        street_type = StreetType.objects.create(abbreviation="C", name="Carrer")
+        city = City.objects.create(token="CITY-PCON", name="Ciutat")
+        street = Street.objects.create(name="Major", type=street_type, city=city)
+        number = StreetNumber.objects.create(street=street, number=10)
+        country = Country.objects.create(name="Espanya", iso_code="ES")
+        address = Address.objects.create(
+            token="ADDRESS-PCON",
+            street=street,
+            street_number=number,
+            city=city,
+            country=country,
+        )
+        cls.supply_point = SupplyPoint.objects.create(
+            token="SP-PCON", address=address
+        )
+
+        def contract(token, status, holder, payment=None, **extra):
+            return Contract.objects.create(
+                token=token, status=status, holder=holder, payment=payment, **extra
+            )
+
+        def invoice(token, contract, customer, payer=None, **extra):
+            return Invoice.objects.create(
+                token=token,
+                contract=contract,
+                status=extra.pop("status", invoice_status),
+                issue_date=extra.pop("issue_date", date(2025, 1, 15)),
+                customer_token_final=customer,
+                payer_token_final=payer,
+                total_final=Decimal("10.00"),
+                left_to_pay=Decimal("0.00"),
+                **extra,
+            )
+
+        # Titular avui, sense compte i sense factures: titular i pagadora.
+        cls.holder_now = contract(
+            "PCON-01",
+            cls.active_status,
+            cls.person,
+            supply_point_default=cls.supply_point,
+        )
+        # Titular avui amb el compte d'una altra persona: només titular.
+        contract("PCON-02", cls.active_status, cls.person, other_account)
+        # Titular del compte d'un contracte d'una altra persona: pagadora.
+        contract("PCON-03", cls.active_status, cls.other, person_account)
+        # Compte lligat a la fitxa de la persona però amb el DNI d'una altra:
+        # el compte és de l'altra persona i aquí no hi surt.
+        foreign_dni_account = GeneralPayment.objects.create(
+            type=payment_type,
+            IBAN=PersonBank.objects.create(
+                person=cls.person, dni=cls.OTHER_DNI, iban="ES3333333333333333333333"
+            ),
+        )
+        contract("PCON-93", cls.active_status, cls.other, foreign_dni_account)
+        # Titular avui amb un compte sense DNI: com en facturar, és pagadora.
+        no_dni_account = GeneralPayment.objects.create(
+            type=payment_type,
+            IBAN=PersonBank.objects.create(
+                person=cls.other, dni="", iban="ES4444444444444444444444"
+            ),
+        )
+        contract("PCON-08", cls.active_status, cls.person, no_dni_account)
+        # Titular avui d'un contracte de baixa: no hi està vinculada avui.
+        contract("PCON-04", cls.dropped_status, cls.person, person_account)
+        # Titular antiga per factures (canvi de titular): titular i pagadora.
+        old_holder = contract("PCON-05", cls.active_status, cls.other)
+        invoice("PCON-INV-05", old_holder, cls.DNI)
+        # Pagadora antiga per factures d'un contracte de baixa.
+        old_payer = contract("PCON-06", cls.dropped_status, cls.other)
+        invoice("PCON-INV-06", old_payer, cls.OTHER_DNI, cls.DNI)
+        # Factura amb pagador buit: la titular és la pagadora.
+        empty_payer = contract("PCON-07", cls.dropped_status, cls.other)
+        invoice("PCON-INV-07", empty_payer, cls.DNI, "")
+        # No hi han de sortir: d'una altra persona, prefactura i factura futura.
+        unrelated = contract("PCON-90", cls.active_status, cls.other)
+        invoice("PCON-INV-90", unrelated, cls.OTHER_DNI)
+        preinvoice = contract("PCON-91", cls.active_status, cls.other)
+        invoice("PCON-INV-91", preinvoice, cls.DNI, status=preinvoice_status)
+        future = contract("PCON-92", cls.active_status, cls.other)
+        invoice(
+            "PCON-INV-92",
+            future,
+            cls.DNI,
+            issue_date=timezone.localdate() + timedelta(days=5),
+        )
+
+    EXPECTED = {
+        "PCON-01": (["holder", "payer"], True),
+        "PCON-02": (["holder"], True),
+        "PCON-03": (["payer"], True),
+        "PCON-04": (["holder", "payer"], False),
+        "PCON-05": (["holder", "payer"], False),
+        "PCON-06": (["payer"], False),
+        "PCON-07": (["holder", "payer"], False),
+        "PCON-08": (["holder", "payer"], True),
+    }
+
+    def setUp(self):
+        cache.clear()
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def _get(self, **params):
+        return self.client.get(reverse(self.URL_NAME), params)
+
+    @staticmethod
+    def _by_token(response):
+        return {item["contract_token"]: item for item in response.data["results"]}
+
+    def test_returns_current_and_past_contracts_with_roles(self):
+        response = self._get(dni=self.DNI)
+
+        self.assertEqual(response.status_code, 200)
+        items = self._by_token(response)
+        self.assertEqual(set(items), set(self.EXPECTED))
+        for token, (roles, related_now) in self.EXPECTED.items():
+            with self.subTest(token=token):
+                self.assertEqual(items[token]["roles"], roles)
+                self.assertIs(items[token]["related_now"], related_now)
+
+    def test_contracts_related_now_come_first(self):
+        response = self._get(dni=self.DNI)
+
+        tokens = [item["contract_token"] for item in response.data["results"]]
+        self.assertEqual(
+            tokens,
+            [
+                "PCON-01",
+                "PCON-02",
+                "PCON-03",
+                "PCON-08",
+                "PCON-04",
+                "PCON-05",
+                "PCON-06",
+                "PCON-07",
+            ],
+        )
+
+    def test_item_contains_contract_data(self):
+        item = self._by_token(self._get(dni=self.DNI))["PCON-01"]
+
+        self.assertEqual(item["contract_status"], {"token": "1", "name": "Alta"})
+        self.assertEqual(item["supply_point"], "SP-PCON")
+        self.assertIsNotNone(item["address"])
+        self.assertIn("Major", item["address"])
+        self.assertNotIn("start_date", item)
+
+    def test_contract_without_supply_point_has_null_fields(self):
+        item = self._by_token(self._get(dni=self.DNI))["PCON-02"]
+
+        self.assertIsNone(item["supply_point"])
+        self.assertIsNone(item["address"])
+
+    def test_filter_role_holder(self):
+        response = self._get(dni=self.DNI, role="holder")
+
+        self.assertEqual(
+            set(self._by_token(response)),
+            {"PCON-01", "PCON-02", "PCON-04", "PCON-05", "PCON-07", "PCON-08"},
+        )
+
+    def test_filter_role_payer(self):
+        response = self._get(dni=self.DNI, role="payer")
+
+        self.assertEqual(
+            set(self._by_token(response)),
+            {
+                "PCON-01",
+                "PCON-03",
+                "PCON-04",
+                "PCON-05",
+                "PCON-06",
+                "PCON-07",
+                "PCON-08",
+            },
+        )
+
+    def test_filter_related_now(self):
+        current = self._get(dni=self.DNI, related_now="true")
+        past = self._get(dni=self.DNI, related_now="false")
+
+        self.assertEqual(
+            set(self._by_token(current)), {"PCON-01", "PCON-02", "PCON-03", "PCON-08"}
+        )
+        self.assertEqual(
+            set(self._by_token(past)), {"PCON-04", "PCON-05", "PCON-06", "PCON-07"}
+        )
+
+    def test_without_active_status_config_nothing_is_related_now(self):
+        ConfigProject.objects.filter(token="contract_active_token").delete()
+
+        response = self._get(dni=self.DNI)
+
+        self.assertEqual(len(response.data["results"]), len(self.EXPECTED))
+        self.assertFalse(
+            any(item["related_now"] for item in response.data["results"])
+        )
+
+    def test_invalid_filters_return_400(self):
+        self.assertEqual(self._get(dni=self.DNI, role="owner").status_code, 400)
+        self.assertEqual(self._get(dni=self.DNI, related_now="yes").status_code, 400)
+
+    def test_pagination(self):
+        response = self._get(dni=self.DNI, limit=3, page=3)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["count"], 8)
+        self.assertEqual(response.data["total_pages"], 3)
+        self.assertEqual(response.data["limit"], 3)
+        self.assertEqual(
+            [item["contract_token"] for item in response.data["results"]],
+            ["PCON-06", "PCON-07"],
+        )
+
+    def test_invalid_page_returns_400(self):
+        self.assertEqual(self._get(dni=self.DNI, page=99).status_code, 400)
+
+    def test_dni_with_different_format_is_normalized(self):
+        response = self._get(dni=" 11.111.111-h ")
+
+        self.assertEqual(set(self._by_token(response)), set(self.EXPECTED))
+
+    def test_unknown_dni_returns_empty_results(self):
+        response = self._get(dni="87654321X")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["count"], 0)
+        self.assertEqual(response.data["results"], [])
+
+    def test_missing_dni_returns_400(self):
+        self.assertEqual(self._get().status_code, 400)
+        self.assertEqual(self._get(dni=" - ").status_code, 400)
+
+    def test_query_count_does_not_grow_with_contracts(self):
+        with CaptureQueriesContext(connection) as before:
+            self._get(dni=self.DNI)
+        for index in range(5):
+            Contract.objects.create(
+                token=f"PCON-EXTRA-{index}",
+                status=self.active_status,
+                holder=self.person,
+                supply_point_default=self.supply_point,
+            )
+        cache.clear()
+        with CaptureQueriesContext(connection) as after:
+            response = self._get(dni=self.DNI)
+
+        self.assertEqual(response.data["count"], len(self.EXPECTED) + 5)
+        self.assertEqual(len(after), len(before))
+
+    def test_requires_authentication(self):
+        response = APIClient().get(reverse(self.URL_NAME), {"dni": self.DNI})
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_internal_user_outside_ov_group_is_forbidden(self):
+        client = APIClient()
+        client.force_authenticate(self.internal_user)
+
+        response = client.get(reverse(self.URL_NAME), {"dni": self.DNI})
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_endpoint_uses_dedicated_throttle(self):
+        self.assertEqual(
+            PersonContractsOVView.throttle_classes, [PersonContractsThrottle]
+        )
+        self.assertEqual(PersonContractsThrottle.scope, "ov_person_contracts_dni")
+        self.assertEqual(PersonContractsThrottle.rate, "35/min")
+
+    def test_route(self):
+        self.assertEqual(reverse(self.URL_NAME), "/ov/person-contracts/")
+        self.assertIs(
+            resolve(reverse(self.URL_NAME)).func.view_class, PersonContractsOVView
+        )
+
+
+class MaskDniTests(TestCase):
+    def test_nif_of_nine_chars_shows_four_central_digits(self):
+        from ov.serializers import mask_dni
+
+        self.assertEqual(mask_dni("12345678Z"), "***4567**")
+
+    def test_keeps_original_length(self):
+        from ov.serializers import mask_dni
+
+        self.assertEqual(mask_dni("X1234567L"), "***3456**")
+        self.assertEqual(len(mask_dni("B1234567890")), 11)
+        self.assertEqual(mask_dni("B1234567890"), "***3456****")
+
+    def test_shorter_than_nine_is_fully_masked(self):
+        from ov.serializers import mask_dni
+
+        self.assertEqual(mask_dni("1234567"), "*******")
+
+    def test_empty_values(self):
+        from ov.serializers import mask_dni
+
+        self.assertEqual(mask_dni(None), "")
+        self.assertEqual(mask_dni(""), "")
+
+
+class InvoiceDirectDebitAccountTests(TestCase):
+    """`direct_debit_account` al detall de factura: compte de cobrament
+    d'aquella factura, amb el titular resolt pel pagador o pel IBAN."""
+
+    DEBIT = "DEBIT-TEST"
+    IBAN_A = "ES9121000418450200051332"
+    IBAN_B = "ES7921000813610123456789"
+    IBAN_C = "ES6621000418401234567891"
+    HOLDER_NIF = "11111111H"
+    OTHER_NIF = "22222222J"
+    THIRD_NIF = "33333333P"
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(username="ov-dda-test", password="x")
+        for token, value in (
+            ("direct_debit_token", cls.DEBIT),
+            ("contract_termination_completed_token", "3"),
+            ("contract_terminated_status", "-1"),
+            ("invoice_status_paid_token", "0"),
+            ("invoice_status_cancelled_token", "-1"),
+        ):
+            ConfigProject.objects.update_or_create(
+                token=token, defaults={"value": value}
+            )
+        cls.status = InvoiceStatus.objects.create(token="3", name="Enviada")
+        cls.holder = Person.objects.create(
+            token=cls.HOLDER_NIF, name="Titular", surname="Prova"
+        )
+        cls.other = Person.objects.create(
+            token=cls.OTHER_NIF, name="Altre", surname="Prova"
+        )
+        cls.third = Person.objects.create(
+            token=cls.THIRD_NIF, name="Tercer", surname="Prova"
+        )
+        cls.bank_a = PersonBank.objects.create(person=cls.holder, iban=cls.IBAN_A)
+        cls.payment_type = PaymentType.objects.create(token=cls.DEBIT, name="SEPA")
+        cls.contract_payment = GeneralPayment.objects.create(
+            type=cls.payment_type, IBAN=cls.bank_a
+        )
+        cls.contract = Contract.objects.create(
+            token="DDA-1", holder=cls.holder, payment=cls.contract_payment
+        )
+        cls.seq = 0
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def _invoice(self, **extra):
+        type(self).seq += 1
+        values = dict(
+            token=f"DDA-INV-{self.seq}",
+            contract=self.contract,
+            status=self.status,
+            issue_date=date(2026, 1, 15),
+            payment_type_token_final=self.DEBIT,
+            customer_token_final=self.HOLDER_NIF,
+            payment_bank_final=self.IBAN_A,
+        )
+        values.update(extra)
+        return Invoice.objects.create(**values)
+
+    def _account(self, invoice):
+        response = self.client.get(
+            reverse("invoice-detail-by-token-ov", kwargs={"token": invoice.token})
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("direct_debit_account", response.data)
+        return response.data["direct_debit_account"]
+
+    def test_not_direct_debit_is_null(self):
+        invoice = self._invoice(payment_type_token_final="CASH")
+        self.assertIsNone(self._account(invoice))
+
+    def test_without_iban_is_null(self):
+        invoice = self._invoice(payment_bank_final=None)
+        self.assertIsNone(self._account(invoice))
+
+    def test_payer_fields_take_precedence(self):
+        invoice = self._invoice(
+            payer_final="Pagador Prova", payer_token_final=self.HOLDER_NIF
+        )
+        self.assertEqual(
+            self._account(invoice),
+            {
+                "iban": "ES912100********00051332",
+                "nombre": "Pagador Prova",
+                "dni": self.HOLDER_NIF,
+            },
+        )
+
+    def test_payer_third_party_masks_dni(self):
+        invoice = self._invoice(
+            payer_final="Pagador Tercer", payer_token_final=self.THIRD_NIF
+        )
+        account = self._account(invoice)
+        self.assertEqual(account["nombre"], "Pagador Tercer")
+        self.assertEqual(account["dni"], "***3333**")
+
+    def test_migrated_invoice_uses_contract_account_when_iban_matches(self):
+        invoice = self._invoice()
+        with CaptureQueriesContext(connection) as queries:
+            account = self._account(invoice)
+        self.assertEqual(account["nombre"], "Titular Prova")
+        self.assertEqual(account["dni"], self.HOLDER_NIF)
+        self.assertFalse(
+            [q for q in queries if "coredata_personbank" in q["sql"] and "UPPER" in q["sql"]]
+        )
+
+    def test_migrated_invoice_with_iban_different_from_current_account(self):
+        PersonBank.objects.create(person=self.holder, iban=self.IBAN_B)
+        invoice = self._invoice(payment_bank_final=self.IBAN_B)
+        account = self._account(invoice)
+        self.assertEqual(account["iban"], "ES792100********23456789")
+        self.assertEqual(account["nombre"], "Titular Prova")
+        self.assertEqual(account["dni"], self.HOLDER_NIF)
+
+    def test_iban_is_matched_ignoring_spaces_and_case(self):
+        PersonBank.objects.create(person=self.holder, iban="es79 2100 0813 6101 2345 6789")
+        invoice = self._invoice(payment_bank_final=self.IBAN_B.lower())
+        self.assertEqual(self._account(invoice)["dni"], self.HOLDER_NIF)
+
+    def test_shared_iban_resolved_by_contract_holder(self):
+        PersonBank.objects.create(person=self.other, iban=self.IBAN_B)
+        PersonBank.objects.create(person=self.holder, iban=self.IBAN_B)
+        invoice = self._invoice(payment_bank_final=self.IBAN_B)
+        account = self._account(invoice)
+        self.assertEqual(account["nombre"], "Titular Prova")
+        self.assertEqual(account["dni"], self.HOLDER_NIF)
+
+    def test_shared_iban_resolved_by_invoice_customer(self):
+        other_contract = Contract.objects.create(token="DDA-2", holder=self.third)
+        PersonBank.objects.create(person=self.holder, iban=self.IBAN_C)
+        PersonBank.objects.create(person=self.other, iban=self.IBAN_C)
+        invoice = self._invoice(
+            contract=other_contract,
+            payment_bank_final=self.IBAN_C,
+            customer_token_final=self.OTHER_NIF,
+        )
+        account = self._account(invoice)
+        self.assertEqual(account["nombre"], "Altre Prova")
+        self.assertEqual(account["dni"], self.OTHER_NIF)
+
+    def test_single_candidate_third_party_masks_dni(self):
+        PersonBank.objects.create(person=self.third, iban=self.IBAN_C)
+        invoice = self._invoice(payment_bank_final=self.IBAN_C)
+        account = self._account(invoice)
+        self.assertEqual(account["nombre"], "Tercer Prova")
+        self.assertEqual(account["dni"], "***3333**")
+
+    def test_ambiguous_iban_leaves_holder_null(self):
+        PersonBank.objects.create(person=self.other, iban=self.IBAN_C)
+        PersonBank.objects.create(person=self.third, iban=self.IBAN_C)
+        invoice = self._invoice(payment_bank_final=self.IBAN_C)
+        self.assertEqual(
+            self._account(invoice),
+            {"iban": "ES662100********34567891", "nombre": None, "dni": None},
+        )
+
+    def test_unknown_iban_leaves_holder_null(self):
+        invoice = self._invoice(payment_bank_final=self.IBAN_C)
+        account = self._account(invoice)
+        self.assertEqual(account["iban"], "ES662100********34567891")
+        self.assertIsNone(account["nombre"])
+        self.assertIsNone(account["dni"])
+
+
+class DirectDebitTpvOVTests(TestCase):
+    """Tiquet 2890: pagament per TPV de factures domiciliades pendents o retornades.
+
+    - `cancel-direct-debit` passa també les factures obertes domiciliades del contracte a
+      la forma de pagament nova (excepte abonaments i rebuts en remeses pendents d'enviar).
+    - `/ov/invoice/paid/` i `quick-pay` no deixen pagar una factura amb un rebut en una
+      remesa pendent d'enviar (409); `/paid/` d'una factura ja pagada respon 200 amb
+      `already_paid`.
+    """
+
+    PAYMENT_STATUSES = (
+        ("payment_status_paid_token", "0", "Pagat"),
+        ("payment_status_pending_token", "1", "Pendent"),
+        ("payment_status_expired_token", "2", "Vençut"),
+        ("payment_status_commitment_token", "3", "Compromís"),
+        ("payment_status_endowment_token", "4", "Dotació"),
+        ("payment_status_irrecoverable_token", "5", "Irrecuperable"),
+        ("payment_status_sent_token", "6", "Enviat"),
+        ("payment_status_returned_token", "7", "Retornat"),
+        ("payment_status_cancelled_token", "8", "Anul·lat"),
+        ("payment_status_piggy_token", "9", "Guardiola"),
+        ("payment_status_payoff_token", "10", "Liquidat"),
+    )
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(username="ov-dd-tpv-test", password="not-used")
+        cls.user.groups.add(Group.objects.get_or_create(name="ov")[0])
+
+        for token, value in (
+            ("contract_termination_completed_token", "3"),
+            ("contract_terminated_status", "-1"),
+            ("bail_status_returned_token", "-1"),
+            ("invoice_type_invoice_token", "F"),
+            ("invoice_status_confirmed_token", "2"),
+            ("invoice_status_sent_token", "3"),
+            ("invoice_status_expired_token", "-1"),
+            ("invoice_status_paid_token", "0"),
+            ("invoice_status_pending_token", "1"),
+            ("invoice_status_cancelled_token", "-6"),
+            ("invoice_status_dropped_token", "-7"),
+            ("invoice_status_payoff_token", "-2"),
+            ("invoice_status_irrecoverable_token", "-5"),
+            ("invoice_status_part_irrecoverable_token", "-4"),
+            # Senyals dels pagaments (marcar-ne un de pagat)
+            ("direct_debit_token", "DIRECT_DEBIT"),
+            ("commitment_deposit_status_cancelled_token", "-1"),
+            ("payment_commitment_status_cancelled_token", "-1"),
+            ("payment_commitment_status_paid_token", "1"),
+        ):
+            ConfigProject.objects.update_or_create(token=token, defaults={"value": value})
+
+        cls.payment_statuses = {}
+        for config_token, token, name in cls.PAYMENT_STATUSES:
+            ConfigProject.objects.update_or_create(token=config_token, defaults={"value": token})
+            cls.payment_statuses[config_token], _ = PaymentStatus.objects.get_or_create(
+                token=token, defaults={"name": name}
+            )
+        cls.paid = cls.payment_statuses["payment_status_paid_token"]
+        cls.pending = cls.payment_statuses["payment_status_pending_token"]
+        cls.returned = cls.payment_statuses["payment_status_returned_token"]
+
+        cls.invoice_statuses = {}
+        for token, name in (("2", "Confirmada"), ("3", "Enviada"), ("-1", "Vençuda"), ("0", "Pagada")):
+            cls.invoice_statuses[token], _ = InvoiceStatus.objects.get_or_create(
+                token=token, defaults={"name": name}
+            )
+
+        cls.direct_debit = PaymentType.objects.create(token="DIRECT_DEBIT", name="Domiciliació")
+        cls.bank_transfer = PaymentType.objects.create(token="BANK_TRANSFER", name="Transferència")
+
+        cls.holder = Person.objects.create(token="12345678B", name="Test", surname="DdTpv")
+        cls.other_contract = Contract.objects.create(token="DD-TPV-OTHER", holder=cls.holder)
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+        self.contract = Contract.objects.create(
+            token="DD-TPV-1",
+            holder=self.holder,
+            payment=GeneralPayment.objects.create(type=self.direct_debit),
+        )
+        self._serial = 0
+
+    def _invoice(self, status="3", payment_type="DIRECT_DEBIT", total="20.00",
+                 payment_status=None, contract=None, is_active=True):
+        self._serial += 1
+        total = Decimal(total)
+        invoice = Invoice.objects.create(
+            token=f"DD-TPV-INV-{self._serial}",
+            serie_final=f"FC/202610/{self._serial:06d}",
+            contract=contract or self.contract,
+            type_final="F",
+            total_final=total,
+            left_to_pay=total,
+            status=self.invoice_statuses[status],
+            is_active=is_active,
+            payment_type_final=payment_type,
+            payment_type_token_final=payment_type,
+            payment_bank_final="ES9121000418450200051332",
+            issue_date=date(2026, 10, 1),
+            due_date=date(2026, 10, 31),
+        )
+        Payment.objects.create(
+            invoice=invoice,
+            amount=total,
+            status=payment_status or self.pending,
+            payment_type=payment_type,
+            payment_type_token=payment_type,
+            payment_bank="ES9121000418450200051332",
+        )
+        return invoice
+
+    def _in_remittance(self, invoice, sent):
+        remittance = PaymentRemittance.objects.create(
+            token=f"REM-{invoice.token}", sent_at=date(2026, 10, 15) if sent else None
+        )
+        remittance.payments.add(*invoice.payments.all())
+
+    def _cancel(self, **overrides):
+        payload = {"period": "2026-4T", "role": "TITULAR"}
+        payload.update(overrides)
+        return self.client.post(
+            reverse("cancel-direct-debit-ov", args=[self.contract.token]), payload, format="json"
+        )
+
+    # cancel-direct-debit
+
+    def test_cancel_moves_open_direct_debit_invoices(self):
+        pending = self._invoice()
+        returned = self._invoice(status="-1", payment_status=self.returned)
+        confirmed = self._invoice(status="2")
+        sent_remittance = self._invoice()
+        self._in_remittance(sent_remittance, sent=True)
+        untouched = [
+            self._invoice(payment_status=self.paid),
+            self._invoice(total="-5.00"),
+            self._invoice(status="0"),
+            self._invoice(payment_type="BANK_TRANSFER"),
+            self._invoice(is_active=False),
+            self._invoice(contract=self.other_contract),
+        ]
+        pending_remittance = self._invoice()
+        self._in_remittance(pending_remittance, sent=False)
+        untouched.append(pending_remittance)
+
+        response = self._cancel()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["message"], "Direct debit cancelled successfully.")
+        moved = [pending, returned, confirmed, sent_remittance]
+        self.assertCountEqual(response.data["updated_invoices"], [i.token for i in moved])
+        for invoice in moved:
+            invoice.refresh_from_db()
+            self.assertEqual(invoice.payment_type_token_final, "BANK_TRANSFER")
+            self.assertIsNone(invoice.payment_bank_final)
+            payment = invoice.payments.get()
+            self.assertEqual(payment.payment_type_token, "BANK_TRANSFER")
+            self.assertIsNone(payment.payment_bank)
+        for invoice in untouched:
+            invoice.refresh_from_db()
+            self.assertEqual(
+                invoice.payment_bank_final, "ES9121000418450200051332", invoice.token
+            )
+
+        self.contract.payment.refresh_from_db()
+        self.assertEqual(self.contract.payment.type, self.bank_transfer)
+        observation = ContractObservation.objects.get(contract=self.contract)
+        self.assertIn("(4)", observation.observation)
+        self.assertEqual(
+            LogInvoiceDataChange.objects.filter(object__in=moved).count(), len(moved)
+        )
+
+    def test_already_cancelled_contract_still_moves_open_invoices(self):
+        self.contract.payment.type = self.bank_transfer
+        self.contract.payment.save()
+        invoice = self._invoice()
+
+        response = self._cancel()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["message"], "Direct debit already cancelled.")
+        self.assertEqual(response.data["updated_invoices"], [invoice.token])
+        invoice.refresh_from_db()
+        self.assertEqual(invoice.payment_type_token_final, "BANK_TRANSFER")
+        self.assertEqual(ContractObservation.objects.filter(contract=self.contract).count(), 1)
+
+    def test_already_cancelled_without_open_invoices_writes_nothing(self):
+        self.contract.payment.type = self.bank_transfer
+        self.contract.payment.save()
+
+        response = self._cancel()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["updated_invoices"], [])
+        self.assertFalse(ContractObservation.objects.filter(contract=self.contract).exists())
+
+    def test_new_direct_debit_type_does_not_move_invoices(self):
+        self.contract.payment.type = self.bank_transfer
+        self.contract.payment.save()
+        invoice = self._invoice()
+
+        response = self._cancel(new_payment_type="DIRECT_DEBIT")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["updated_invoices"], [])
+        invoice.refresh_from_db()
+        self.assertEqual(invoice.payment_type_token_final, "DIRECT_DEBIT")
+
+    # /ov/invoice/paid/
+
+    def _paid(self, invoice):
+        return self.client.post(
+            reverse("invoice-paid-ov"),
+            {"contract_token": invoice.contract.token, "invoice_token": invoice.token},
+            format="json",
+        )
+
+    def test_paid_rejects_receipt_in_pending_remittance(self):
+        invoice = self._invoice()
+        self._in_remittance(invoice, sent=False)
+
+        response = self._paid(invoice)
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.data["reason"], "pending_remittance")
+        self.assertEqual(invoice.payments.get().status, self.pending)
+
+    def test_paid_marks_direct_debit_invoice_paid(self):
+        invoice = self._invoice(payment_status=self.returned)
+        self._in_remittance(invoice, sent=True)
+
+        response = self._paid(invoice)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.data["already_paid"])
+        payment = invoice.payments.get()
+        self.assertEqual(payment.status, self.paid)
+        self.assertEqual(payment.payment_type, "TPV ONLINE")
+
+    def test_paid_on_already_paid_invoice_returns_200_with_flag(self):
+        invoice = self._invoice(status="0", payment_status=self.paid)
+        # Ja cobrat: encara que el rebut sigui en una remesa pendent, no és cap conflicte
+        self._in_remittance(invoice, sent=False)
+
+        response = self._paid(invoice)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data["already_paid"])
+
+    def test_paid_ignores_inactive_receipt_in_pending_remittance(self):
+        invoice = self._invoice(status="0", payment_status=self.paid)
+        inactive = Payment.objects.create(
+            invoice=invoice, amount=Decimal("20.00"), status=self.pending, is_active=False
+        )
+        remittance = PaymentRemittance.objects.create(token="REM-INACTIVE")
+        remittance.payments.add(inactive)
+
+        response = self._paid(invoice)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data["already_paid"])
+        inactive.refresh_from_db()
+        self.assertEqual(inactive.status, self.pending)
+
+    # /ov/invoice/quick-pay/
+
+    def _quick_pay(self, invoice):
+        return self.client.post(
+            reverse("quick-pay-ov"),
+            {
+                "contract_number": invoice.contract.token,
+                "invoice_number": invoice.serie_final,
+                "amount": str(invoice.total_final),
+            },
+            format="json",
+        )
+
+    def test_quick_pay_allows_direct_debit_invoice(self):
+        invoice = self._invoice(payment_status=self.returned)
+
+        response = self._quick_pay(invoice)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data["payable"])
+
+    def test_quick_pay_rejects_receipt_in_pending_remittance(self):
+        invoice = self._invoice()
+        self._in_remittance(invoice, sent=False)
+
+        response = self._quick_pay(invoice)
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.data["reason"], "pending_remittance")
+
+
+class InvoiceReturnOVTests(TestCase):
+    """`is_returned` i `last_return` a les factures de l'OV: si el banc ha
+    retornat el rebut domiciliat. `is_returned` mentre algun rebut actiu
+    continuï retornat; `last_return`, el darrer retorn dels rebuts actius
+    (moviments de retorn o, sense moviments, la data i el motiu del rebut)."""
+
+    DNI = "11111111H"
+
+    @classmethod
+    def setUpTestData(cls):
+        from billing.models import RejectMotive
+
+        cls.user = User.objects.create_user(
+            username="ov-invoice-return-test", password="not-used"
+        )
+        cls.user.groups.add(Group.objects.get_or_create(name="ov")[0])
+        for token, value in (
+            ("contract_termination_completed_token", "3"),
+            ("contract_terminated_status", "-1"),
+            ("invoice_status_paid_token", "0"),
+            ("invoice_status_cancelled_token", "-6"),
+            ("payment_status_paid_token", "0"),
+            ("payment_status_returned_token", "-2"),
+        ):
+            ConfigProject.objects.update_or_create(
+                token=token, defaults={"value": value}
+            )
+        cls.paid = PaymentStatus.objects.get_or_create(
+            token="0", defaults={"name": "Pagat"}
+        )[0]
+        cls.returned = PaymentStatus.objects.get_or_create(
+            token="-2", defaults={"name": "Retornat"}
+        )[0]
+        cls.direct_debit = PaymentType.objects.get_or_create(token="DIRECT_DEBIT")[0]
+        cls.am04 = RejectMotive.objects.create(token="AM04", name="Fons insuficients")
+        cls.md01 = RejectMotive.objects.create(token="MD01", name="Sense mandat")
+        cls.ac04 = RejectMotive.objects.create(token="AC04", name="Compte cancel·lat")
+
+        cls.holder = Person.objects.create(
+            token=HOLDER_TOKEN, name="Test", surname="Holder"
+        )
+        cls.contract = Contract.objects.create(
+            token=PLAIN_TOKEN,
+            holder=cls.holder,
+            status=ContractStatus.objects.create(token="1", name="Alta"),
+        )
+        cls.expired = InvoiceStatus.objects.create(token="-1", name="Vençuda")
+
+        # Sense cap retorn
+        cls._invoice("RET-NONE", 0, cls.paid)
+        # Retornat dues vegades i encara retornat: mana el darrer moviment
+        payment = cls._invoice("RET-OPEN", 1, cls.returned)
+        cls._return(payment, date(2026, 1, 10), cls.am04)
+        cls._return(payment, date(2026, 2, 10), cls.md01)
+        # Retornat i tornat a cobrar: ja no està retornat, però consta el retorn
+        payment = cls._invoice("RET-REPAID", 2, cls.paid)
+        cls._return(payment, date(2026, 1, 20), cls.ac04)
+        # Rebut retornat inactiu (substituït): no compta
+        payment = cls._invoice("RET-INACTIVE", 3, cls.returned, is_active=False)
+        cls._return(payment, date(2026, 1, 5), cls.am04)
+        # Moviment de retorn desactivat d'un rebut pagat: no compta
+        payment = cls._invoice("RET-MOVE-OFF", 4, cls.paid)
+        cls._return(payment, date(2026, 1, 6), cls.am04, is_active=False)
+        # Dades antigues: rebut retornat sense moviments, amb data i motiu
+        cls._invoice(
+            "RET-LEGACY",
+            5,
+            cls.returned,
+            reject_date=date(2025, 12, 1),
+            reject=cls.am04,
+        )
+        # Moviment de retorn sense data: es conserva el motiu
+        payment = cls._invoice("RET-NODATE", 6, cls.returned)
+        cls._return(payment, None, cls.md01)
+        # Un moviment amb data i un sense: mana el que té data
+        payment = cls._invoice("RET-MIXED", 7, cls.returned)
+        cls._return(payment, date(2026, 1, 15), cls.am04)
+        cls._return(payment, None, cls.md01)
+
+        cls.expected = {
+            "RET-NONE": (False, None),
+            "RET-OPEN": (
+                True,
+                {"date": "2026-02-10", "reason": {"code": "MD01", "name": "Sense mandat"}},
+            ),
+            "RET-REPAID": (
+                False,
+                {
+                    "date": "2026-01-20",
+                    "reason": {"code": "AC04", "name": "Compte cancel·lat"},
+                },
+            ),
+            "RET-INACTIVE": (False, None),
+            "RET-MOVE-OFF": (False, None),
+            "RET-LEGACY": (
+                True,
+                {
+                    "date": "2025-12-01",
+                    "reason": {"code": "AM04", "name": "Fons insuficients"},
+                },
+            ),
+            "RET-NODATE": (
+                True,
+                {"date": None, "reason": {"code": "MD01", "name": "Sense mandat"}},
+            ),
+            "RET-MIXED": (
+                True,
+                {
+                    "date": "2026-01-15",
+                    "reason": {"code": "AM04", "name": "Fons insuficients"},
+                },
+            ),
+        }
+
+    @classmethod
+    def _invoice(cls, token, offset, payment_status, is_active=True, **payment_fields):
+        invoice = Invoice.objects.create(
+            token=token,
+            serie_final=f"F-{token}",
+            contract=cls.contract,
+            status=cls.expired,
+            issue_date=date(2026, 1, 1) + timedelta(days=offset),
+            due_date=date(2026, 1, 31),
+            customer_token_final=cls.DNI,
+            payment_type_token_final="DIRECT_DEBIT",
+            total_final=Decimal("50.00"),
+            left_to_pay=Decimal("50.00"),
+        )
+        return Payment.objects.create(
+            token=f"PAY-{token}",
+            invoice=invoice,
+            contract=cls.contract,
+            status=payment_status,
+            amount=Decimal("50.00"),
+            payment_type_token="DIRECT_DEBIT",
+            is_active=is_active,
+            **payment_fields,
+        )
+
+    @classmethod
+    def _return(cls, payment, movement_date, motive, is_active=True):
+        PaymentMovement.objects.create(
+            payment=payment,
+            movement_date=movement_date,
+            payment_type=cls.direct_debit,
+            previous_status=cls.paid,
+            current_status=cls.returned,
+            reject_motive=motive,
+            is_positive=False,
+            is_active=is_active,
+        )
+
+    def setUp(self):
+        cache.clear()
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def _assert_items(self, items):
+        by_token = {item["invoice_token"]: item for item in items}
+        self.assertEqual(set(by_token), set(self.expected))
+        for token, (is_returned, last_return) in self.expected.items():
+            self.assertIs(by_token[token]["is_returned"], is_returned, token)
+            self.assertEqual(by_token[token]["last_return"], last_return, token)
+
+    def test_list(self):
+        response = self.client.get(
+            reverse("invoices-ov"), {"contract_token": PLAIN_TOKEN}
+        )
+        self.assertEqual(response.status_code, 200)
+        self._assert_items(response.data)
+
+    def test_list_json_body(self):
+        response = self.client.get(
+            reverse("invoices-ov"), {"contract_token": PLAIN_TOKEN}
+        )
+        items = {item["invoice_token"]: item for item in response.json()}
+        self.assertEqual(
+            items["RET-OPEN"]["last_return"],
+            {"date": "2026-02-10", "reason": {"code": "MD01", "name": "Sense mandat"}},
+        )
+
+    def test_unpaid_invoices(self):
+        response = self.client.get(
+            reverse("unpayed-invoices-ov"),
+            {"contract_token": PLAIN_TOKEN, "statuses": "-1"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self._assert_items(response.data)
+
+    def test_person_invoices(self):
+        response = self.client.get(reverse("person-invoices-ov"), {"dni": self.DNI})
+        self.assertEqual(response.status_code, 200)
+        self._assert_items(response.data["results"][0]["invoices"])
+
+    def test_single_invoice_and_full_detail(self):
+        for token, (is_returned, last_return) in self.expected.items():
+            single = self.client.get(
+                reverse("invoice-ov"),
+                {"contract_token": PLAIN_TOKEN, "invoice_token": token},
+            )
+            detail = self.client.get(
+                reverse("invoice-detail-by-token-ov", kwargs={"token": token})
+            )
+            for response in (single, detail):
+                self.assertEqual(response.status_code, 200, token)
+                self.assertIs(response.data["is_returned"], is_returned, token)
+                self.assertEqual(response.data["last_return"], last_return, token)
+
+    def test_list_queries_do_not_grow_with_invoices(self):
+        url = reverse("invoices-ov")
+        params = {"contract_token": PLAIN_TOKEN}
+        with CaptureQueriesContext(connection) as before:
+            self.client.get(url, params)
+        for index in range(3):
+            payment = self._invoice(f"RET-EXTRA-{index}", 10 + index, self.returned)
+            self._return(payment, date(2026, 3, 1), self.am04)
+        with CaptureQueriesContext(connection) as after:
+            response = self.client.get(url, params)
+
+        self.assertEqual(len(response.data), len(self.expected) + 3)
+        self.assertEqual(len(after.captured_queries), len(before.captured_queries))
+
+    def test_without_returned_status_config_nothing_is_returned(self):
+        ConfigProject.objects.filter(token="payment_status_returned_token").delete()
+
+        response = self.client.get(
+            reverse("invoices-ov"), {"contract_token": PLAIN_TOKEN}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        for item in response.data:
+            self.assertIs(item["is_returned"], False)
+            self.assertIsNone(item["last_return"])
+
+
+class UpdateIbanDirectDebitOVTests(TestCase):
+    """`update-iban` posa el compte nou i passa el contracte a domiciliació
+    (`direct_debit_token`), amb historial, mandat i còpia de la forma de
+    pagament si és compartida."""
+
+    OLD_IBAN = "ES1111111111111111111111"
+    NEW_IBAN = "ES2222222222222222222222"
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(username="ov-update-iban-test", password="not-used")
+        cls.user.groups.add(Group.objects.get_or_create(name="ov")[0])
+        for token, value in (
+            ("contract_termination_completed_token", "3"),
+            ("contract_terminated_status", "-1"),
+            ("direct_debit_token", "DIRECT_DEBIT"),
+        ):
+            ConfigProject.objects.update_or_create(token=token, defaults={"value": value})
+        cls.status = ContractStatus.objects.create(token="1", name="Activo")
+        cls.direct_debit = PaymentType.objects.create(token="DIRECT_DEBIT", name="Domiciliación")
+        cls.cash = PaymentType.objects.create(token="CASH", name="Efectivo")
+        cls.holder = Person.objects.create(token=HOLDER_TOKEN, name="Test", surname="Holder")
+
+    def setUp(self):
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+        self.old_bank = PersonBank.objects.create(
+            person=self.holder, dni=HOLDER_TOKEN, iban=self.OLD_IBAN, is_active=True
+        )
+        self.payment = GeneralPayment.objects.create(token="GP-IBAN", type=self.cash)
+        self.contract = Contract.objects.create(
+            token=PLAIN_TOKEN, status=self.status, holder=self.holder, payment=self.payment
+        )
+
+    def _post(self, iban=NEW_IBAN, nif=HOLDER_TOKEN):
+        return self.client.post(
+            f"{reverse('update-iban-ov')}?contract_token={self.contract.token}",
+            {
+                "iban": iban,
+                "nif": nif,
+                "iban_holder_name": "Test Holder",
+                "iban_holder_dni": HOLDER_TOKEN,
+            },
+            format="json",
+        )
+
+    def _logs(self, field_name):
+        from contract.models import ContractLog
+
+        return ContractLog.objects.filter(contract=self.contract, field_name=field_name)
+
+    def test_cash_contract_becomes_direct_debit(self):
+        response = self._post()
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.contract.refresh_from_db()
+        payment = self.contract.payment
+        self.assertEqual(payment.pk, self.payment.pk)
+        self.assertEqual(payment.type, self.direct_debit)
+        self.assertEqual(payment.IBAN.iban, self.NEW_IBAN)
+        self.assertTrue(payment.mandate_id)
+        self.assertTrue(payment.mandate_logs.filter(new_mandate_id=payment.mandate_id).exists())
+        change = ContractDataChange.objects.get(contract=self.contract)
+        self.assertEqual(change.previous_payment_type, self.cash)
+        self.assertEqual(change.new_payment_type, self.direct_debit)
+        self.assertEqual(change.new_payment, payment.IBAN)
+        self.assertIsNone(change.new_general_payment)
+        self.assertEqual(self._logs("payment_type").get().new_value, "DIRECT_DEBIT")
+        self.assertEqual(self._logs("payment_IBAN").get().new_value, self.NEW_IBAN)
+
+    def test_shared_payment_is_copied_for_this_contract_only(self):
+        self.payment.IBAN = self.old_bank
+        self.payment.save()
+        other = Contract.objects.create(
+            token="OTHER-1", status=self.status, holder=self.holder, payment=self.payment
+        )
+
+        response = self._post()
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.contract.refresh_from_db()
+        other.refresh_from_db()
+        self.old_bank.refresh_from_db()
+        self.assertNotEqual(self.contract.payment_id, self.payment.pk)
+        self.assertEqual(self.contract.payment.type, self.direct_debit)
+        self.assertEqual(self.contract.payment.IBAN.iban, self.NEW_IBAN)
+        # L'altre contracte continua igual i el compte vell, actiu
+        self.assertEqual(other.payment_id, self.payment.pk)
+        self.assertEqual(other.payment.type, self.cash)
+        self.assertEqual(other.payment.IBAN, self.old_bank)
+        self.assertTrue(self.old_bank.is_active)
+        change = ContractDataChange.objects.get(contract=self.contract)
+        self.assertEqual(change.new_general_payment, self.contract.payment)
+
+    def test_same_iban_already_direct_debit_changes_nothing(self):
+        self.payment.type = self.direct_debit
+        self.payment.IBAN = self.old_bank
+        self.payment.mandate_id = "M-1"
+        self.payment.save()
+
+        response = self._post(iban=self.OLD_IBAN.lower())
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.payment.refresh_from_db()
+        self.assertEqual(self.payment.IBAN, self.old_bank)
+        self.assertEqual(self.payment.mandate_id, "M-1")
+        self.assertEqual(PersonBank.objects.filter(person=self.holder).count(), 1)
+        self.assertFalse(ContractDataChange.objects.filter(contract=self.contract).exists())
+
+    def test_same_iban_on_cash_only_changes_type_and_keeps_signed_mandate(self):
+        self.payment.IBAN = self.old_bank
+        self.payment.save()
+        GeneralPaymentSepaDocument.objects.create(general_payment=self.payment, checked=True)
+
+        response = self._post(iban=self.OLD_IBAN)
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.payment.refresh_from_db()
+        self.assertEqual(self.payment.type, self.direct_debit)
+        self.assertEqual(self.payment.IBAN, self.old_bank)
+        self.assertTrue(self.payment.mandate_id)
+        self.assertTrue(GeneralPaymentSepaDocument.objects.filter(general_payment=self.payment).exists())
+        self.assertFalse(self._logs("payment_IBAN").exists())
+        self.assertEqual(self._logs("payment_type").count(), 1)
+
+    def test_new_iban_retires_old_signed_mandate_and_renews_mandate_id(self):
+        from billing.utils.payment_service import generate_mandate_id
+
+        self.payment.type = self.direct_debit
+        self.payment.IBAN = self.old_bank
+        self.payment.mandate_id = generate_mandate_id(self.payment, self.contract.token)
+        self.payment.save()
+        self.payment.mandate_logs.create(new_mandate_id=self.payment.mandate_id)
+        previous_mandate = self.payment.mandate_id
+        document = Document.objects.create(
+            document_name="mandat.pdf", entity="SEPA", entity_id=self.payment.pk, service="hdd"
+        )
+        GeneralPaymentSepaDocument.objects.create(
+            general_payment=self.payment, file=document, checked=True
+        )
+
+        response = self._post()
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.payment.refresh_from_db()
+        self.old_bank.refresh_from_db()
+        self.assertEqual(self.payment.IBAN.iban, self.NEW_IBAN)
+        self.assertNotEqual(self.payment.mandate_id, previous_mandate)
+        self.assertFalse(self.old_bank.is_active)
+        self.assertFalse(response.data["data"]["has_sepa_document"])
+        self.assertFalse(GeneralPaymentSepaDocument.objects.filter(general_payment=self.payment).exists())
+        self.assertTrue(Document.objects.filter(pk=document.pk).exists())
+        self.assertFalse(self._logs("payment_type").exists())
+
+    def test_contract_without_payment_gets_direct_debit_payment(self):
+        self.contract.payment = None
+        self.contract.save()
+
+        response = self._post()
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.contract.refresh_from_db()
+        self.assertEqual(self.contract.payment.type, self.direct_debit)
+        self.assertEqual(self.contract.payment.IBAN.iban, self.NEW_IBAN)
+
+    def test_nif_mismatch_returns_400_and_changes_nothing(self):
+        response = self._post(nif="00000000T")
+
+        self.assertEqual(response.status_code, 400)
+        self.payment.refresh_from_db()
+        self.assertEqual(self.payment.type, self.cash)
+        self.assertEqual(PersonBank.objects.filter(person=self.holder).count(), 1)
+
+    def test_missing_direct_debit_config_returns_500_and_changes_nothing(self):
+        ConfigProject.objects.filter(token="direct_debit_token").delete()
+
+        response = self._post()
+
+        self.assertEqual(response.status_code, 500)
+        self.payment.refresh_from_db()
+        self.assertEqual(self.payment.type, self.cash)
+        self.assertIsNone(self.payment.IBAN)
+
+    def test_signed_mandate_can_be_uploaded_after_update(self):
+        with tempfile.TemporaryDirectory() as storage, override_settings(
+            DOCUMENT_STORAGE_PATH=storage
+        ):
+            self.assertEqual(self._post().status_code, 200)
+            response = self.client.post(
+                reverse("upload-sepa-signed-ov", kwargs={"contract_token": PLAIN_TOKEN}),
+                {
+                    "sepa": SimpleUploadedFile(
+                        "sepa.pdf", b"%PDF-1.4 test", content_type="application/pdf"
+                    ),
+                    "iban": self.NEW_IBAN,
+                },
+                format="multipart",
+            )
+
+        self.assertEqual(response.status_code, 201, response.data)
+        self.contract.refresh_from_db()
+        self.assertTrue(
+            GeneralPaymentSepaDocument.objects.filter(general_payment=self.contract.payment).exists()
+        )
+
+
+class OVBlockedDniTests(TestCase):
+    """Els DNI genèrics (99999999R) es rebutgen a tots els endpoints de l'OV
+    que reben un DNI, abans de cap consulta, encara que hi hagi dades."""
+
+    BLOCKED_VARIANTS = ("99999999R", " 99.999.999-r ")
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(
+            username="ov-blocked-dni-test", password="not-used"
+        )
+        cls.user.groups.add(Group.objects.get_or_create(name="ov")[0])
+        # Una fitxa amb el DNI genèric: no s'ha de poder consultar.
+        Person.objects.create(token="99999999R", name="Generic", surname="Dni")
+        ConfigProject.objects.get_or_create(
+            token="contract_terminated_status", defaults={"value": "-1"}
+        )
+
+    def setUp(self):
+        cache.clear()
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def _assert_query_blocked(self, url, extra=None):
+        for dni in self.BLOCKED_VARIANTS:
+            with self.subTest(url=url, dni=dni):
+                cache.clear()
+                response = self.client.get(url, {**(extra or {}), "dni": dni})
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(response.data, {"error": "DNI not allowed"})
+
+    def test_query_endpoints_reject_blocked_dni(self):
+        contract = {"contract_token": "ANY"}
+        cases = [
+            (reverse("contracts-ov"), None),
+            (reverse("person-data-ov"), None),
+            (reverse("person-invoices-ov"), None),
+            (reverse("person-contracts-ov"), None),
+            (
+                reverse("payment-receipt-ov"),
+                {"contract_token": "ANY", "payment_token": "ANY"},
+            ),
+            (reverse("consumptions-ov"), contract),
+            (reverse("consumption-download-ov", args=[1]), contract),
+            (reverse("contract-ov"), contract),
+            (reverse("contract-detail-by-token-ov", args=["ANY"]), None),
+        ]
+        for url, extra in cases:
+            self._assert_query_blocked(url, extra)
+
+    def test_other_dni_is_not_blocked(self):
+        response = self.client.get(reverse("person-data-ov"), {"dni": "87654321X"})
+
+        self.assertEqual(response.status_code, 404)
+
+    def _assert_field_blocked(self, url, payload, path, query=None):
+        if query:
+            url = f"{url}?{query}"
+        response = self.client.post(url, payload, format="json")
+        self.assertEqual(response.status_code, 400)
+        errors = response.data
+        for key in path:
+            errors = errors[key]
+        self.assertEqual([str(error) for error in errors], ["DNI not allowed."])
+
+    def test_consumptions_download_rejects_blocked_dni(self):
+        self._assert_field_blocked(
+            reverse("consumptions-download-ov"),
+            {"contract_token": "ANY", "dni": " 99.999.999-r "},
+            ["dni"],
+        )
+
+    def test_update_iban_rejects_blocked_dni(self):
+        Contract.objects.create(token="OV-BLOCKED-DNI")
+        for field in ("nif", "iban_holder_dni"):
+            with self.subTest(field=field):
+                cache.clear()
+                payload = {
+                    "iban": "ES9121000418450200051332",
+                    "nif": "87654321X",
+                    "iban_holder_name": "Nom",
+                    "iban_holder_dni": "87654321X",
+                    field: "99999999R",
+                }
+                self._assert_field_blocked(
+                    reverse("update-iban-ov"),
+                    payload,
+                    ["error", field],
+                    query="contract_token=OV-BLOCKED-DNI",
+                )
+
+    def test_contract_procedure_rejects_blocked_dni(self):
+        for field in ("holder_dni", "iban_holder_dni"):
+            with self.subTest(field=field):
+                self._assert_field_blocked(
+                    reverse("contract-procedure-ov"),
+                    {"holder_dni": "87654321X", field: "99999999R"},
+                    [field],
+                )
+        self.assertEqual(Person.objects.filter(token="87654321X").count(), 0)
+
+    def test_contract_termination_rejects_blocked_dni(self):
+        self._assert_field_blocked(
+            reverse("contract-termination-procedure-ov"),
+            {"contract_token": "ANY", "holder_dni": "99999999R", "reason_token": "1"},
+            ["holder_dni"],
+        )
+
+    def test_contract_change_rejects_blocked_dni(self):
+        cases = [
+            ("outgoing", "holder_dni"),
+            ("incoming", "holder_dni"),
+            ("incoming", "iban_holder_dni"),
+        ]
+        for block, field in cases:
+            with self.subTest(block=block, field=field):
+                payload = {
+                    "outgoing": {"contract_token": "ANY", "holder_dni": "87654321X"},
+                    "incoming": {"holder_dni": "12345678Z"},
+                }
+                payload[block][field] = "99999999R"
+                self._assert_field_blocked(
+                    reverse("contract-change-procedure-ov"),
+                    payload,
+                    [block, field],
+                )
