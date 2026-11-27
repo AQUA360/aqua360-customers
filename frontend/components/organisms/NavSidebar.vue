@@ -57,6 +57,8 @@ const tasksSummary = ref({ today: 0, overdue: 0 });
 const pendingTasks = computed(() => (tasksSummary.value.today || 0) + (tasksSummary.value.overdue || 0));
 /** Refresh pending task counts, retaining existing counts if the request fails. */
 const loadTasksSummary = async () => {
+  // Sense sessió (p. ex. en sortir, abans que es desmunti el menú) no es demana
+  if (!localStorage.getItem('auth_token')) return;
   try {
     tasksSummary.value = await $CalendarTaskApiService.getSummary();
   } catch (e) {
@@ -92,7 +94,12 @@ const verifactuEnabled = config.public.verifactuEnabled;
 
 const logout = async () => {
   // Revoca el token al servidor; si falla (p. ex. ja havia caducat), se surt igualment.
+  // Primer es buida la sessió local: així cap petició nova surt amb el token que es revoca,
+  // i les que ja anaven de camí no mostren error (l'api-manager ignora el 401 d'una sessió tancada).
   const authToken = localStorage.getItem('auth_token');
+  localStorage.removeItem('auth_token');
+  localStorage.removeItem('user_username');
+  localStorage.removeItem('exploitation');
   if (authToken) {
     try {
       await $fetch(config.public.apiHost + '/auth/logout/', {
@@ -103,9 +110,6 @@ const logout = async () => {
       console.error(e);
     }
   }
-  localStorage.removeItem('auth_token');
-  localStorage.removeItem('user_username');
-  localStorage.removeItem('exploitation');
   // $router.push('/auth/login');
   return navigateTo('/auth/login')
 };
@@ -472,11 +476,30 @@ const { $ExploitationApiService } = useNuxtApp();
 const currentExploitation = ref(null);
 const username = ref('');
 
+// Text del botó del menú d'usuari: l'empresa si s'ha carregat; si no, el nom d'usuari
+const accountButtonLabel = computed(() =>
+  currentExploitation.value?.company?.name || username.value || t('user_group.my_profile')
+);
+const accountButtonTitle = computed(() =>
+  currentExploitation.value?.company && currentExploitation.value.name
+    ? `${accountButtonLabel.value} (${currentExploitation.value.name})`
+    : accountButtonLabel.value
+);
+
 const getCurrentExploitation = async () => {
   try {
     const exploitation_id = localStorage.getItem('exploitation');
+    let stored = null;
     if (exploitation_id) {
-      currentExploitation.value = await $ExploitationApiService.getDetail(exploitation_id);
+      // Una explotació desada que ja no existeix o no es pot llegir no ha de deixar el menú sense empresa
+      try {
+        stored = await $ExploitationApiService.getDetail(exploitation_id);
+      } catch (error) {
+        console.error('Error fetching stored exploitation:', error);
+      }
+    }
+    if (stored) {
+      currentExploitation.value = stored;
     } else {
       const exploitationsResponse = await $ExploitationApiService.getData();
       if (exploitationsResponse?.results?.length === 1) {
@@ -776,6 +799,13 @@ onUnmounted(() => {
           </div>
         </div>
 
+        <!-- Fitxa pròpia (dades i contrasenya): tots els usuaris, sigui quin sigui el rol -->
+        <NuxtLink to="/user/profile" @click="showDropdown = false"
+          class="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 transition-colors">
+          <Icon name="fa6-solid:user-gear" class="w-4 h-4 text-slate-500" />
+          <span>{{ $t('user_group.my_profile') }}</span>
+        </NuxtLink>
+
         <!-- Exit button -->
         <button @click="logout(); showDropdown = false;"
           class="flex items-center gap-2 px-3 py-2 hover:bg-red-50 text-red-600 transition-colors w-full text-left">
@@ -870,22 +900,24 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <!-- Exploitation Trigger Button -->
-      <button @click="toggleDropdown" v-if="currentExploitation?.company" 
-        class="w-full text-left px-2 py-1.5 flex items-center gap-2 border border-slate-200/40 rounded bg-white/40 min-w-0 hover:bg-slate-200/40 active:bg-slate-200/60 transition-all duration-150" 
+      <!-- Botó del menú d'usuari (idioma, configuració, perfil, sortir). Sempre es mostra:
+           si no s'ha pogut carregar l'empresa, amb el nom d'usuari, perquè tothom pugui
+           canviar la contrasenya i sortir encara que no tingui permisos. -->
+      <button @click="toggleDropdown" :aria-expanded="showDropdown"
+        class="w-full text-left px-2 py-1.5 flex items-center gap-2 border border-slate-200/40 rounded bg-white/40 min-w-0 hover:bg-slate-200/40 active:bg-slate-200/60 transition-all duration-150"
         :class="{ 'justify-center': isCollapsed }"
-        :title="isCollapsed ? (currentExploitation.name ? `${currentExploitation.company.name} (${currentExploitation.name})` : currentExploitation.company.name) : undefined">
-        <div v-if="currentExploitation.company.logo" 
+        :title="isCollapsed ? accountButtonTitle : undefined">
+        <div v-if="currentExploitation?.company?.logo"
           class="rounded shrink-0 w-8 h-8 bg-cover bg-center border"
           :style="{ 'background-image': `url(${currentExploitation.company.logo})` }">
         </div>
-        <div v-else 
+        <div v-else
           class="rounded shrink-0 w-8 h-8 bg-slate-200 flex items-center justify-center border font-bold text-slate-600 text-sm">
-          {{ currentExploitation.company.name.charAt(0) }}
+          {{ accountButtonLabel.charAt(0).toUpperCase() }}
         </div>
         <div v-show="!isCollapsed" class="flex flex-col min-w-0 flex-1">
-          <span class="text-xs font-semibold text-slate-800 truncate" :title="currentExploitation.company.name">{{ currentExploitation.company.name }}</span>
-          <span v-if="currentExploitation.name" class="text-[10px] text-slate-500 truncate" :title="currentExploitation.name">{{ currentExploitation.name }}</span>
+          <span class="text-xs font-semibold text-slate-800 truncate" :title="accountButtonLabel">{{ accountButtonLabel }}</span>
+          <span v-if="currentExploitation?.company && currentExploitation.name" class="text-[10px] text-slate-500 truncate" :title="currentExploitation.name">{{ currentExploitation.name }}</span>
         </div>
         <Icon v-show="!isCollapsed" name="fa6-solid:chevron-up" class="w-3 h-3 text-slate-400 transition-transform duration-200 shrink-0" :class="{ 'rotate-180': showDropdown }" />
       </button>

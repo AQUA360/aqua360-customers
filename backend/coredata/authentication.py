@@ -49,10 +49,15 @@ def issue_token_key(user):
     return AuthSessionToken.create_for(user).key
 
 
-def revoke_user_tokens(user):
-    """Esborra tots els tokens de l'usuari (sessions i token de DRF)."""
-    AuthSessionToken.objects.filter(user=user).delete()
-    Token.objects.filter(user=user).delete()
+def revoke_user_tokens(user, except_key=None):
+    """Esborra tots els tokens de l'usuari (sessions i token de DRF), excepte el de clau `except_key`."""
+    sessions = AuthSessionToken.objects.filter(user=user)
+    tokens = Token.objects.filter(user=user)
+    if except_key:
+        sessions = sessions.exclude(key=except_key)
+        tokens = tokens.exclude(key=except_key)
+    sessions.delete()
+    tokens.delete()
 
 
 class ExpiringTokenAuthentication(TokenAuthentication):

@@ -64,7 +64,9 @@ class DailyDocumentViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         # Custom write actions check can_change explicitly (POST would otherwise
         # map to add_* via StatisticsPermission; regenerate is a GET mutation).
-        if self.action in ('permissions', 'submit', 'regenerate_daily_document'):
+        # `pending` és el comptador del menú, que es consulta a cada pàgina: tothom el pot
+        # demanar i, sense permís d'estadístiques, rep zeros en lloc d'un 403.
+        if self.action in ('permissions', 'submit', 'regenerate_daily_document', 'return_pending_daily_documents'):
             return [IsAuthenticated()]
         return super().get_permissions()
 
@@ -81,6 +83,8 @@ class DailyDocumentViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['get'], url_path='pending')
     def return_pending_daily_documents(self, request):
+        if not StatisticsPermission().has_permission(request, self):
+            return Response({'pending': 0, 'errors': 0}, status=status.HTTP_200_OK)
         try:
             from django.db.models import Q
 
