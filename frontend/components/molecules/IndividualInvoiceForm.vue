@@ -1,11 +1,11 @@
 <script setup>
-import { ref, watch, onMounted } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import ButtonSeleccio from '../atoms/ButtonSeleccio.vue';
 import SelectInvoiceCategory from './SelectInvoiceCategory.vue';
 import { useI18n } from 'vue-i18n';
 
 const { t } = useI18n();
-const { $ReadingApiService, $ExploitationApiService, $BillingApiService, $ConfigProjectApiService, $BillingBatchApiService } = useNuxtApp();
+const { $ReadingApiService, $ExploitationApiService, $BillingApiService, $ConfigProjectApiService, $BillingBatchApiService, $ConfiglistApiService } = useNuxtApp();
 
 const props = defineProps({
   // When both are null, allow selection between contract/person
@@ -64,6 +64,44 @@ const selectedCategoryId = ref(null);
 const selectedCompanyId = ref(null);
 const hasInvoiceCategories = ref(true);
 const useMultipleCompanies = ref(false);
+
+// Origen de la factura personalitzada (sense lectures): qualsevol menys el d'aigua,
+// que és el de la facturació per lectures. Per defecte, «Altres» (origin_other_token).
+const origins = ref([]);
+const loadingOrigins = ref(false);
+const defaultOriginId = ref(null);
+const selectedOrigin = computed(() =>
+  origins.value.find(o => o.value === localSelectedCustom.value?.origin) || null
+);
+
+const getOrigins = async () => {
+  loadingOrigins.value = true;
+  try {
+    const [response, readingToken, otherToken] = await Promise.all([
+      $ConfiglistApiService.getAll('pricing/product-origin'),
+      $ConfigProjectApiService.get('origin_reading_token'),
+      $ConfigProjectApiService.get('origin_other_token'),
+    ]);
+    const results = response?.results || [];
+    origins.value = results
+      .filter(origin => origin.token !== readingToken)
+      .map(origin => ({ value: origin.id, label: origin.name, token: origin.token }));
+    defaultOriginId.value = results.find(origin => origin.token === otherToken)?.id ?? null;
+    applyDefaultOrigin();
+  } catch (error) {
+    console.log(error);
+  } finally {
+    loadingOrigins.value = false;
+  }
+};
+
+const applyDefaultOrigin = () => {
+  const type = selectedCustomInvoiceType.value?.value;
+  if (!localSelectedCustom.value || !type || type === 'reading') return;
+  if (localSelectedCustom.value.origin == null) {
+    localSelectedCustom.value.origin = defaultOriginId.value;
+  }
+};
 
 const onCategoriesLoaded = ({ options }) => {
   hasInvoiceCategories.value = !!options?.length;
@@ -164,6 +202,9 @@ const updateSelect = async (event, field) => {
           localSelectedCustom.value.billing_batch_id = null;
           localSelectedCustom.value.billing_id = null;
           selectedBillingBatch.value = null;
+          applyDefaultOrigin();
+        } else {
+          localSelectedCustom.value.origin = null;
         }
       }
       if (event?.value != 'reading') generalInvoice.value = false;
@@ -185,6 +226,11 @@ const updateSelect = async (event, field) => {
       selectedExploitation.value = event;
       console.log("selectedExploitation.value", selectedExploitation.value)
       emit('select-exploitation', event.value);
+      break;
+    case 'origin':
+      if (localSelectedCustom.value) {
+        localSelectedCustom.value.origin = event?.value ?? null;
+      }
       break;
     case 'billing_batch':
       selectedBillingBatch.value = event;
@@ -224,6 +270,7 @@ onMounted(async () => {
   getCustomInvoiceType();
   getExploitations();
   getBillingBatches();
+  getOrigins();
   try {
     const multi = await $ConfigProjectApiService.get('use_multiple_companies');
     useMultipleCompanies.value = multi === true || multi === 'True' || multi === 'true';
@@ -328,6 +375,17 @@ watch(() =>props.selectedCustom, () => {
           <option :value="null">-- {{ $t('common.select') }} --</option>
           <option v-for="c in companies" :key="c.id" :value="c.id">{{ c.name }}</option>
         </select>
+      </div>
+      <div v-if="selectedCustomInvoiceType && selectedCustomInvoiceType.value != 'reading'">
+        <label class="block text-xs font-medium text-slate-600 uppercase">
+          {{ $t('common.origin') }}
+        </label>
+        <v-select class="block w-full mr-1" :model-value="selectedOrigin" :loading="loadingOrigins"
+          :options="origins" :clearable="false" @update:modelValue="updateSelect($event, 'origin')">
+          <template #no-options="{ search, searching, loading }">
+            {{ $t('common.no_options') }}
+          </template>
+        </v-select>
       </div>
       <div v-if="selectedCustomInvoiceType?.value == 'reading'">
         <label class="block text-xs font-medium text-slate-600 uppercase">

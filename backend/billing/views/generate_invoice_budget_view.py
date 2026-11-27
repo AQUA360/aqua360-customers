@@ -15,6 +15,7 @@ from service.models import ConnectionRequest, CompanyBank, Exploitation
 from service.utils.route_scope import effective_route
 from coredata.models import ConfigProject, Person, PersonBank
 from contract.models import PaymentType
+from pricing.models import ProductOrigin
 
 from billing.models import Billing, BillingBatch, EstimatedBagMovement, Invoice, Reading
 from billing.serializers.invoice_serializer import InvoiceFullSerializer
@@ -480,7 +481,16 @@ class GenerateInvoiceBudgetView(APIView):
                 
                 invoice = generate_consumption_invoice_multiple(contract, readings, title, None, is_budget=True, extra_payment_data=payment_data, period_months=period_months, billing=billing, billing_batch=billing_batch)
             else:
-                invoice = generate_empty_invoice(contract, None, person, title, payment_data, exploitation, billing=billing, billing_batch=billing_batch)
+                origin = None
+                origin_id = selected_custom.get("origin")
+                if origin_id:
+                    try:
+                        origin = ProductOrigin.objects.get(id=origin_id)
+                    except (ProductOrigin.DoesNotExist, ValueError, TypeError):
+                        return Response({'error': 'L\'origen seleccionat no existeix.'}, status=status.HTTP_400_BAD_REQUEST)
+                    if origin.token == ConfigProject.objects.get(token='origin_reading_token').value:
+                        return Response({'error': 'L\'origen d\'aigua només es pot fer servir en la facturació per lectures.'}, status=status.HTTP_400_BAD_REQUEST)
+                invoice = generate_empty_invoice(contract, None, person, title, payment_data, exploitation, billing=billing, billing_batch=billing_batch, origin=origin)
 
         if not invoice:
             if readings is not None and len(readings) > 0 and readings[0] and readings[0].consumption_days < 0:
