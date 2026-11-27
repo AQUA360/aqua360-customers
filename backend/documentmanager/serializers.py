@@ -8,10 +8,14 @@ class DocumentSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Document
-        fields = '__all__'
-        # On és el fitxer ho decideix el backend en pujar-lo; si fos editable per API,
-        # es podria apuntar a qualsevol fitxer del servidor i descarregar-lo.
-        read_only_fields = ['file', 'folder', 'location', 'location_url', 'service', 'version', 'parent_document']
+        # `location` és la ruta del fitxer al servidor: no es retorna mai per l'API.
+        exclude = ['location']
+        # Només lectura: els documents es creen i s'esborren per les accions de la vista
+        # o pels serveis del backend, mai editant-ne els camps.
+        read_only_fields = [
+            'file', 'folder', 'location_url', 'service', 'version', 'parent_document',
+            'entity', 'entity_id', 'entity_token', 'field', 'document_name', 'is_active',
+        ]
         
     def get_versions(self, obj):
         versions = obj.versions.all()
@@ -28,7 +32,6 @@ class DocumentSerializer(serializers.ModelSerializer):
                 'file': version.file if version.file else None,
                 'folder': version.folder,
                 'document_name': version.document_name,
-                'location': version.location,
                 'location_url': version.location_url,
                 'service': version.service,
                 'is_active': version.is_active,

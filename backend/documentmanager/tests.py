@@ -418,11 +418,12 @@ class DocumentStorageLocationTest(TestCase):
             {"service": "aws", "location": self.outside.name, "document_name": "nou.pdf"},
             format="json",
         )
-        self.assertEqual(response.status_code, 200)
+        # Els documents no s'editen per l'API: res no canvia
+        self.assertEqual(response.status_code, 405)
         self.document.refresh_from_db()
         self.assertEqual(self.document.location, self.inside_path)
         self.assertEqual(self.document.service, "hdd")
-        self.assertEqual(self.document.document_name, "nou.pdf")
+        self.assertEqual(self.document.document_name, "doc.pdf")
 
     def test_download_inside_storage(self):
         response = self.client.get(f"/documentmanager/view-document/{self.document.id}/")
