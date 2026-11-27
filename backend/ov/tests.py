@@ -5507,7 +5507,17 @@ class ContractProcedureOVTests(TestCase):
                 )
 
     def test_invalid_procedure_type_token_returns_400(self):
-        for value in ([], [""], [1], {"token": "domestic"}, 1, ["x" * 256]):
+        for value in (
+            [],
+            [""],
+            [1],
+            {"token": "domestic"},
+            1,
+            ["x" * 256],
+            "domestic\x00",
+            ["domestic\x00"],
+            ["domestic"] * 21,
+        ):
             with self.subTest(value=value):
                 response = self._post(procedure_type_token=value)
                 self.assertEqual(response.status_code, 400)

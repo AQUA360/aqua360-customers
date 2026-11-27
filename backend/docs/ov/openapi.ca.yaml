@@ -2343,7 +2343,8 @@ paths:
         de la mateixa transacció, i llavors `holder_name`, `holder_surname`
         (tret de persona jurídica), `holder_phone` i `holder_email` són
         obligatoris. S'exigeix que la propietat existeixi i tingui un punt de
-        subministrament, i que el tipus de tràmit estigui actiu i tingui tarifes periòdiques actives. Si el pagament és per domiciliació
+        subministrament, i que els paquets estiguin actius i que, entre tots, tinguin alguna tarifa
+        periòdica activa (n'hi ha prou que en tingui un). Si el pagament és per domiciliació
         (`DIRECT_DEBIT`) s'exigeixen les dades bancàries. Si la propietat té
         més d'un punt de subministrament actiu s'ha d'enviar `supply_point_token`.
 
@@ -2423,8 +2424,8 @@ paths:
             Camps obligatoris absents o invàlids, dades personals
             absents o invàlides quan el DNI no existeix (titular nou),
             dades bancàries incompletes per a domiciliació, propietat amb
-            diversos punts de subministrament sense `supply_point_token`, tipus de
-            tràmit sense tarifes periòdiques actives, paquets amb tarifes
+            diversos punts de subministrament sense `supply_point_token`, paquets
+            sense cap tarifa periòdica activa entre tots, paquets amb tarifes
             diferents d'un mateix producte, o mandat
             SEPA (`sepa_signed`) que no és base64 vàlid, no és un PDF o
             s'envia amb una forma de pagament que no és domiciliació.

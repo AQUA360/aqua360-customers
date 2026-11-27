@@ -2885,17 +2885,21 @@ class ProcedureTypeTokensField(serializers.Field):
 
     def to_internal_value(self, data):
         values = [data] if isinstance(data, str) else data
+        # Els caràcters nuls fallarien a la consulta (500): es rebutgen aquí,
+        # com feia el CharField d'abans.
         if not isinstance(values, list) or not all(
-            isinstance(value, str) and len(value) <= 255 for value in values
+            isinstance(value, str) and len(value) <= 255 and "\x00" not in value
+            for value in values
         ):
             self.fail("invalid")
+        # El límit compta la llista rebuda, abans de treure'n els repetits.
+        if len(values) > PROCEDURE_TYPE_TOKENS_MAX:
+            self.fail("too_many", max=PROCEDURE_TYPE_TOKENS_MAX)
         tokens = list(
             dict.fromkeys(value.strip() for value in values if value.strip())
         )
         if not tokens:
             self.fail("empty")
-        if len(tokens) > PROCEDURE_TYPE_TOKENS_MAX:
-            self.fail("too_many", max=PROCEDURE_TYPE_TOKENS_MAX)
         return tokens
 
     def to_representation(self, value):

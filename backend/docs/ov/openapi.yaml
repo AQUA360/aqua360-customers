@@ -2343,7 +2343,8 @@ paths:
         de la misma transacción, y entonces `holder_name`, `holder_surname`
         (salvo persona jurídica), `holder_phone` y `holder_email` son
         obligatorios. Se exige que la propiedad exista y tenga un punto de
-        suministro, y que el tipo de trámite esté activo y tenga tarifas periódicas activas. Si el pago es por domiciliación
+        suministro, y que los paquetes estén activos y que, entre todos, tengan alguna tarifa
+        periódica activa (basta con que la tenga uno). Si el pago es por domiciliación
         (`DIRECT_DEBIT`) se exigen los datos bancarios. Si la propiedad tiene
         más de un punto de suministro activo debe enviarse `supply_point_token`.
 
@@ -2423,8 +2424,8 @@ paths:
             Campos obligatorios ausentes o inválidos, datos personales
             ausentes o inválidos cuando el DNI no existe (titular nuevo),
             datos bancarios incompletos para domiciliación, propiedad con
-            varios puntos de suministro sin `supply_point_token`, tipo de
-            trámite sin tarifas periódicas activas, paquetes con tarifas
+            varios puntos de suministro sin `supply_point_token`, paquetes
+            sin ninguna tarifa periódica activa entre todos, paquetes con tarifas
             distintas de un mismo producto, o mandato
             SEPA (`sepa_signed`) que no es base64 válido, no es un PDF o se
             envía con una forma de pago que no es domiciliación.
