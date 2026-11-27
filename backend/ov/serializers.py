@@ -58,6 +58,7 @@ from django.utils.dateparse import parse_date
 from django.utils.text import get_valid_filename
 import copy
 import logging
+import re
 from decimal import Decimal
 import base64
 import binascii
@@ -464,11 +465,17 @@ class UpdateBillingDataOVSerializer(serializers.Serializer):
             )
 
 
+# Format mínim d'un IBAN (de qualsevol país): país, dos dígits i fins a 30
+# caràcters alfanumèrics. No es valida el dígit de control: n'hi ha d'estrangers
+# que no sabríem validar, i d'això s'ocupa l'Oficina Virtual.
+IBAN_BASIC_FORMAT = re.compile(r"^[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}$")
+
+
 class UpdateBillingDataOVIBANSerializer(serializers.Serializer):
-    iban = serializers.CharField(required=True)
-    nif = serializers.CharField(required=True)
-    iban_holder_name = serializers.CharField(required=True)
-    iban_holder_dni = serializers.CharField(required=True)
+    iban = serializers.CharField(required=True, max_length=64)
+    nif = serializers.CharField(required=True, max_length=50)
+    iban_holder_name = serializers.CharField(required=True, max_length=255)
+    iban_holder_dni = serializers.CharField(required=True, max_length=50)
 
     def validate(self, data):
         """Validate input data"""
@@ -491,6 +498,8 @@ class UpdateBillingDataOVIBANSerializer(serializers.Serializer):
         # Clean NIF format
         data["nif"] = data["nif"].strip().upper()
         data["iban_holder_dni"] = data["iban_holder_dni"].strip().upper()
+        if not IBAN_BASIC_FORMAT.match(data["iban"]):
+            raise serializers.ValidationError({"iban": "Invalid IBAN format."})
         return data
 
     def update(self, instance: Contract, validated_data):
@@ -871,6 +880,14 @@ class InvoiceInPendingRemittance(Exception):
 class InvoicePaidSerializer(serializers.Serializer):
     contract_token = serializers.CharField(required=True)
     invoice_token = serializers.CharField(required=True)
+    # Opcionals: si l'OV els envia, l'import es contrasta amb els rebuts que es
+    # marquen com a pagats i la referència del TPV queda al registre.
+    amount = serializers.DecimalField(
+        max_digits=10, decimal_places=2, required=False, min_value=Decimal("0")
+    )
+    transaction_reference = serializers.CharField(
+        required=False, allow_blank=True, max_length=100
+    )
 
     # Després d'`update`: si la factura ja estava pagada abans de la crida
     already_paid = False
@@ -891,7 +908,6 @@ class InvoicePaidSerializer(serializers.Serializer):
         return data
 
     def update(self, validated_data):
-        print("--------------------------------")
         #invoice type invoice to avoid getting budgets
         invoice_type_invoice_token = ConfigProject.objects.get(token="invoice_type_invoice_token").value
         invoice: Invoice = exclude_future_invoices(Invoice.objects).filter(
@@ -899,7 +915,6 @@ class InvoicePaidSerializer(serializers.Serializer):
             contract__token=validated_data["contract_token"],
             type_final=invoice_type_invoice_token
         ).first()
-        print("--------------------------------")
         if not invoice:
             raise serializers.ValidationError(
                 {"error": "Invoice not found for the given contract."}
@@ -933,6 +948,18 @@ class InvoicePaidSerializer(serializers.Serializer):
                     raise InvoiceInPendingRemittance()
                 self.already_paid = not active_unpaid_ids
 
+                amount = validated_data.get("amount")
+                if amount is not None and active_unpaid_ids:
+                    pending_total = sum(
+                        (p.amount or Decimal("0"))
+                        for p in unpaid
+                        if p.is_active
+                    )
+                    if pending_total.quantize(Decimal("0.01")) != amount.quantize(Decimal("0.01")):
+                        raise serializers.ValidationError(
+                            {"amount": "Amount does not match the pending amount of the invoice."}
+                        )
+
                 for payment in unpaid:
                     if not payment.is_active:
                         continue
@@ -949,7 +976,7 @@ class InvoicePaidSerializer(serializers.Serializer):
 
             return invoice
 
-        except InvoiceInPendingRemittance:
+        except (InvoiceInPendingRemittance, serializers.ValidationError):
             raise
         except Exception as e:
             logger.exception("Error inesperat")

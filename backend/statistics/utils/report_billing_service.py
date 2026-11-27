@@ -35,6 +35,7 @@ from coredata.utils.other_utils import round_ceil
 from coredata.utils.validators_utils import validate_nif
 from pricing.models import ArticleCode, LineItemType, Product, Tax
 from service.models import Company, Exploitation, SupplyPointType
+from service.utils.route_scope import effective_route_position
 from statistics.views.reports_views import add_row, adjust_column_widths, filter_pending_invoices, save_report, jump_row
 from statistics.utils.report_filters import (get_billing_ids, get_multi_ids, has_serie_final_range, invoice_multi_filter_q,
                                              payment_multi_filter_q, serie_final_range_invoices, serie_final_range_period)
@@ -2959,6 +2960,8 @@ def generate_billing_detailed_consumption_summary(request, black_fill=None, whit
             'contract__supply_point_default__meter__caliber',
             'contract__supply_point_default__placement',
             'contract__supply_point_default__cluster_nozzle__cluster',
+            'contract__supply_point_default__route_position__route',
+            'contract__supply_point_default__property__route_position__route',
             'contract__use_type',
             'contract_termination__contract',
             'contract_request',
@@ -2991,7 +2994,8 @@ def generate_billing_detailed_consumption_summary(request, black_fill=None, whit
         titles = [
             _("Explotació"), _("Factura"), _("Ident."), _("Abonat"), _("Adreça"), _("Nº comptador"),
             _("Calibre"), _("Bateria"), _("Ubicació"), _("Tipus de subministrament"),
-            _("Dies"), _("Valor lectura"), _("Data lectura"), _("Tipus lectura"), _("Tipus telelectura")
+            _("Dies"), _("Valor lectura"), _("Data lectura"), _("Tipus lectura"), _("Tipus telelectura"),
+            _("Contracte"), _("Ruta"), _("Ordre")
         ]
         
         totals_sum = []
@@ -3049,7 +3053,15 @@ def generate_billing_detailed_consumption_summary(request, black_fill=None, whit
                 # Prefer the contract linked via Contract.contract_request (reverse FK)
                 contract = getattr(i.contract_request, 'contract', None) or Contract.objects.filter(contract_request=i.contract_request).first()
             reading = i.readings.first() if i.readings.exists() else None
-            
+            # Ruta i ordre dins la ruta del punt de subministrament (el propi o el de la finca)
+            route_position = effective_route_position(contract.supply_point_default) if contract else None
+            route = route_position.route if route_position else None
+            route_label = (route.token or route.name or "").strip() if route else ""
+            if route_position and route_position.position is not None:
+                route_order = route_position.position
+            else:
+                route_order = (route_position.token or "").strip() if route_position else ""
+
             i_data = [
                 i.exploitation.name,
                 i.serie_final,
@@ -3065,7 +3077,10 @@ def generate_billing_detailed_consumption_summary(request, black_fill=None, whit
                 reading.reading_value if reading else "",
                 reading.reading_date if reading else "",
                 reading.origin if reading else "",
-                contract.supply_point_default.meter.comm_technology if contract and contract.supply_point_default and contract.supply_point_default.meter else ""]
+                contract.supply_point_default.meter.comm_technology if contract and contract.supply_point_default and contract.supply_point_default.meter else "",
+                contract.token if contract else "",
+                route_label,
+                route_order]
             for even_product, product in enumerate(products):
                 # Use the same filtered queryset used to compute product_stretches,
                 # restricted to the current invoice and product, to keep counts aligned.
@@ -3090,7 +3105,7 @@ def generate_billing_detailed_consumption_summary(request, black_fill=None, whit
             
             row = add_row(sheet, row, i_data, colored=colored)
         
-        totals = [_("Totals"), invoices.count(), "","", "", "", "","", "", "", "", "","", "", ""]
+        totals = [_("Totals"), invoices.count(), "","", "", "", "","", "", "", "", "","", "", "", "", "", ""]
         totals.extend(totals_sum)
         
         row = add_row(sheet, row, totals, fill=black_fill, font=white_bold_font)

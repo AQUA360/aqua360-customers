@@ -8197,6 +8197,7 @@ class FutureInvoiceVisibilityOVTests(TestCase):
         cls.user = User.objects.create_user(
             username="ov-future-invoices-test", password="not-used"
         )
+        cls.user.groups.add(Group.objects.get_or_create(name="ov")[0])
         for token, value in (
             ("contract_termination_completed_token", "3"),
             ("contract_terminated_status", "-1"),
@@ -9254,6 +9255,7 @@ class DirectDebitTpvOVTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.user = User.objects.create_user(username="ov-dd-tpv-test", password="not-used")
+        cls.user.groups.add(Group.objects.get_or_create(name="ov")[0])
 
         for token, value in (
             ("contract_termination_completed_token", "3"),
@@ -9768,6 +9770,7 @@ class UpdateIbanDirectDebitOVTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.user = User.objects.create_user(username="ov-update-iban-test", password="not-used")
+        cls.user.groups.add(Group.objects.get_or_create(name="ov")[0])
         for token, value in (
             ("contract_termination_completed_token", "3"),
             ("contract_terminated_status", "-1"),
