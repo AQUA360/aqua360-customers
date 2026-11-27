@@ -78,6 +78,7 @@ info:
 
     - Los IBAN devueltos en las respuestas aparecen enmascarados (8 primeros caracteres + asteriscos + 8 últimos). Excepción: `/ov/contract/{token}/` y `/ov/contract-detail/` devuelven el IBAN sin enmascarar cuando se envía el parámetro de consulta `dni` y este coincide con el titular de la cuenta de domiciliación (en ese caso `is_account_holder` es `true`); sin `dni`, las claves `is_account_holder`, `is_holder` e `is_payer` no aparecen en la respuesta.
     - Los campos booleanos expuestos como texto (`smart_metering`, `paper_invoice`) usan los valores `"true"` o `"false"`.
+    - DNI bloqueados: los DNI genéricos que comparten muchas personas (de momento `99999999R`) no se aceptan en ningún endpoint. Tras normalizarlos (sin espacios, puntos ni guiones y en mayúsculas), el parámetro de consulta `dni` responde `400` con `{"error": "DNI not allowed"}` antes de cualquier consulta, también donde es opcional; en los cuerpos de los trámites y del cambio de IBAN (`holder_dni`, `iban_holder_dni`, `nif`, `dni`) responde `400` con el error `DNI not allowed.` en el campo correspondiente.
     - El listado de facturas (`/ov/invoices/`) excluye las pre-facturas (estado con token `1`).
     - Las facturas con fecha de emisión (`issue_date`) posterior a hoy no se devuelven en ningún
       endpoint de facturas (listado, impagadas, detalle, PDF, descarga, pago y devolución) hasta

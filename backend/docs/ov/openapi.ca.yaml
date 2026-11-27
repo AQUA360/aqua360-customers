@@ -78,6 +78,7 @@ info:
 
     - Els IBAN retornats a les respostes apareixen emmascarats (8 primers caràcters + asteriscs + 8 últims). Excepció: `/ov/contract/{token}/` i `/ov/contract-detail/` retornen l'IBAN sense emmascarar quan s'envia el paràmetre de consulta `dni` i aquest coincideix amb el titular del compte de domiciliació (en aquest cas `is_account_holder` és `true`); sense `dni`, les claus `is_account_holder`, `is_holder` i `is_payer` no apareixen a la resposta.
     - Els camps booleans exposats com a text (`smart_metering`, `paper_invoice`) fan servir els valors `"true"` o `"false"`.
+    - DNI bloquejats: els DNI genèrics que comparteixen moltes persones (de moment `99999999R`) no s'accepten a cap endpoint. Un cop normalitzats (sense espais, punts ni guions i en majúscules), el paràmetre de consulta `dni` respon `400` amb `{"error": "DNI not allowed"}` abans de cap consulta, també on és opcional; als cossos dels tràmits i del canvi d'IBAN (`holder_dni`, `iban_holder_dni`, `nif`, `dni`) respon `400` amb l'error `DNI not allowed.` al camp corresponent.
     - El llistat de factures (`/ov/invoices/`) exclou les prefactures (estat amb token `1`).
     - Les factures amb data d'emissió (`issue_date`) posterior a avui no es retornen en cap
       endpoint de factures (llistat, impagades, detall, PDF, baixada, pagament i devolució) fins
