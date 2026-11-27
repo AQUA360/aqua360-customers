@@ -16,6 +16,7 @@ from coredata.serializers import PersonAddressSerializer, PersonSerializer
 from coredata.utils.iban_validator_utils import resolve_account_bic
 from documentmanager.utils.sign_certificate_service import sign_pdf
 from service.serializers.company_serializer import CompanySerializer
+from billing.permissions import CanViewSepaDocuments
 
 
 def _resolve_person_bank(request_data, default_person_bank):
@@ -237,7 +238,7 @@ class ContractSepaPDFView(APIView):
     (there is no GeneralPayment to persist it on).
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CanViewSepaDocuments]
 
     def post(self, request, contract_id, *args, **kwargs):
         is_request = str(request.query_params.get("is_request", "")).lower() == "true"

@@ -63,6 +63,7 @@ EXEMPT_VIEWS = {
     'service.views.route_position_view.RoutePositionAppViewSet': "autenticació pròpia de l'app de lectures",
     'service.views.supply_point_placement_view.SupplyPointPlacementAppViewSet': "autenticació pròpia de l'app de lectures",
     'coredata.views.deploy_info_view.DeployInfoView': 'versió del desplegament, sense dades de clients',
+    'billing.views.reading_batch_generate_view.TaskProgressView': "progrés d'una tasca de Celery: l'id és un UUID4 no endevinable i no hi ha propietari registrat (pendent, SEC-0367)",
     'rest_framework.routers.APIRootView': "índex d'URLs de l'API, sense dades",
 }
 

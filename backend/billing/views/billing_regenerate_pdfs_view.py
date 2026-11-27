@@ -5,6 +5,7 @@ from rest_framework.response import Response
 
 from billing.models import Billing, BillingQueue, Invoice
 from billing.permissions import BillingPermission
+from billing.permissions import CanViewBillingProcess
 
 
 class BillingRegeneratePDFsView(views.APIView):
@@ -42,7 +43,7 @@ class BillingRegeneratePDFsView(views.APIView):
 
 
 class BillingRegeneratePDFsStatusView(views.APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CanViewBillingProcess]
 
     def get(self, request, task_id):
         res = AsyncResult(task_id)

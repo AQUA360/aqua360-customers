@@ -6,6 +6,7 @@ from rest_framework import status
 
 from billing.tasks import export_readings_by_batch_csv_task
 import logging
+from billing.permissions import CanViewReadingExports
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +15,7 @@ class ReadingByBatchCSVExportView(APIView):
     """
     API endpoint that exports reading data by batch in CSV format.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CanViewReadingExports]
 
     def get(self, request, *args, **kwargs):
         batch_id = request.query_params.get('batch')

@@ -26,6 +26,8 @@ from service.models import Company, CompanyConfig
 
 from ..models import GeneralPaymentSepaDocument
 import logging
+from billing.permissions import CanSendPaymentEmails
+from billing.throttles import InvoiceEmailThrottle, email_payload_error
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +50,8 @@ class SepaDocumentSendEmailView(APIView):
     s'envia amb send_electronic_mail (com a InvoiceSendEmailView).
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CanSendPaymentEmails]
+    throttle_classes = [InvoiceEmailThrottle]
 
     def post(self, request, id, *args, **kwargs):
         # 1. Validar el destinatari
@@ -75,6 +78,10 @@ class SepaDocumentSendEmailView(APIView):
                 {"error": "El document SEPA no s'ha generat."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        error = email_payload_error(emails, request.data.get('subject'), request.data.get('body'))
+        if error:
+            return Response({"error": error}, status=status.HTTP_400_BAD_REQUEST)
 
         contract_id = request.data.get('contract_id')
         if not contract_id:

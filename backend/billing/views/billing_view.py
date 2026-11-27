@@ -46,6 +46,7 @@ from billing.utils.billing_process_errors import (
   build_contract_error, dedupe_contract_readings, no_invoice_generated_error, remove_billing_process_errors, upsert_billing_process_error,
 )
 import logging
+from billing.permissions import BillingModelPermission
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +55,7 @@ class BillingViewSet(viewsets.ModelViewSet):
   API endpoint that allows reading batches to be viewed or edited.
   """
   queryset = Billing.objects.all().order_by('-created_at').filter(is_active=True)
-  permission_classes = [IsAuthenticated, DjangoModelPermissions]
+  permission_classes = [IsAuthenticated, BillingModelPermission]
   filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
   filterset_class = BillingFilter
   search_fields = ['token','name']
@@ -990,7 +991,7 @@ class BillingViewSet(viewsets.ModelViewSet):
       return super().get_permissions()
 
 class BillingRoutesView(views.APIView):
-  permission_classes = [IsAuthenticated, DjangoModelPermissions]
+  permission_classes = [IsAuthenticated, BillingModelPermission]
   queryset = Billing.objects.all().order_by('-created_at')
   def get(self, request):
     try:
@@ -1012,7 +1013,7 @@ class BillingRoutesView(views.APIView):
       return Response({"error": "Unexpected error occurred."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
 class BillingBadgesView(views.APIView):
-  permission_classes = [IsAuthenticated, DjangoModelPermissions]
+  permission_classes = [IsAuthenticated, BillingModelPermission]
   queryset = Billing.objects.all().order_by('-created_at')
   def get(self, request):
     try:
@@ -1115,7 +1116,7 @@ def add_badges(response, billing, key):
     })
     
 class StartBillingView(views.APIView):
-  permission_classes = [IsAuthenticated, DjangoModelPermissions]
+  permission_classes = [IsAuthenticated, BillingModelPermission]
   queryset = Billing.objects.all().order_by('-created_at')
   def get(self, request):
     try:

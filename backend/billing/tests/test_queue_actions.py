@@ -241,7 +241,7 @@ class BillingQueueActionTests(TestCase):
         """Comprova el 503 i el log sense exposar l'error ni modificar la cua."""
         item = self.enqueue()
         client = APIClient()
-        client.force_authenticate(User.objects.create(username='queue-kill'))
+        client.force_authenticate(User.objects.create(username='queue-kill', is_superuser=True))
 
         with mock.patch(REVOKE, side_effect=ConnectionError('redis no respon')), \
                 self.assertLogs('billing.views.billing_batch_generate_view', level='ERROR') as logs:
@@ -257,7 +257,7 @@ class BillingQueueActionTests(TestCase):
     def test_la_vista_mata_la_tasca(self):
         item = self.enqueue()
         client = APIClient()
-        client.force_authenticate(User.objects.create(username='queue-kill'))
+        client.force_authenticate(User.objects.create(username='queue-kill', is_superuser=True))
 
         with mock.patch(REVOKE) as revoke:
             response = client.post(f'/billing/billing-queue/{item.id}/action/', {'action': 'kill'}, format='json')

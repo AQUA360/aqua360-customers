@@ -5,6 +5,7 @@ from rest_framework.response import Response
 
 from billing.models import Billing, BillingQueue, Invoice
 from billing.permissions import BillingPermission
+from billing.permissions import CanViewBillingProcess
 
 
 class WinCenExportView(views.APIView):
@@ -47,7 +48,7 @@ class WinCenExportView(views.APIView):
 
 
 class WinCenExportStatusView(views.APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CanViewBillingProcess]
 
     def get(self, request, queue_item_id):
         try:

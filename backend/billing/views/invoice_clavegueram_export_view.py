@@ -12,9 +12,10 @@ from rest_framework import status
 from billing.models import Invoice
 from coredata.utils.language_utils import use_default_language
 from coredata.models import ConfigProject
+from billing.permissions import CanViewInvoiceDocuments
 
 class InvoiceClavegueramExcelExportView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CanViewInvoiceDocuments]
 
     @use_default_language
     def get(self, request, *args, **kwargs):

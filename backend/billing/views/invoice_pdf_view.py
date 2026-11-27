@@ -34,6 +34,7 @@ from service.serializers.company_bank_serializer import CompanyBankSerializer
 from service.utils.company_bank_service import get_company_bank
 import base64
 from verifactu.utils.qr_service import generate_qr_base64
+from billing.permissions import InvoiceModelPermission
 
 
 PDF_CONFIG_TOKENS = (
@@ -54,7 +55,7 @@ PDF_CONFIG_TOKENS = (
 
 
 class InvoiceReportPDFDownloadViewSet(APIView):
-  permission_classes = [IsAuthenticated, DjangoModelPermissions]
+  permission_classes = [IsAuthenticated, InvoiceModelPermission]
   queryset = Invoice.objects.all().order_by('-created_at')
   def get(self, request, id, *args, **kwargs):
     invoice = get_invoice_for_pdf(invoice_id=id)

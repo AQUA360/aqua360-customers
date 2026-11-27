@@ -20,6 +20,8 @@ from billing.utils.reading_service import (
 from coredata.utils.name_utils import generate_token
 from coredata.models import ConfigProject
 from service.utils.route_scope import effective_route_q
+from billing.permissions import CanViewContractEstimation
+from rest_framework.permissions import IsAuthenticated
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +29,8 @@ class ContractEstimationView(APIView):
     """
     Vista per gestionar l'estimació de lectures de contractes des del frontend.
     """
+
+    permission_classes = [IsAuthenticated, CanViewContractEstimation]
 
     def get(self, request, *args, **kwargs):
         """

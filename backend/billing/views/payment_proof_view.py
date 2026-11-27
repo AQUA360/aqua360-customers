@@ -10,10 +10,11 @@ from billing.utils.payment_proof_service import (
     get_payments_from_request_data,
     render_payment_proof_pdf,
 )
+from billing.permissions import CanViewPaymentDocuments
 
 
 class PaymentProofDownloadViewSet(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CanViewPaymentDocuments]
     queryset = Invoice.objects.all().order_by('-created_at')
 
     def post(self, request, *args, **kwargs):

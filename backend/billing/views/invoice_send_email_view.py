@@ -23,6 +23,8 @@ from service.models import Company, CompanyConfig
 
 from ..models import Invoice
 import logging
+from billing.permissions import CanSendInvoiceEmails
+from billing.throttles import InvoiceEmailThrottle, email_payload_error
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +46,8 @@ class InvoiceSendEmailView(APIView):
     finalment envia el correu, retornant el resultat de l'enviament.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CanSendInvoiceEmails]
+    throttle_classes = [InvoiceEmailThrottle]
 
     def post(self, request, id, *args, **kwargs):
         # 1. Validar el destinatari
@@ -64,6 +67,10 @@ class InvoiceSendEmailView(APIView):
                     {"error": f"Adreça d'email no vàlida: {email}"},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+
+        error = email_payload_error(emails, request.data.get('subject'), request.data.get('body'))
+        if error:
+            return Response({"error": error}, status=status.HTTP_400_BAD_REQUEST)
 
         invoice = get_object_or_404(Invoice, id=id)
 

@@ -30,6 +30,7 @@ from billing.utils.terminated_contract_billing import (
 )
 from billing.utils.billing_process_errors import QUEUE_TASK_FAILED_MESSAGE
 import logging
+from billing.permissions import CanChangeBillingProcess, CanViewBillingProcess
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +38,7 @@ logger = logging.getLogger(__name__)
 # Celery. Les tasques que coneixen el motiu ja tanquen l'item amb un missatge entenedor.
 
 class BillingQueueListView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CanViewBillingProcess]
 
     def get(self, request):
         billing_id = request.query_params.get('billing_id')
@@ -115,7 +116,7 @@ class BillingQueueListView(APIView):
         return Response(results)
 
 class BillingQueueStatusView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CanViewBillingProcess]
     
     def get(self, request, queue_item_id):
         try:
@@ -187,7 +188,7 @@ class BillingQueueActionView(APIView):
     tasca de Celery es queda penjada (kill/skip/restart).
     Body esperat: {"action": "kill" | "skip" | "restart"}
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CanChangeBillingProcess]
 
     def post(self, request, queue_item_id):
         """Aplica kill, skip o restart i retorna l'estat de l'ítem de facturació.

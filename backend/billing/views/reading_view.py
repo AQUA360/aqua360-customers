@@ -52,12 +52,13 @@ from billing.tasks import export_batch_readings_task, export_readings_task
 from documentmanager.utils.export_jobs import enqueue_export, export_job_response
 from documentmanager.utils.export_permissions import export_permission_class
 from communication.utils.communication_process_service import add_reading_to_communication_process
+from billing.permissions import ReadingModelPermission
 class ReadingViewSet(viewsets.ModelViewSet):
   """
   API endpoint that allows reading batches to be viewed or edited.
   """
   queryset = Reading.objects.all().filter(is_active=True).order_by('-reading_date', 'is_close', '-created_at', '-reading_value')
-  permission_classes = [IsAuthenticated, DjangoModelPermissions]
+  permission_classes = [IsAuthenticated, ReadingModelPermission]
   filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
   filterset_class = ReadingFilter
   search_fields = ['token', 'contract__token', 'meter__code']
@@ -825,7 +826,7 @@ class ReadingDetailViewSet(viewsets.ModelViewSet):
   API endpoint that allows reading batches to be viewed or edited.
   """
   queryset = Reading.objects.all().filter(is_active=True).order_by('-reading_date')
-  permission_classes = [IsAuthenticated, DjangoModelPermissions]
+  permission_classes = [IsAuthenticated, ReadingModelPermission]
   filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
   filterset_class = ReadingFilter
   search_fields = ['token']
