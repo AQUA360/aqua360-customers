@@ -1,6 +1,7 @@
 import datetime
 from billing.models import Reading
 from coredata.models import ConfigProject
+from django.db.models import Q
 from django.template.loader import render_to_string
 from io import BytesIO
 from xhtml2pdf import pisa
@@ -165,6 +166,32 @@ def mark_contract_terminated(contract, termination_request, termination_date=Non
         if not was_terminated:
             emit_contract_termination_confirmed(contract, termination_request)
     return not was_terminated
+
+
+def release_termination_draft_orders(termination_request):
+    """Passa a Pendent les ordres en esborrany (o sense estat) de la baixa.
+
+    Les ordres que ja estan en marxa (Enviada, En Curs, Per validar...) no es
+    toquen: el seu estat el porten l'operari o el GMAO. El canvi queda a
+    l'historial de l'ordre com a fet per la baixa, no per l'usuari.
+    """
+    from order.models import Order, OrderStatus
+
+    def config_value(token, default):
+        return ConfigProject.objects.filter(token=token).values_list('value', flat=True).first() or default
+
+    pending_status = OrderStatus.objects.filter(token=config_value('order_status_pending_token', '1')).first()
+    if not pending_status:
+        return
+    draft_token = config_value('order_status_draft_token', '0')
+    reason = f"Canvi automàtic per la baixa {termination_request.token or termination_request.pk}"
+    orders = Order.objects.filter(contract_termination_request=termination_request).filter(
+        Q(status__token=draft_token) | Q(status__isnull=True)
+    )
+    for order in orders:
+        order.status = pending_status
+        order._status_change_reason = reason
+        order.save()
 
 
 def cancel_contract_termination(instance, user):

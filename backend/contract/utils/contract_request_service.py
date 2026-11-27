@@ -137,12 +137,10 @@ def contract_request_finalize(user, contract_request_id):
             
             # Si hi ha un contract.contract_request_termination, hem de mirar si hi ha alguna Order associada a la baixa.
             if hasattr(contract_request, 'contract_termination_requests'):
-                termination_orders = []
+                # Només les ordres en esborrany: les que ja estan en marxa no es toquen
+                from contract.utils.contract_termination_service import release_termination_draft_orders
                 for contract_termination_request in contract_request.contract_termination_requests.all():
-                    termination_orders.extend(contract_termination_request.orders.all())
-                for order in termination_orders:
-                    order.status = pending_order_status
-                    order.save()
+                    release_termination_draft_orders(contract_termination_request)
 
             
             # Per finalitzar, mirem si hi ha ordres de treball. Perquè si no hi ha ordres de treball, directament passarem a generar el contracte
@@ -234,12 +232,10 @@ def contract_request_finalize_in_place(user, contract_request_id):
                     logger.info(f"Order {new_order.id} creada per ContractRequest {contract_request_id} i OrderType {order_type.id}.")
 
             if hasattr(contract_request, 'contract_termination_requests'):
-                termination_orders = []
+                # Només les ordres en esborrany: les que ja estan en marxa no es toquen
+                from contract.utils.contract_termination_service import release_termination_draft_orders
                 for contract_termination_request in contract_request.contract_termination_requests.all():
-                    termination_orders.extend(contract_termination_request.orders.all())
-                for order in termination_orders:
-                    order.status = pending_order_status
-                    order.save()
+                    release_termination_draft_orders(contract_termination_request)
 
             # A diferència de contract_request_finalize, no esperem que les Order
             # es completin: finalitzem el ContractRequest i creem el Contract ara mateix.

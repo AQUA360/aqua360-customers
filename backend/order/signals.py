@@ -10,6 +10,9 @@ from .models import Order, OrderObservation
 from .utils.order_service import order_complete
 from logger.models import LogOrderStatus
 from django.contrib.auth.models import User
+import logging
+
+logger = logging.getLogger(__name__)
 
 order_save_flag = False
 
@@ -65,14 +68,18 @@ def detect_status_change(sender, instance, **kwargs):
             f"Order {instance.pk} status changed from {prev_name} to {curr_name}"
         )
 
-        # Create a LogOrderStatus object
+        # Un canvi automàtic (p. ex. per una baixa) no s'atribueix a l'usuari de la petició
+        reason = getattr(instance, "_status_change_reason", None)
         LogOrderStatus.objects.create(
             object=instance,
             previous_status=previous.status,
             current_status=instance.status,
-            observation=f"Status changed from {prev_name} to {curr_name}",
-            user=current_user,  # Get the current user from the middleware
+            observation=reason or f"Status changed from {prev_name} to {curr_name}",
+            user=None if reason else current_user,
         )
+        # Estat anterior, per avisar el GMAO un cop desat. No es neteja a cada desada:
+        # after_order_save torna a desar l'ordre abans que s'enviï l'avís.
+        instance._status_changed_from = previous.status
 
        
 
@@ -229,6 +236,33 @@ def publish_order_created_event(sender, instance, created, **kwargs):
             transaction.on_commit(lambda: publish_order_created(instance))
         except Exception as e:
             print(f"Error publishing RabbitMQ created event for order {instance.pk}: {e}")
+
+
+@receiver(post_save, sender=Order)
+def publish_order_status_changed_event(sender, instance, created, **kwargs):
+    """
+    Avisa el GMAO quan l'app canvia l'estat d'una ordre. Els canvis que arriben
+    del GMAO (_from_gmao) no se li tornen a enviar.
+    """
+    from django.conf import settings
+
+    previous_status = getattr(instance, "_status_changed_from", None)
+    instance._status_changed_from = None
+    if created or previous_status is None or getattr(instance, "_from_gmao", False):
+        return
+    if not settings.RABBITMQ_ENABLED:
+        return
+
+    from .services.rabbit import publish_order_status_changed
+    reason = getattr(instance, "_status_change_reason", None)
+
+    def send():
+        try:
+            publish_order_status_changed(instance, previous_status, reason)
+        except Exception:
+            logger.exception("Error publishing RabbitMQ status change for order %s", instance.pk)
+
+    transaction.on_commit(send)
 
 
 @receiver(post_save, sender=OrderObservation)

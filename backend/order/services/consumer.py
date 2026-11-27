@@ -140,6 +140,8 @@ def handle_order_status_change(payload: dict) -> dict:
                 order_status = OrderStatus.objects.get(token=status_token)
                 old_status = order.status.name if order.status else "None"
                 order.status = order_status
+                # Ve del GMAO: no se li torna a enviar
+                order._from_gmao = True
 
                 # If status is closed (token=2), set completed_at
                 if status_token == 2:
