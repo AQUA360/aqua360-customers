@@ -7,6 +7,7 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from integrations.inbound.signing.throttles import SigningCallbackThrottle
 from integrations.inbound.signing.services import (
     EVENT_SIGNED,
     SigningCallbackError,
@@ -37,15 +38,19 @@ def _api_key_is_valid(request):
 class SigningCallbackView(APIView):
     authentication_classes = []
     permission_classes = []
+    throttle_classes = [SigningCallbackThrottle]
 
-    def _reject(self, payload, detail, status_code, log_payload=True):
-        log_signing_callback(
-            payload if log_payload else {},
-            success=False,
-            status_code=status_code,
-            error_message=detail,
-            response_payload={"detail": detail},
-        )
+    def _reject(self, payload, detail, status_code, log_payload=True, persist=True):
+        # Sense clau vàlida no s'escriu res a la BD: qualsevol persona d'Internet podria
+        # fer créixer la taula de registres amb crides anònimes.
+        if persist:
+            log_signing_callback(
+                payload if log_payload else {},
+                success=False,
+                status_code=status_code,
+                error_message=detail,
+                response_payload={"detail": detail},
+            )
         return Response({"detail": detail}, status=status_code)
 
     def post(self, request, *args, **kwargs):
@@ -57,7 +62,7 @@ class SigningCallbackView(APIView):
                 logger.warning(
                     "Callback de signatura rebutjat: SIGN_CALLBACK_API_KEY no està configurada."
                 )
-            return self._reject(payload, NOT_AUTHORIZED, status.HTTP_403_FORBIDDEN, is_dict)
+            return self._reject(payload, NOT_AUTHORIZED, status.HTTP_403_FORBIDDEN, persist=False)
 
         if not is_dict:
             return self._reject(

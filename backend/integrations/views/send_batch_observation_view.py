@@ -1,6 +1,6 @@
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import status, viewsets
-from rest_framework.permissions import IsAuthenticated
+from auth.permissions import DjangoModelViewPermissions
 from rest_framework.response import Response
 
 from integrations.filters.send_batch_observation_filter import SendBatchObservationFilter
@@ -13,7 +13,7 @@ class SendBatchObservationViewSet(viewsets.ModelViewSet):
     serializer_class = SendBatchObservationSerializer
     filter_backends = (DjangoFilterBackend,)
     filterset_class = SendBatchObservationFilter
-    permission_classes = [IsAuthenticated]
+    permission_classes = [DjangoModelViewPermissions]
 
     def get_serializer_context(self):
         context = super().get_serializer_context()

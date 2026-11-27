@@ -5,6 +5,8 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.permissions import IsAuthenticated
+
+from integrations.permissions import SendBatchPermission
 from rest_framework.response import Response
 
 from auth.permissions import PermissionManager
@@ -77,7 +79,7 @@ def _sent_without_immediate_error(batch: SendBatch) -> bool:
 
 
 class SendBatchViewSet(viewsets.ReadOnlyModelViewSet):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [SendBatchPermission]
     filter_backends = [SearchFilter, OrderingFilter]
     search_fields = [
         "token",

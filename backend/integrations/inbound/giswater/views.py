@@ -1,7 +1,7 @@
 from django.utils.translation import gettext
 from rest_framework import status
 from coredata.authentication import ExpiringTokenAuthentication
-from rest_framework.permissions import IsAuthenticated
+from integrations.permissions import IsGiswaterUser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 class GiswaterContractsView(APIView):
     authentication_classes = [ExpiringTokenAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsGiswaterUser]
     endpoint = CONTRACTS_ENDPOINT
 
     def get(self, request, *args, **kwargs):
@@ -57,7 +57,7 @@ class GiswaterContractsView(APIView):
 
 class GiswaterContractReadingsView(APIView):
     authentication_classes = [ExpiringTokenAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsGiswaterUser]
     endpoint = READINGS_ENDPOINT
 
     def get(self, request, contract_token, *args, **kwargs):

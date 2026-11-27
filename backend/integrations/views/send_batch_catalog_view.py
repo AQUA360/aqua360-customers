@@ -1,6 +1,6 @@
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticated
+from integrations.permissions import SendBatchCatalogPermission, SendBatchSettingsPermission
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -76,7 +76,7 @@ class _CatalogMixin:
 class SendBatchProviderViewSet(_CatalogMixin, viewsets.ModelViewSet):
     queryset = SendBatchProvider.objects.all().order_by("position", "token", "id")
     serializer_class = SendBatchProviderSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [SendBatchCatalogPermission]
     pagination_class = None
 
 
@@ -85,7 +85,7 @@ class SendBatchTypeViewSet(_CatalogMixin, viewsets.ModelViewSet):
         "provider__position", "position", "token", "id"
     )
     serializer_class = SendBatchTypeSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [SendBatchCatalogPermission]
     pagination_class = None
     default_scope_field = "provider_id"
 
@@ -100,7 +100,7 @@ class SendBatchTypeViewSet(_CatalogMixin, viewsets.ModelViewSet):
 class SendBatchStatusViewSet(_CatalogMixin, viewsets.ModelViewSet):
     queryset = SendBatchStatus.objects.all().order_by("position", "token", "id")
     serializer_class = SendBatchStatusSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [SendBatchCatalogPermission]
     pagination_class = None
 
 
@@ -112,7 +112,7 @@ class SendBatchSettingsView(APIView):
     POST → crea els registres/config que falten (tokens canònics)
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [SendBatchSettingsPermission]
 
     def get(self, request):
         return Response(get_send_batch_settings_overview())
