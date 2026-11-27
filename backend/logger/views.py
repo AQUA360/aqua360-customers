@@ -4,6 +4,9 @@ from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
 
 from rest_framework.views import APIView
+
+from auth.permissions import DjangoModelViewPermissions
+from logger.permissions import CanViewSomeOVLog, ov_log_models
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.pagination import PageNumberPagination
@@ -56,7 +59,7 @@ class LogConnectionStatusViewSet(viewsets.ReadOnlyModelViewSet):
     """
     queryset = LogConnectionStatus.objects.all().order_by('-timestamp')
     serializer_class = LogConnectionStatusSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [DjangoModelViewPermissions]
     
 
 class LogConnectionRequestStatusViewSet(viewsets.ReadOnlyModelViewSet):
@@ -65,7 +68,7 @@ class LogConnectionRequestStatusViewSet(viewsets.ReadOnlyModelViewSet):
     """
     queryset = LogConnectionRequestStatus.objects.all().order_by('-timestamp')
     serializer_class = LogConnectionRequestStatusSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [DjangoModelViewPermissions]
     filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
     filterset_class = LogConnectionRequestStatusFilter
     search_fields = ['object']
@@ -79,7 +82,7 @@ class LogSupplyCutStatusViewSet(viewsets.ReadOnlyModelViewSet):
         'previous_status', 'current_status', 'user'
     ).order_by('-timestamp')
     serializer_class = LogSupplyCutStatusSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [DjangoModelViewPermissions]
     filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
     filterset_class = LogSupplyCutStatusFilter
     search_fields = ['object']
@@ -91,7 +94,7 @@ class LogSupplyPointChangeViewSet(viewsets.ReadOnlyModelViewSet):
     """
     queryset = LogSupplyPointChange.objects.all().order_by('-timestamp')
     serializer_class = LogSupplyPointChangeSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [DjangoModelViewPermissions]
     filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
     filterset_class = LogSupplyPointChangeFilter
     search_fields = ['action']
@@ -103,7 +106,7 @@ class LogContractRequestStatusViewSet(viewsets.ReadOnlyModelViewSet):
     """
     queryset = LogContractRequestStatus.objects.all().order_by('-timestamp')
     serializer_class = LogContractRequestStatusSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [DjangoModelViewPermissions]
     filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
     filterset_class = LogContractRequestStatusFilter
     search_fields = ['object']
@@ -115,7 +118,7 @@ class LogOrderStatusViewSet(viewsets.ReadOnlyModelViewSet):
     """
     queryset = LogOrderStatus.objects.all().order_by('-timestamp')
     serializer_class = LogOrderStatusSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [DjangoModelViewPermissions]
     filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
     filterset_class = LogOrderStatusFilter
     search_fields = ['object']
@@ -127,7 +130,7 @@ class LogBailStatusViewSet(viewsets.ReadOnlyModelViewSet):
     """
     queryset = LogBailStatus.objects.all().order_by('-timestamp')
     serializer_class = LogBailStatusSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [DjangoModelViewPermissions]
     filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
     filterset_class = LogBailStatusFilter
     search_fields = ['object']
@@ -137,7 +140,7 @@ class LogContractTotalMembersViewSet(viewsets.ReadOnlyModelViewSet):
 
     queryset = LogContractTotalMembers.objects.all().order_by('-timestamp')
     serializer_class = LogContractTotalMembersSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [DjangoModelViewPermissions]
     filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
     filterset_class = LogContractTotalMembersFilter
     search_fields = ['object']
@@ -147,7 +150,7 @@ class LogContractTotalMembersViewSet(viewsets.ReadOnlyModelViewSet):
 class LogContractPhonesViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = LogContractPhones.objects.all().order_by('-timestamp')
     serializer_class = LogContractPhonesSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [DjangoModelViewPermissions]
     filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
     filterset_class = LogContractPhonesFilter
     search_fields = ['object']
@@ -160,7 +163,7 @@ class LogContractPhonesViewSet(viewsets.ReadOnlyModelViewSet):
 class LogContractBonificationsVariablesChangeViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = LogContractBonificationsVariablesChange.objects.all().order_by('-timestamp')
     serializer_class = LogContractBonificationsVariablesChangeSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [DjangoModelViewPermissions]
     filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
     filterset_class = LogContractBonificationsVariablesChangeFilter
     search_fields = ['object']
@@ -169,7 +172,7 @@ class LogContractBonificationsVariablesChangeViewSet(viewsets.ReadOnlyModelViewS
 class LogContractExpiredBonificationsVariablesViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = LogContractExpiredBonificationsVariables.objects.all().order_by('-timestamp')
     serializer_class = LogContractExpiredBonificationsVariablesSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [DjangoModelViewPermissions]
     filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
     filterset_class = LogContractExpiredBonificationsVariablesFilter
     search_fields = ['object']
@@ -178,7 +181,7 @@ class LogContractExpiredBonificationsVariablesViewSet(viewsets.ReadOnlyModelView
 class LogClaimRequestContractChangeViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = LogClaimRequestContractChange.objects.all().order_by('-created_at')
     serializer_class = LogClaimRequestContractChangeSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [DjangoModelViewPermissions]
     filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
     filterset_class = LogClaimRequestContractChangeFilter
     search_fields = ['object']
@@ -187,7 +190,7 @@ class LogClaimRequestContractChangeViewSet(viewsets.ReadOnlyModelViewSet):
 class LogInvoiceChangeStatusViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = LogInvoiceChangeStatus.objects.all().order_by('-timestamp')
     serializer_class = LogInvoiceChangeStatusSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [DjangoModelViewPermissions]
     filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
     filterset_class = LogInvoiceChangeStatusFilter
     search_fields = ['object']
@@ -196,7 +199,7 @@ class LogInvoiceChangeStatusViewSet(viewsets.ReadOnlyModelViewSet):
 class LogCommitmentDepositMovementViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = LogCommitmentDepositMovement.objects.all().order_by('-timestamp')
     serializer_class = LogCommitmentDepositMovementSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [DjangoModelViewPermissions]
     filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
     filterset_class = LogCommitmentDepositMovementFilter
     search_fields = ['object']
@@ -205,7 +208,7 @@ class LogCommitmentDepositMovementViewSet(viewsets.ReadOnlyModelViewSet):
 class LogPaymentStatusChangeViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = LogPaymentStatusChange.objects.all().order_by('-timestamp')
     serializer_class = LogPaymentStatusChangeSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [DjangoModelViewPermissions]
     filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
     filterset_class = LogPaymentStatusChangeFilter
     search_fields = ['object']
@@ -214,7 +217,7 @@ class LogPaymentStatusChangeViewSet(viewsets.ReadOnlyModelViewSet):
 class LogCommunicationChangeViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = LogCommunicationChange.objects.all().order_by('-timestamp')
     serializer_class = LogCommunicationChangeSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [DjangoModelViewPermissions]
     filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
     filterset_class = LogCommunicationChangeFilter
     search_fields = ['object']
@@ -223,7 +226,7 @@ class LogCommunicationChangeViewSet(viewsets.ReadOnlyModelViewSet):
 class LogFraudStatusChangeViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = LogFraudStatusChange.objects.all().order_by('-timestamp')
     serializer_class = LogFraudStatusChangeSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [DjangoModelViewPermissions]
     filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
     filterset_class = LogFraudStatusChangeFilter
     search_fields = ['object']
@@ -232,7 +235,7 @@ class LogFraudStatusChangeViewSet(viewsets.ReadOnlyModelViewSet):
 class LogIncidentStatusChangeViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = LogIncidentStatusChange.objects.all().order_by('-timestamp')
     serializer_class = LogIncidentStatusChangeSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [DjangoModelViewPermissions]
     filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
     filterset_class = LogIncidentStatusChangeFilter
     search_fields = ['object']
@@ -242,7 +245,7 @@ class LogIncidentStatusChangeViewSet(viewsets.ReadOnlyModelViewSet):
 class LogCommunicationStatusChangeViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = LogCommunicationStatusChange.objects.all().order_by('-timestamp')
     serializer_class = LogCommunicationStatusChangeSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [DjangoModelViewPermissions]
     filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
     filterset_class = LogCommunicationStatusChangeFilter
     search_fields = ['object']
@@ -251,7 +254,7 @@ class LogCommunicationStatusChangeViewSet(viewsets.ReadOnlyModelViewSet):
 class LogCommunicationProcessStatusChangeViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = LogCommunicationProcessStatusChange.objects.all().order_by('-timestamp')
     serializer_class = LogCommunicationProcessStatusChangeSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [DjangoModelViewPermissions]
     filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
     filterset_class = LogCommunicationProcessStatusChangeFilter
     search_fields = ['object']
@@ -260,7 +263,7 @@ class LogCommunicationProcessStatusChangeViewSet(viewsets.ReadOnlyModelViewSet):
 class LogInvoiceDataChangeViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = LogInvoiceDataChange.objects.all().order_by('-timestamp')
     serializer_class = LogInvoiceDataChangeSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [DjangoModelViewPermissions]
     filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
     filterset_class = LogInvoiceDataChangeFilter
     search_fields = ['object']
@@ -270,7 +273,7 @@ class LogInvoiceDataChangeViewSet(viewsets.ReadOnlyModelViewSet):
 class LogContractDataChangeViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = ContractDataChange.objects.all().order_by('-created_at')
     serializer_class = LogContractDataChangeSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [DjangoModelViewPermissions]
     filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
     filterset_class = LogContractDataChangeFilter
     search_fields = ['contract__token']
@@ -280,7 +283,7 @@ class LogContractDataChangeViewSet(viewsets.ReadOnlyModelViewSet):
 class LogReadingChangeViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = LogReadingChange.objects.all().order_by('-timestamp')
     serializer_class = LogReadingChangeSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [DjangoModelViewPermissions]
     filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
     filterset_class = LogReadingChangeFilter
     search_fields = ['observation']
@@ -289,7 +292,7 @@ class LogReadingChangeViewSet(viewsets.ReadOnlyModelViewSet):
 class LogJoinedPaymentStatusChangeViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = LogJoinedPaymentStatusChange.objects.all().order_by('-timestamp')
     serializer_class = LogJoinedPaymentStatusChangeSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [DjangoModelViewPermissions]
     filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
     filterset_class = LogJoinedPaymentStatusChangeFilter
     search_fields = ['object']
@@ -298,7 +301,7 @@ class LogJoinedPaymentStatusChangeViewSet(viewsets.ReadOnlyModelViewSet):
 class LogProductChangeViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = LogProductChange.objects.all().order_by('-timestamp')
     serializer_class = LogProductChangeSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [DjangoModelViewPermissions]
     filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
     filterset_class = LogProductChangeFilter
     search_fields = ['object']
@@ -308,7 +311,7 @@ class LogProductChangeViewSet(viewsets.ReadOnlyModelViewSet):
 class LogPriceRateChangeViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = LogPriceRateChange.objects.all().order_by('-timestamp')
     serializer_class = LogPriceRateChangeSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [DjangoModelViewPermissions]
     filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
     filterset_class = LogPriceRateChangeFilter
     search_fields = ['object']
@@ -320,23 +323,12 @@ class OVLogsPagination(PageNumberPagination):
     max_page_size = 100
 
 class OVLogsAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [CanViewSomeOVLog]
     pagination_class = OVLogsPagination
 
     def get(self, request, log_id=None):
-        # 1. Define models to check for OV logs
-        logger_models = [m for m in apps.get_app_config('logger').get_models() if m.__name__.startswith('Log')]
-        contract_models = [
-            apps.get_model('contract', 'ContractLog'),
-            apps.get_model('contract', 'ContractObservation'),
-            apps.get_model('contract', 'ContractDataChange')
-        ]
-        # Add Reading model to track readings from OV
-        billing_models = [
-            apps.get_model('billing', 'Reading')
-        ]
-        
-        all_models = logger_models + contract_models + billing_models
+        # 1. Models de registres de l'OV que aquest usuari té permís per veure (view_<model>)
+        all_models = ov_log_models(request.user)
         
         # Handle single log detail request
         if log_id:
