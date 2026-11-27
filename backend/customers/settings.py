@@ -329,6 +329,19 @@ EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD", default="")
 SMS_APP_URL = config("SMS_APP_URL", default="")
 SMS_API_KEY = config("SMS_API_KEY", default="")
 
+# Recuperació de la contrasenya des del login (auth/password_reset_service.py).
+# FRONTEND_URL: adreça de l'aplicació per a l'enllaç del correu (p. ex. https://app.exemple.cat).
+# Si no s'informa, https://FRONTEND_DOMAIN (el de l'stack amb domini); i si tampoc n'hi ha,
+# l'Origin de la petició només si és a CSRF_TRUSTED_ORIGINS.
+_frontend_domain = config("FRONTEND_DOMAIN", default="").strip().strip("/")
+# FRONTEND_DOMAIN sol ser només el domini; si ja porta l'esquema (http://...), es fa servir tal qual
+FRONTEND_URL = config("FRONTEND_URL", default="").strip() or (
+    _frontend_domain if "://" in _frontend_domain
+    else (f"https://{_frontend_domain}" if _frontend_domain else "")
+)
+# Validesa de l'enllaç (segons). El token també deixa de valer quan es canvia la contrasenya.
+PASSWORD_RESET_TIMEOUT = config("PASSWORD_RESET_TIMEOUT", default=3600, cast=int)
+
 customers01 = config("EMAIL_PASSWORD_01", default="")
 # Clau Fernet per xifrar les contrasenyes SMTP desades a la BD (CompanyConfigEmail.encrypted_password).
 # Admet diverses claus separades per comes per rotar-la: la primera xifra, totes desxifren.
@@ -484,6 +497,13 @@ REST_FRAMEWORK = {
     # Límit d'intents de login per IP (els scopes s'apliquen amb ScopedRateThrottle)
     "DEFAULT_THROTTLE_RATES": {
         "login": "10/min",
+        # Canvi de la contrasenya pròpia (per usuari): limita endevinar l'actual
+        "password_change": "5/min",
+        # Recuperació de la contrasenya des del login (per IP): demanar el correu
+        "password_reset": "10/hour",
+        # Enllaç de recuperació (per IP): comprovar-lo i desar la nova (diverses peticions per
+        # recuperació; el token no es pot endevinar)
+        "password_reset_confirm": "30/hour",
     },
     # Nombre de proxys de confiança davant el backend (Cloudflare + nginx): DRF en deriva
     # la IP real de X-Forwarded-For sense fiar-se d'un valor falsejable pel client.

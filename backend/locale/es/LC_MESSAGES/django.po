@@ -6629,3 +6629,57 @@ msgstr "Calle"
 #: claimrequest/views/claim_request_excel_generate_view.py
 msgid "Pis-porta"
 msgstr "Piso-puerta"
+
+#: auth/views.py
+msgid "The current password is not correct."
+msgstr "La contraseña actual no es correcta."
+
+#: auth/serializers.py
+msgid "Enter your current password to change the email."
+msgstr "Hay que indicar la contraseña actual para cambiar el correo electrónico."
+
+#: auth/views.py
+msgid "This field must be text."
+msgstr "Este campo debe ser un texto."
+
+#: auth/views.py
+msgid "The new password is required."
+msgstr "Hay que informar la contraseña nueva."
+
+#: auth/views.py
+msgid "The new password must be different from the current one."
+msgstr "La contraseña nueva debe ser distinta de la actual."
+
+#: auth/password_reset_service.py coredata/templates/password_reset_email.html
+msgid "Password recovery"
+msgstr "Recuperación de la contraseña"
+
+#: auth/password_reset_service.py coredata/templates/password_reset_email.html
+#, python-format
+msgid "We have received a request to reset the password of the user %(username)s."
+msgstr "Hemos recibido una solicitud para restablecer la contraseña del usuario %(username)s."
+
+#: auth/password_reset_service.py coredata/templates/password_reset_email.html
+msgid "To choose a new password, click the button below:"
+msgstr "Para elegir una contraseña nueva, haz clic en el botón:"
+
+#: auth/password_reset_service.py coredata/templates/password_reset_email.html
+msgid "Reset password"
+msgstr "Restablecer la contraseña"
+
+#: auth/password_reset_service.py coredata/templates/password_reset_email.html
+#, python-format
+msgid "The link can only be used once and expires in %(minutes)s minutes."
+msgstr "El enlace solo se puede usar una vez y caduca en %(minutes)s minutos."
+
+#: auth/password_reset_service.py coredata/templates/password_reset_email.html
+msgid "If you did not request it, you can ignore this email: your password will not change."
+msgstr "Si no lo has pedido tú, puedes ignorar este correo: la contraseña no cambiará."
+
+#: auth/password_reset_service.py coredata/templates/password_reset_email.html
+msgid "If the button does not work, copy this address into your browser:"
+msgstr "Si el botón no funciona, copia esta dirección en el navegador:"
+
+#: auth/password_reset_service.py coredata/templates/password_reset_email.html
+msgid "The link is not valid or has expired. Request a new one."
+msgstr "El enlace no es válido o ha caducado. Pide uno nuevo."

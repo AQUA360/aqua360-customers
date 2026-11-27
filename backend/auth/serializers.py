@@ -271,6 +271,56 @@ class UserMinimalSerializer(serializers.HyperlinkedModelSerializer):
         model = User
         fields = [ 'id', 'first_name', 'last_name', 'username', 'email' ]
 
+class OwnProfileSerializer(serializers.ModelSerializer):
+    """Dades del propi usuari: pot canviar nom, cognoms i correu.
+
+    El nom d'usuari, el rol i el grup només es mostren: els canvia un superusuari des de la
+    gestió d'usuaris (el nom d'usuari decideix qui pot ser superusuari).
+
+    Canviar el correu demana la contrasenya actual: el correu rep l'enllaç de recuperació,
+    i amb una sessió robada n'hi hauria prou per apoderar-se del compte."""
+    email = serializers.EmailField(required=True, allow_blank=False, max_length=254)
+    current_password = serializers.CharField(
+        write_only=True, required=False, allow_blank=True, trim_whitespace=False)
+    role = serializers.SerializerMethodField()
+    group_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = ['id', 'username', 'first_name', 'last_name', 'email', 'current_password',
+                  'role', 'group_name', 'date_joined', 'last_login']
+        read_only_fields = ['id', 'username', 'date_joined', 'last_login']
+
+    def validate(self, attrs):
+        current_password = attrs.pop('current_password', '')
+        email = attrs.get('email')
+        user = self.instance
+        if user is not None and email is not None and email.strip().lower() != (user.email or '').strip().lower():
+            if not current_password:
+                raise serializers.ValidationError(
+                    {'current_password': [gettext("Enter your current password to change the email.")]})
+            if not user.check_password(current_password):
+                raise serializers.ValidationError(
+                    {'current_password': [gettext("The current password is not correct.")]})
+        return attrs
+
+    def update(self, instance, validated_data):
+        # Només es desen els camps que s'han canviat: un desament complet podria tornar enrere
+        # canvis fets mentrestant (p. ex. la contrasenya, que també tancaria les sessions)
+        for field, value in validated_data.items():
+            setattr(instance, field, value)
+        if validated_data:
+            instance.save(update_fields=list(validated_data))
+        return instance
+
+    def get_role(self, obj):
+        return get_user_role(obj)
+
+    def get_group_name(self, obj):
+        group = obj.groups.first()
+        return group.name if group else None
+
+
 class GroupSerializer(serializers.HyperlinkedModelSerializer):
     permissions = serializers.SerializerMethodField()
     users = serializers.SerializerMethodField()
