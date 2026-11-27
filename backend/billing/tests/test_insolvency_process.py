@@ -427,6 +427,41 @@ class InsolvencyInvoiceDelinquencyTestCase(TestCase):
         self.confirmed.refresh_from_db()
         self.assertEqual(self.confirmed.status.token, '-5')
 
+    def test_create_with_invoice_status_changes(self):
+        close_insolvency_process(self.process, self.user, date(2026, 6, 1))
+        process = create_insolvency_process(
+            person=self.person, kind=InsolvencyProcess.KIND_CREDITORS, start_date=date(2026, 7, 1), user=self.user,
+            invoice_status_changes=[])
+        self.assertEqual(process.invoices.count(), 0)
+        close_insolvency_process(process, self.user, date(2026, 7, 2))
+        process = create_insolvency_process(
+            person=self.person, kind=InsolvencyProcess.KIND_CREDITORS, start_date=date(2026, 2, 1), user=self.user,
+            invoice_status_changes=[{'invoice_id': self.confirmed.id, 'target': 'endowment'},
+                                    {'invoice_id': self.expired.id, 'target': 'irrecoverable'}])
+        self.confirmed.refresh_from_db()
+        self.expired.refresh_from_db()
+        self.assertEqual((self.confirmed.status.token, self.expired.status.token), ('-3', '-5'))
+        self.assertEqual(process.status, InsolvencyProcess.STATUS_OPEN)
+
+    def test_create_with_invalid_invoice_change_creates_nothing(self):
+        close_insolvency_process(self.process, self.user, date(2026, 6, 1))
+        count = InsolvencyProcess.objects.count()
+        for changes, code in (
+            ([{'invoice_id': self.paid.id, 'target': 'endowment'}], 'invalid_invoices'),
+            ([{'invoice_id': self.other_invoice.id, 'target': 'endowment'}], 'invalid_invoices'),
+            ([{'invoice_id': self.confirmed.id, 'target': 'paid'}], 'invalid_invoice_changes'),
+            ([{'invoice_id': self.confirmed.id, 'target': 'endowment'},
+              {'invoice_id': self.confirmed.id, 'target': 'irrecoverable'}], 'invalid_invoice_changes'),
+        ):
+            with self.assertRaises(InsolvencyProcessError) as raised:
+                create_insolvency_process(person=self.person, kind=InsolvencyProcess.KIND_CREDITORS,
+                                          start_date=date(2026, 2, 1), user=self.user,
+                                          invoice_status_changes=changes)
+            self.assertEqual(raised.exception.code, code)
+        self.assertEqual(InsolvencyProcess.objects.count(), count)
+        self.confirmed.refresh_from_db()
+        self.assertEqual(self.confirmed.status.token, '2')
+
     def test_api(self):
         request = self.factory.post('/billing/insolvency-process/', {
             'invoice_ids': [self.confirmed.id], 'target': 'endowment'}, format='json')

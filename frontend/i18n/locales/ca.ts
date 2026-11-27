@@ -56,6 +56,12 @@ export default {
     save: "Desar",
     view_process: "Veure procés",
     insolvent_person: "Persona insolvent",
+    new_invoice_status: "Què fer-ne",
+    invoice_status_create_help: "Si vols, pots passar ara les factures pendents de cobrar a morositat o a irrecuperable. Si no, també ho pots fer més endavant des del procés.",
+    invoice_targets: {
+      endowment: "Morositat",
+      irrecoverable: "Irrecuperable",
+    },
     to_endowment: "Passar a morositat",
     to_irrecoverable: "Passar a irrecuperable",
     select_all: "Seleccionar totes",

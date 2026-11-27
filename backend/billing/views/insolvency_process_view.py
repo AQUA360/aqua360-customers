@@ -123,6 +123,7 @@ class InsolvencyProcessViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
                 case_number=data.get('case_number'),
                 observation=data.get('observation'),
                 payment_changes=data.get('payment_changes'),
+                invoice_status_changes=data.get('invoice_status_changes'),
                 user=request.user,
             )
         except InsolvencyProcessError as error:

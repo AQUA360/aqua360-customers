@@ -56,6 +56,12 @@ export default {
     save: "Guardar",
     view_process: "Ver proceso",
     insolvent_person: "Persona insolvente",
+    new_invoice_status: "Qué hacer",
+    invoice_status_create_help: "Si quieres, puedes pasar ahora las facturas pendientes de cobro a morosidad o a irrecuperable. Si no, también puedes hacerlo más adelante desde el proceso.",
+    invoice_targets: {
+      endowment: "Morosidad",
+      irrecoverable: "Irrecuperable",
+    },
     to_endowment: "Pasar a morosidad",
     to_irrecoverable: "Pasar a irrecuperable",
     select_all: "Seleccionar todas",

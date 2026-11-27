@@ -56,6 +56,12 @@ export default {
     save: "Save",
     view_process: "View process",
     insolvent_person: "Insolvent person",
+    new_invoice_status: "Action",
+    invoice_status_create_help: "You can mark unpaid invoices as delinquent or irrecoverable now, or later from the process.",
+    invoice_targets: {
+      endowment: "Delinquent",
+      irrecoverable: "Irrecoverable",
+    },
     to_endowment: "Mark as delinquent",
     to_irrecoverable: "Mark as irrecoverable",
     select_all: "Select all",

@@ -37,6 +37,7 @@ ERROR_MESSAGES = {
     'already_closed': 'El procés ja està tancat.',
     'close_before_start': "La data de tancament no pot ser anterior a l'inici de l'anomalia.",
     'invalid_target': 'Estat de destinació no vàlid.',
+    'invalid_invoice_changes': 'Canvis d\'estat de factures no vàlids.',
     'no_invoices': 'Cal seleccionar alguna factura.',
     'invalid_invoices': "Alguna factura no és del procés o ja no es pot passar a aquest estat.",
     'missing_status': "No hi ha configurat l'estat de morositat o d'irrecuperable.",
@@ -255,11 +256,13 @@ def _parse_ids(raw):
 
 
 def create_insolvency_process(*, person, kind, start_date, user, case_number=None, observation=None,
-                              payment_changes=None):
+                              payment_changes=None, invoice_status_changes=None):
     """Crea el procés: anomalia «Insolvent», totes les factures emeses des de la data, gestió
-    d'impagats «Insolvent» als contractes on és titular i canvis de forma de pagament.
+    d'impagats «Insolvent» als contractes on és titular, canvis de forma de pagament i, si l'usuari
+    ho tria, factures a morositat o irrecuperable.
 
     `payment_changes`: llista de {"contract_id": id, "payment_type_id": id}.
+    `invoice_status_changes`: llista de {"invoice_id": id, "target": "endowment" | "irrecoverable"}.
     Tot es valida abans d'escriure res; si alguna cosa falla, no queda res a mitges.
     """
     from billing.models import InsolvencyProcess, InsolvencyProcessContract
@@ -292,6 +295,22 @@ def create_insolvency_process(*, person, kind, start_date, user, case_number=Non
             if not payment_type:
                 raise InsolvencyProcessError('invalid_payment_type')
             changes[contract_id] = payment_type
+
+    # Factures a morositat o irrecuperable, agrupades per estat (es validen en aplicar-les)
+    invoice_targets = {}
+    if invoice_status_changes not in (None, ''):
+        if not isinstance(invoice_status_changes, list):
+            raise InsolvencyProcessError('invalid_invoice_changes')
+        seen = set()
+        for change in invoice_status_changes:
+            if not isinstance(change, dict):
+                raise InsolvencyProcessError('invalid_invoice_changes')
+            invoice_id, = _parse_ids([change.get('invoice_id')])
+            target = change.get('target')
+            if invoice_id in seen or target not in (TARGET_ENDOWMENT, TARGET_IRRECOVERABLE):
+                raise InsolvencyProcessError('invalid_invoice_changes')
+            seen.add(invoice_id)
+            invoice_targets.setdefault(target, []).append(invoice_id)
 
     debt_management = insolvent_debt_management()
     from coredata.utils.person_anomaly_log import describe_anomaly, log_anomaly_change
@@ -328,6 +347,9 @@ def create_insolvency_process(*, person, kind, start_date, user, case_number=Non
                 row.save(update_fields=['debt_management_changed'])
             if contract.id in changes:
                 change_contract_payment_type(row, changes[contract.id], user)
+        # Si alguna factura no es pot canviar, l'error desfà també l'alta del procés
+        for target, invoice_ids in invoice_targets.items():
+            change_invoices_delinquency_status(process, invoice_ids, target, user)
     return process
 
 
