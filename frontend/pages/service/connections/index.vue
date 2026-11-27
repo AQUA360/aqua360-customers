@@ -46,16 +46,27 @@ const filter_types = ref([]);
 const filter_use_types = ref([]);
 const filter_materials = ref([]);
 const filter_valve_types = ref([]);
+const filter_installation_types = ref([]);
+// Escomeses per nombre de punts de subministrament: 0, 1 o 2 (dos o més)
+const filter_supply_points = computed(() => [
+  { id: 0, name: t('service_block.connection_supply_points_none') },
+  { id: 1, name: t('service_block.connection_supply_points_single') },
+  { id: 2, name: t('service_block.connection_supply_points_multiple') },
+]);
 
 const types = ref([]);
 const use_types = ref([]);
 const materials = ref([]);
 const valve_types = ref([]);
+const installation_types = ref([]);
+const supply_points = ref([]);
 
 const selected_types = ref([]);
 const selected_use_types = ref([]);
 const selected_materials = ref([]);
 const selected_valve_types = ref([]);
+const selected_installation_types = ref([]);
+const selected_supply_points = ref([]);
 
 const isFilterOpen = ref(false);
 const showAddressSearch = ref(false);
@@ -93,7 +104,8 @@ const getData = async (searchQuery = '', filters = [], page = 1, sort = 'token',
   try {
     const data = await $ConnectionApiService.getData(
       searchQuery, filters, page, sort, desc,
-      null, types.value, use_types.value, materials.value, valve_types.value, searchByAddressQuery
+      null, types.value, use_types.value, materials.value, valve_types.value, searchByAddressQuery,
+      installation_types.value, supply_points.value
     );
 
     items.value = data.results;
@@ -157,6 +169,16 @@ const getFilterValveTypes = async () => {
   try {
     const data = await $ConfiglistApiService.getAll('service/connection-valve-type');
     filter_valve_types.value = data.results;
+  } catch (err) {
+    error.value = err;
+  }
+}
+
+const getFilterInstallationTypes = async () => {
+  error.value = null;
+  try {
+    const data = await $ConfiglistApiService.getAll('service/connection-installation-type');
+    filter_installation_types.value = data.results;
   } catch (err) {
     error.value = err;
   }
@@ -250,6 +272,20 @@ const handleValveTypeChange = (event) => {
   handleSearch();
 }
 
+const handleInstallationTypeChange = (event) => {
+  selected_installation_types.value = event;
+  installation_types.value = selected_installation_types.value.map(element => element.id);
+  pagination.value.page = 1;
+  handleSearch();
+}
+
+const handleSupplyPointsChange = (event) => {
+  selected_supply_points.value = event;
+  supply_points.value = selected_supply_points.value.map(element => element.id);
+  pagination.value.page = 1;
+  handleSearch();
+}
+
 const handleFiltersChange = (event) => {
   let newFilters = event
     .filter(el => !isFilterShown.value.includes(el.id));
@@ -276,6 +312,14 @@ const checkInAdvacedFilters = (newFilters) => {
     valve_types.value = [];
     selected_valve_types.value = [];
     getData();
+  } else if (isFilterShown.value.some(filter => filter.id === 'installation_type') && !newFilters.some(filter => filter.id === 'installation_type')) {
+    installation_types.value = [];
+    selected_installation_types.value = [];
+    getData();
+  } else if (isFilterShown.value.some(filter => filter.id === 'supply_points') && !newFilters.some(filter => filter.id === 'supply_points')) {
+    supply_points.value = [];
+    selected_supply_points.value = [];
+    getData();
   }
 }
 
@@ -288,12 +332,14 @@ const exportColumns = computed(() => [
   { header: t('service_block.short_install_date'), value: (row) => row.installation_at ? formatDate(row.installation_at) : '', key: 'installation_at' },
   { header: t('service_block.dma'), value: (row) => row.dma_name || row.dma_token, key: 'dma' },
   { header: t('exploitation'), value: (row) => row.exploitation_name || row.exploitation_token, key: 'exploitation' },
+  { header: t('service_block.installation_type'), value: (row) => row.installation_type_name, key: 'installation_type' },
+  { header: t('common.short_supply_points'), value: (row) => row.supply_points_count, key: 'supply_points_count' },
 ]);
 
 const exportConnections = (columns) => $ConnectionApiService.exportData(
   searchInput.value, selectedFilters.value, sortBy.value, sortDesc.value,
   null, types.value, use_types.value, materials.value, valve_types.value, searchByAddress.value,
-  columns,
+  columns, installation_types.value, supply_points.value,
 );
 
 const resetFilters = () => {
@@ -309,6 +355,10 @@ const resetFilters = () => {
   selected_materials.value = [];
   valve_types.value = [];
   selected_valve_types.value = [];
+  installation_types.value = [];
+  selected_installation_types.value = [];
+  supply_points.value = [];
+  selected_supply_points.value = [];
   isFilterShown.value = [];
   isFilterOpen.value = false;
   showAddressSearch.value = false;
@@ -326,7 +376,9 @@ onMounted(async () => {
       { name: t('common.type'), id: "type" },
       { name: t('common.usage_type'), id: "use_type" },
       { name: t('service_block.materials'), id: "material" },
-      { name: t('service_block.valve_type'), id: "valve_type" }
+      { name: t('service_block.valve_type'), id: "valve_type" },
+      { name: t('service_block.installation_type'), id: "installation_type" },
+      { name: t('common.supply_points'), id: "supply_points" }
     );
   await getData();
   await getFilterStatus();
@@ -334,6 +386,7 @@ onMounted(async () => {
   await getFilterUseTypes();
   await getFilterMaterials();
   await getFilterValveTypes();
+  await getFilterInstallationTypes();
 
   checkRouteQuery();
 });
@@ -381,6 +434,8 @@ const tableColumns = computed(() => [
   { key: 'installation_at', label: t('service_block.short_install_date'), sortKey: 'installation_at', width: 110, min: 85, priority: 3 },
   { key: 'dma', label: t('service_block.dma'), sortKey: 'dma_name', width: 150, grow: 1, min: 90, priority: 2 },
   { key: 'exploitation', label: t('exploitation'), sortKey: 'exploitation_name', width: 150, grow: 1, min: 90, priority: 2 },
+  { key: 'installation_type', label: t('service_block.installation_type'), sortKey: 'installation_type_name', width: 170, min: 100, priority: 3 },
+  { key: 'supply_points_count', label: t('common.short_supply_points'), sortKey: 'supply_points_count', width: 100, min: 70, priority: 3 },
 ]);
 </script>
 
@@ -475,6 +530,22 @@ const tableColumns = computed(() => [
         </template>
       </FilterSelect>
 
+      <FilterSelect v-if="isFilterShown.some(filter => filter.id === 'installation_type')" :options="filter_installation_types"
+        :filters="selected_installation_types" :multiple="true" :placeholder="t(`service_block.installation_type`)"
+        @update:modelValue="handleInstallationTypeChange($event)">
+        <template #icon>
+          <Icon name="fa6-solid:circle-check" class="text-md ml-2 mr-1" size="10px" />
+        </template>
+      </FilterSelect>
+
+      <FilterSelect v-if="isFilterShown.some(filter => filter.id === 'supply_points')" :options="filter_supply_points"
+        :filters="selected_supply_points" :multiple="true" :placeholder="t(`common.supply_points`)"
+        @update:modelValue="handleSupplyPointsChange($event)">
+        <template #icon>
+          <Icon name="fa6-solid:circle-check" class="text-md ml-2 mr-1" size="10px" />
+        </template>
+      </FilterSelect>
+
       <FilterSelect :options="filtersExtra" :filters="isFilterShown" :multiple="true" :selector="true"
         :placeholder="t('common.additional_filters')" @update:modelValue="handleFiltersChange($event)">
         <template #icon>
@@ -522,6 +593,12 @@ const tableColumns = computed(() => [
       </template>
       <template #cell-dma="{ item }">
         <span class="truncate" :title="item.dma_name || item.dma_token">{{ item.dma_name || item.dma_token }}</span>
+      </template>
+      <template #cell-installation_type="{ item }">
+        <span :title="item.installation_type_name">{{ item.installation_type_name }}</span>
+      </template>
+      <template #cell-supply_points_count="{ item }">
+        <span>{{ item.supply_points_count }}</span>
       </template>
       <template #cell-exploitation="{ item }">
         <span :title="item.exploitation_name || item.exploitation_token">{{ item.exploitation_name || item.exploitation_token }}</span>

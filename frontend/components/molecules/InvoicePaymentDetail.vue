@@ -92,7 +92,8 @@ getData();
             <td class="p-2">{{ element.payment_date ? formatDate(element.payment_date) : '-' }}</td>
             <td class="p-2">
               <div class="flex items-center gap-2">
-                <button class="text-start text-sky-500 underline"
+                <span v-if="isSubRegion" class="text-slate-500 text-sm">{{ element.token }}</span>
+                <button v-else class="text-start text-sky-500 underline"
                   @click="showDetail('PaymentRegion', element.id)">
                   {{ element.token }}
                 </button>

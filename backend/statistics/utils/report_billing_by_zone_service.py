@@ -7,6 +7,7 @@ Agrupa les línies de factura per:
   - cànon ACA per tarifa (CANON-DOM, CANON-MUN, CANON-HOTELS, CANON-IND)
     i els seus trams, amb les mateixes columnes (factures, m³, euros)
 """
+from django.utils.translation import gettext
 import datetime
 import re
 import traceback
@@ -1159,6 +1160,6 @@ def generate_billing_by_zone_report(request, black_fill=None, white_bold_font=No
         print(f"Error in generate_billing_by_zone_report: {exc}")
         traceback.print_exc()
         return Response(
-            {"error": "Ha ocorregut un error inesperat."},
+            {"error": gettext("An unexpected error has occurred.")},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         ), None, None

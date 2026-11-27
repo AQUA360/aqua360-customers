@@ -1,3 +1,6 @@
+# Versió en castellà de la documentació OpenAPI de l'Oficina Virtual.
+# La versió en català és openapi.ca.yaml. Qualsevol canvi a l'API s'ha de fer a les
+# dues versions (ho comprova test_openapi_consistency.py). Vegeu README.md.
 openapi: 3.0.3
 info:
   title: Programa de Abonados — API Oficina Virtual (OV)
@@ -12,10 +15,11 @@ info:
     | `/auth/login/` | POST | Obtención del token (usuario del grupo `ov`) |
     | `/ov/contract-detail/` | GET | Detalle del contrato |
     | `/ov/billing-data/` | GET / POST | Consulta y actualización de datos de facturación |
-    | `/ov/billing-data/update-iban/` | POST | Actualización del IBAN |
+    | `/ov/billing-data/update-iban/` | POST | Actualización del IBAN y paso del contrato a domiciliación |
     | `/ov/contact-data/` | GET | Consulta de la configuración del perfil (datos de facturación + dirección del titular) |
     | `/ov/person-data/` | GET | Datos de contacto de la persona por DNI (teléfonos, correos y direcciones, incluidas las inactivas) |
     | `/ov/person-invoices/` | GET | Facturas de una persona por DNI como titular o pagadora, agrupadas por contrato (incluye contratos de baja y facturas sin contrato) |
+    | `/ov/person-contracts/` | GET | Contratos actuales y antiguos de una persona por DNI, con su papel (titular o pagadora) y si está vinculada hoy |
     | `/ov/invoices/` | GET | Listado de facturas (excluye pre-facturas) |
     | `/ov/invoices/download/` | POST | Descarga en lote de facturas seleccionadas (ZIP) |
     | `/ov/invoice/` | GET | Detalle de una factura |
@@ -34,7 +38,7 @@ info:
     | `/ov/create-reading/` | POST | Registrar lectura de contador |
     | `/ov/contracts/` | GET | Listado de contratos por titular o pagador (DNI) |
     | `/ov/contract/{token}/` | GET | Detalle del contrato por token (incluye datos de la cuenta) |
-    | `/ov/contract/by-nic/{nic}/` | GET | Búsqueda de contrato por NIC (punto de suministro) |
+    | `/ov/contract/by-nic/{nic}/` | GET | Búsqueda de contrato por NIC (referencia de mandato de 12 dígitos) |
     | `/ov/meter/{contract_token}/` | GET | Detalle del contador del contrato por token |
     | `/ov/procedures/contract/` | POST | Solicitar el alta de un contrato (crea una solicitud; no crea contrato) |
     | `/ov/procedures/contract/{contract_request_token}/` | GET | Consultar el estado de una solicitud de alta de contrato |
@@ -48,7 +52,7 @@ info:
     | `/ov/dictionary/contract-statuses/` | GET | Diccionario de estados de contrato (`token`, `name`) |
     | `/ov/dictionary/payment-types/` | GET | Diccionario de formas de pago (`token`, `name`) |
     | `/ov/dictionary/invoice-statuses/` | GET | Diccionario de estados de factura (`token`, `name`) |
-    | `/ov/dictionary/contract-request-types/` | GET | Diccionario de tipos de solicitud de contrato activos (`token`, `name`) |
+    | `/ov/dictionary/contract-request-types/` | GET | Diccionario de tipos de solicitud de contrato activos con sus tarifas y el precio de contratación y de cambio de nombre |
     | `/ov/dictionary/procedure-tariffs/` | GET | Diccionario de tarifas activas de trámites con precio fijo o tabla por calibre/consumo |
     | `/ov/properties/` | GET | Autocompletado de propiedades por dirección (resultados paginados) |
     | `/ov/addresses/` | GET | Autocompletado de direcciones de puntos de suministro con escalera, piso y puerta (resultados paginados) |
@@ -74,6 +78,7 @@ info:
 
     - Los IBAN devueltos en las respuestas aparecen enmascarados (8 primeros caracteres + asteriscos + 8 últimos). Excepción: `/ov/contract/{token}/` y `/ov/contract-detail/` devuelven el IBAN sin enmascarar cuando se envía el parámetro de consulta `dni` y este coincide con el titular de la cuenta de domiciliación (en ese caso `is_account_holder` es `true`); sin `dni`, las claves `is_account_holder`, `is_holder` e `is_payer` no aparecen en la respuesta.
     - Los campos booleanos expuestos como texto (`smart_metering`, `paper_invoice`) usan los valores `"true"` o `"false"`.
+    - DNI bloqueados: los DNI genéricos que comparten muchas personas (de momento `99999999R`) no se aceptan en ningún endpoint. Tras normalizarlos (sin espacios, puntos ni guiones y en mayúsculas), el parámetro de consulta `dni` responde `400` con `{"error": "DNI not allowed"}` antes de cualquier consulta, también donde es opcional; en los cuerpos de los trámites y del cambio de IBAN (`holder_dni`, `iban_holder_dni`, `nif`, `dni`) responde `400` con el error `DNI not allowed.` en el campo correspondiente.
     - El listado de facturas (`/ov/invoices/`) excluye las pre-facturas (estado con token `1`).
     - Las facturas con fecha de emisión (`issue_date`) posterior a hoy no se devuelven en ningún
       endpoint de facturas (listado, impagadas, detalle, PDF, descarga, pago y devolución) hasta
@@ -315,12 +320,31 @@ paths:
     post:
       tags:
         - Datos de facturación
-      summary: Actualizar IBAN
+      summary: Actualizar IBAN y domiciliar el contrato
       description: |
-        Actualiza la cuenta bancaria (IBAN) asociada al método de pago del contrato.
+        Actualiza la cuenta bancaria (IBAN) del método de pago del contrato y
+        lo pasa a domiciliación bancaria (la forma de pago configurada como
+        domiciliación en el PA, `payment_type` del diccionario
+        `/ov/dictionary/payment-types/`).
 
         El `nif` enviado debe coincidir con el NIF del titular del contrato (`holder.token`).
         El IBAN se normaliza eliminando espacios y convirtiéndolo a mayúsculas.
+
+        - Si el contrato pagaba de otra forma (efectivo, transferencia...), pasa
+          a domiciliación. Las facturas ya emitidas mantienen su forma de pago;
+          la domiciliación se aplica a partir de las próximas facturas.
+        - Si el IBAN cambia, se genera una nueva referencia de mandato y el
+          mandato SEPA firmado del IBAN anterior deja de estar vigente
+          (`has_sepa_document` pasa a `false`): hay que subir el nuevo mandato
+          firmado con `POST /ov/procedures/{contract_token}/upload-sepa-signed/`.
+        - Si el IBAN es el mismo y el contrato ya está domiciliado, no se cambia
+          nada (la llamada se puede repetir).
+        - El cambio solo afecta al contrato indicado, aunque el titular tenga
+          otros contratos con la misma cuenta.
+
+        Respuestas de error: `400` si faltan campos o el `nif` no coincide con
+        el titular; `404` si el contrato no existe; `500` si el PA no tiene
+        configurada la forma de pago de domiciliación.
       operationId: updateIban
       security:
         - tokenAuth: []
@@ -637,6 +661,112 @@ paths:
         "429":
           $ref: "#/components/responses/TooManyRequests"
 
+  /ov/person-contracts/:
+    get:
+      tags:
+        - Contrato
+      summary: Listar los contratos actuales y antiguos de una persona por DNI
+      description: |
+        Devuelve los contratos en los que la persona identificada por `dni`:
+
+        - es hoy titular del contrato o titular de la cuenta de
+          domiciliación, aunque el contrato no tenga facturas; o
+        - consta como titular o pagadora en alguna factura del contrato
+          (si la factura no tiene pagador, el pagador es el titular). Se
+          excluyen las pre-facturas y las facturas con fecha de emisión
+          futura.
+
+        Cada contrato aparece una sola vez. `roles` indica si la persona es o
+        ha sido titular (`holder`) y/o pagadora (`payer`) del contrato. Hoy es
+        pagadora la titular de la cuenta de domiciliación (según el DNI de la
+        cuenta) y, si el contrato no tiene cuenta o la cuenta no tiene DNI, la
+        titular.
+
+        `related_now` es `true` si hoy la persona es la titular o la titular
+        de la cuenta de domiciliación y el contrato está de alta; es `false`
+        si solo está vinculada por facturas o si el contrato está de baja.
+
+        Los contratos vinculados hoy aparecen primero y, después, por número
+        de contrato. La respuesta está paginada.
+
+        Responde `400` si falta el DNI, si `role` o `related_now` no tienen
+        un valor admitido o si la página no existe. Un DNI sin contratos
+        devuelve `results` vacío. El endpoint está limitado a 35 peticiones
+        por minuto y cuenta.
+
+        Solo lo puede llamar la cuenta de servicio de la OV (usuarios del
+        grupo `ov`) o un superusuario; cualquier otro usuario autenticado
+        recibe `403`.
+      operationId: listPersonContracts
+      security:
+        - tokenAuth: []
+      parameters:
+        - name: dni
+          in: query
+          required: true
+          description: |
+            DNI/NIF de la persona. Se normaliza ignorando espacios, guiones y
+            puntos y pasando a mayúsculas.
+          schema:
+            type: string
+          example: "12345678A"
+        - name: role
+          in: query
+          required: false
+          description: Solo los contratos en los que la persona tiene este papel.
+          schema:
+            type: string
+            enum: [holder, payer]
+        - name: related_now
+          in: query
+          required: false
+          description: Filtra por `related_now`.
+          schema:
+            type: boolean
+        - $ref: "#/components/parameters/pageParam"
+        - $ref: "#/components/parameters/limitParam"
+      responses:
+        "200":
+          description: Lista paginada de contratos de la persona
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonContractsResponse"
+              example:
+                count: 2
+                page: 1
+                limit: 20
+                total_pages: 1
+                results:
+                  - contract_token: CTR-002
+                    contract_status:
+                      token: "1"
+                      name: Alta
+                    supply_point: "12345/1"
+                    address: "C. Major, 123, Barcelona"
+                    roles:
+                      - holder
+                      - payer
+                    related_now: true
+                  - contract_token: CTR-001
+                    contract_status:
+                      token: "-1"
+                      name: Baja
+                    supply_point: "12345/1"
+                    address: "C. Major, 123, Barcelona"
+                    roles:
+                      - holder
+                      - payer
+                    related_now: false
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: El usuario autenticado no es la cuenta de servicio de la OV (grupo `ov`) ni superusuario
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
   /ov/invoices/:
     get:
       tags:
@@ -701,7 +831,7 @@ paths:
       summary: Descarga en lote de facturas (ZIP)
       description: |
         Descarga en un único ZIP los PDFs de las facturas indicadas. El
-        `contract_token` va en la query y la lista de fitxes en el cuerpo
+        `contract_token` va en la query y la lista de tokens de factura en el cuerpo
         JSON (`invoice_tokens`).
 
         Reutiliza el PDF almacenado y finalizado en `invoice_file` cuando está
@@ -711,11 +841,11 @@ paths:
         fallback mantiene los bytes del PDF sin registrar un nuevo documento
         desde esta descarga por lote.
 
-        Seguridad IDOR: todas las fitxes solicitadas deben pertenecer al
+        Seguridad IDOR: todas las facturas solicitadas deben pertenecer al
         contrato indicado y ser definitivas (`type_final`), el mismo filtro
-        que la descarga individual; cualquier fitxa desconocida o de otro
+        que la descarga individual; cualquier factura desconocida o de otro
         contrato responde `400` con el detalle por token (mensaje genérico,
-        no revela si la fitxa existe en otro contrato).
+        no revela si la factura existe en otro contrato).
 
         Cada PDF se nombra `factura_<serie_final>.pdf` (o
         `factura_<invoice_token>.pdf` si no tiene número), con las barras del
@@ -747,11 +877,11 @@ paths:
         "400":
           description: |
             Falta `contract_token`, el cuerpo no es válido, la lista está
-            vacía o alguna fitxa no pertenece al contrato.
+            vacía o alguna factura no pertenece al contrato.
           content:
             application/json:
               schema:
-                oneOf:
+                anyOf:
                   - $ref: "#/components/schemas/ValidationErrors"
                   - $ref: "#/components/schemas/ErrorMessage"
               examples:
@@ -765,10 +895,10 @@ paths:
                     invoice_tokens:
                       - Esta lista no puede estar vacía.
                 unknownTokens:
-                  summary: Fitxa ajena al contrato o desconocida
+                  summary: Factura ajena al contrato o desconocida
                   value:
                     invoice_tokens:
-                      - Invoice not found for this contract: "FAKE-TOKEN"
+                      - "Invoice not found for this contract: FAKE-TOKEN"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
@@ -969,7 +1099,7 @@ paths:
           content:
             application/json:
               schema:
-                oneOf:
+                anyOf:
                   - $ref: "#/components/schemas/ValidationErrors"
                   - $ref: "#/components/schemas/ErrorMessage"
         "401":
@@ -1460,11 +1590,21 @@ paths:
 
         Solo se devuelven los consumos ya facturados: las lecturas que no están
         vinculadas a ninguna factura se excluyen del historial.
+
+        **Filtro por persona (`dni`, opcional):** con `dni`, solo se incluyen
+        las lecturas facturadas en facturas del contrato donde esa persona es
+        titular o pagadora, con el mismo criterio que `/ov/person-invoices/`
+        (titular y pagador guardados en la factura, sin prefacturas ni
+        facturas con fecha futura). Así una persona que ha dejado de ser
+        titular o pagadora sigue viendo sus consumos, pero no los de otras
+        personas. Un DNI sin facturas en el contrato devuelve una lista vacía.
+        Sin `dni`, o vacío, el comportamiento no cambia.
       operationId: listConsumptionHistory
       security:
         - tokenAuth: []
       parameters:
         - $ref: "#/components/parameters/contractToken"
+        - $ref: "#/components/parameters/consumptionDni"
         - $ref: "#/components/parameters/dateFrom"
         - $ref: "#/components/parameters/dateTo"
         - $ref: "#/components/parameters/pageParam"
@@ -1510,12 +1650,17 @@ paths:
         pertenece al contrato (aunque sea del mismo contador o punto de
         suministro), está fuera de su periodo de alta/baja o no está
         facturada en una factura del contrato.
+
+        Con `dni`, también responde `404` si la lectura no está facturada en
+        una factura del contrato donde esa persona es titular o pagadora
+        (mismo criterio que `GET /ov/consumptions/`).
       operationId: downloadConsumption
       security:
         - tokenAuth: []
       parameters:
         - $ref: "#/components/parameters/consumptionIdPath"
         - $ref: "#/components/parameters/contractToken"
+        - $ref: "#/components/parameters/consumptionDni"
         - $ref: "#/components/parameters/downloadFormat"
       responses:
         "200":
@@ -1552,7 +1697,10 @@ paths:
         contratos del mismo punto de suministro o contador). Los `reading_ids`
         del contrato no facturados se omiten del fichero sin devolver error;
         un `reading_id` de otro contrato o fuera del periodo del contrato
-        responde `400` como desconocido.
+        responde `400` como desconocido. Con `dni` en el cuerpo, solo se
+        incluyen las lecturas facturadas a esa persona (mismo criterio que
+        `GET /ov/consumptions/`); las demás lecturas del contrato se omiten sin
+        error, como las no facturadas.
 
         El formato se elige con `format` en el cuerpo (`pdf` por defecto,
         `csv` o `zip`). Responde `404` si el contrato no existe y `400` con
@@ -2041,24 +2189,24 @@ paths:
         - Contrato
       summary: Búsqueda de contrato por NIC
       description: |
-        Devuelve el contrato asociado a un NIC (token del punto de suministro,
-        `SupplyPoint.token`). Existe para los flujos de acceso directo donde la
-        frontend aún no dispone de `contract_token` y solo conoce el NIC del
-        cliente.
+        Devuelve el contrato asociado a un NIC. Existe para los flujos de
+        acceso directo donde la frontend aún no dispone de `contract_token` y
+        solo conoce el NIC del cliente.
 
-        El NIC lleva «/» con una o dos barras: formato de dos tramos
-        `[num.puntosub]/[numcliente]` (p. ej. `12345/1234`) o de tres tramos
-        `[num.puntosub]/[numcliente]/[num.modificacion]` (p. ej.
-        `012345/654321/12345678`), por eso el parámetro de ruta usa el conversor
-        `path` de Django (si no, el ruter acaba en 404 a nivel de ruta antes de
-        llegar a la vista). El formato se valida con la expresión regular
-        `^\d+(?:/\d+){1,2}$` **antes** de consultar la base de datos.
+        El NIC es un código de 12 dígitos sin separadores (p. ej.
+        `123456000001`): la referencia del mandato SEPA de la forma de pago del
+        contrato (`GeneralPayment.mandate_id`). El formato se valida con la
+        expresión regular `^\d{12}$` **antes** de consultar la base de datos;
+        el formato antiguo con «/» ya no se acepta y responde `400`.
 
-        Resolución del contrato: primero los puntos de suministro por defecto
-        del contrato (`supply_point_default`); si ningún contrato lo tiene como
-        por defecto, se busca por la relación muchos-a-muchos
-        (`supply_points`). Si el punto es por defecto de varios contratos se
-        devuelve el más reciente (`created_at` descendente).
+        Resolución del contrato: se buscan los contratos con el NIC como
+        referencia de mandato vigente y los que la tuvieron antes según el
+        historial de mandatos de la forma de pago
+        (`GeneralPaymentMandateLog.previous_mandate_id`), de modo que el NIC
+        original sigue encontrando el contrato después de un cambio de
+        domiciliación. Entre ellos se devuelve primero el de alta
+        (`contract_active_token`), después el del mandato vigente y, por
+        último, el más reciente (`created_at` descendente).
 
         El payload del `200` es idéntico al de `/ov/contract/{token}/` más la
         clave explícita `contract_token` (con el mismo valor que `token`), que
@@ -2100,7 +2248,7 @@ paths:
                   name: Activo
                 has_sepa_document: false
         "400":
-          description: El NIC no cumple el formato esperado (`^\d+(?:/\d+){1,2}$`)
+          description: El NIC no cumple el formato esperado (`^\d{12}$`)
           content:
             application/json:
               schema:
@@ -2173,11 +2321,22 @@ paths:
         complete los datos que faltan (contador, fecha de alta, dirección de
         facturación, ...) y la finalice con el flujo existente.
 
-        La tarifa (`tariff_token`) es la que la Oficina Virtual ha mostrado y
-        cobrado al abonado, por lo que es la fuente de verdad de la solicitud.
-        No se deduce del tipo de trámite: `ContractRequestType.price_rates` es
-        una relación M2M que puede contener cero, una o varias tarifas y no
-        está relacionada con el catálogo de tarifas activas que expone la OV.
+        **Tarifas periódicas.** Salen del tipo de trámite (paquete,
+        `procedure_type_token`), como en la pantalla de atención al cliente: la
+        solicitud recibe todas las tarifas periódicas activas del paquete (las
+        `water_tariffs` de `/ov/dictionary/contract-request-types/`), una por
+        punto de suministro, y el contrato que se cree a partir de ella las
+        factura todas. Ya no hay campo de tarifa: si aún se envía
+        `tariff_token`, se ignora.
+
+        **Varios paquetes.** `procedure_type_token` es una lista de paquetes
+        (también se acepta un solo token). La solicitud recibe la unión de las
+        tarifas periódicas, de las de contratación y de las órdenes de todos,
+        sin repetir ninguna, y su tipo es el primer paquete de la lista.
+        Devuelve `400` si entre todos no hay ninguna tarifa periódica activa,
+        o si dos paquetes llevan tarifas distintas de un mismo producto (se
+        facturaría dos veces el mismo concepto; `products` indica los
+        productos). Un paquete desconocido o inactivo devuelve `404`.
 
         Si el DNI corresponde a una persona existente, basta con enviar
         `holder_dni` y los campos `holder_*` se ignoran. Si no existe, se crea
@@ -2185,7 +2344,8 @@ paths:
         de la misma transacción, y entonces `holder_name`, `holder_surname`
         (salvo persona jurídica), `holder_phone` y `holder_email` son
         obligatorios. Se exige que la propiedad exista y tenga un punto de
-        suministro, y que el tipo de trámite y la tarifa estén activos. Si el pago es por domiciliación
+        suministro, y que los paquetes estén activos y que, entre todos, tengan alguna tarifa
+        periódica activa (basta con que la tenga uno). Si el pago es por domiciliación
         (`DIRECT_DEBIT`) se exigen los datos bancarios. Si la propiedad tiene
         más de un punto de suministro activo debe enviarse `supply_point_token`.
 
@@ -2216,7 +2376,6 @@ paths:
                   property_token: PROV-0001
                   supply_point_token: "1234/1234"
                   procedure_type_token: domestic
-                  tariff_token: TD-2.0TD
                   payment_type_token: DIRECT_DEBIT
                   iban: ES9121000418450200051332
                   iban_holder_name: Nombre Titular
@@ -2230,8 +2389,7 @@ paths:
                   holder_dni: "12345678A"
                   property_token: PROV-0001
                   supply_point_token: "1234/1234"
-                  procedure_type_token: domestic
-                  tariff_token: TD-2.0TD
+                  procedure_type_token: [domestic, sewer_connection]
                   payment_type_token: DIRECT_DEBIT
                   iban: ES9121000418450200051332
                   iban_holder_name: Nombre Titular
@@ -2267,7 +2425,9 @@ paths:
             Campos obligatorios ausentes o inválidos, datos personales
             ausentes o inválidos cuando el DNI no existe (titular nuevo),
             datos bancarios incompletos para domiciliación, propiedad con
-            varios puntos de suministro sin `supply_point_token`, o mandato
+            varios puntos de suministro sin `supply_point_token`, paquetes
+            sin ninguna tarifa periódica activa entre todos, paquetes con tarifas
+            distintas de un mismo producto, o mandato
             SEPA (`sepa_signed`) que no es base64 válido, no es un PDF o se
             envía con una forma de pago que no es domiciliación.
           content:
@@ -2293,13 +2453,19 @@ paths:
                   value:
                     sepa_signed:
                       - The SEPA mandate is only allowed for direct debit.
+                paqueteSinTarifas:
+                  value: {error: Procedure type has no active periodic tariffs}
+                tarifasMismoProducto:
+                  value:
+                    error: Procedure types have different tariffs for the same product
+                    products: [WATER]
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
           description: |
-            No existe la propiedad, el punto de suministro, el tipo de trámite,
-            la tarifa o la forma de pago indicados. Los tipos y tarifas
-            inactivos también devuelven `404`. Un DNI inexistente no devuelve
+            No existe la propiedad, el punto de suministro, el tipo de trámite
+            o la forma de pago indicados. Los tipos inactivos también devuelven
+            `404`. Un DNI inexistente no devuelve
             `404`: se crea el titular (ver los campos `holder_*`).
           content:
             application/json:
@@ -2312,8 +2478,6 @@ paths:
                   value: {error: Supply point not found}
                 procedureType:
                   value: {error: Procedure type not found}
-                tariff:
-                  value: {error: Tariff not found}
                 paymentType:
                   value: {error: Payment type not found}
         "409":
@@ -2335,7 +2499,7 @@ paths:
           content:
             application/json:
               schema:
-                oneOf:
+                anyOf:
                   - $ref: "#/components/schemas/ValidationErrors"
                   - $ref: "#/components/schemas/ErrorMessage"
               examples:
@@ -2578,8 +2742,8 @@ paths:
         - La solicitud se crea con el estado por defecto (borrador). El tipo de
           baja (el "Motivo" de la plataforma de gestión) es el indicado en
           `reason_token`, sin restricción por tipo (también admite los de
-          cambio de nombre); si se omite, se usa el tipo por defecto
-          (petición del cliente). La fecha de solicitud es la de recepción.
+          cambio de nombre); es obligatorio (el endpoint no aplica ningún tipo por
+          defecto si falta). La fecha de solicitud es la de recepción.
         - **No** se recogen lecturas, fotos, estimaciones, fechas ni datos de
           contacto: la lectura de corte la registra el personal de campo.
           Cualquier campo adicional del cuerpo se ignora.
@@ -2899,7 +3063,7 @@ paths:
           content:
             application/json:
               schema:
-                oneOf:
+                anyOf:
                   - $ref: "#/components/schemas/ValidationErrors"
                   - $ref: "#/components/schemas/ErrorMessage"
               examples:
@@ -3051,7 +3215,7 @@ paths:
           content:
             application/json:
               schema:
-                oneOf:
+                anyOf:
                   - $ref: "#/components/schemas/ValidationErrors"
                   - $ref: "#/components/schemas/ErrorMessage"
               examples:
@@ -3187,6 +3351,16 @@ paths:
         El `name` de cada tarifa es el de la tarifa, salvo que sea genérico
         (`GENERAL`), vacío o solo espacios: entonces se devuelve el nombre del
         producto asociado.
+        Las tarifas de `registration_tariffs` y `change_of_name_tariffs`
+        incluyen además su coste, calculado igual que en
+        `/ov/dictionary/procedure-tariffs/`: `type_price` (`fixed` o
+        `variable`) y `price` (suma de los conceptos fijos, importe sin
+        impuestos; `null` si no tiene ninguno). Las de `water_tariffs` son
+        periódicas (se cobran con el consumo) y no llevan precio.
+        Cada tipo suma el coste del trámite en `registration_price` (alta) y
+        `change_of_name_price` (cambio de titularidad): `0` si no hay
+        tarifas y `null` si alguna no tiene precio fijo (va por tramos o no
+        tiene conceptos), porque entonces depende del punto de suministro.
         El `token` es el que debe enviarse como `procedure_type_token` al
         solicitar un trámite.
       operationId: listContractRequestTypesDictionary
@@ -3208,10 +3382,14 @@ paths:
                   registration_tariffs:
                     - token: registration-domestic
                       name: Alta doméstica
+                      type_price: fixed
+                      price: 65.4
                   water_tariffs:
                     - token: water-domestic
                       name: Agua doméstica
                   change_of_name_tariffs: []
+                  registration_price: 65.4
+                  change_of_name_price: 0
         "401":
           $ref: "#/components/responses/Unauthorized"
 
@@ -3312,6 +3490,19 @@ components:
         Formato de la cabecera: `Authorization: Token <token>`
 
   parameters:
+    consumptionDni:
+      name: dni
+      in: query
+      required: false
+      description: |
+        DNI/NIF de la persona. Opcional: si se indica, solo cuentan las
+        facturas del contrato donde es titular o pagadora. Se normaliza
+        ignorando espacios, guiones y puntos y pasando a mayúsculas, igual
+        que los DNI guardados en la factura. Vacío equivale a no indicarlo.
+      schema:
+        type: string
+      example: "12345678A"
+
     contractToken:
       name: contract_token
       in: query
@@ -3438,15 +3629,12 @@ components:
       in: path
       required: true
       description: |
-        NIC = token del punto de suministro (`SupplyPoint.token`), con una o
-        dos barras: formato de dos tramos `[num.puntosub]/[numcliente]`
-        (p. ej. `12345/1234`) o de tres tramos
-        `[num.puntosub]/[numcliente]/[num.modificacion]` (p. ej.
-        `012345/654321/12345678`). El «/» forma parte de la propia ruta.
+        NIC = referencia de mandato de 12 dígitos sin separadores de la forma
+        de pago del contrato (`GeneralPayment.mandate_id`).
       schema:
         type: string
-        pattern: '^\d+(?:/\d+){1,2}$'
-      example: "012345/654321/12345678"
+        pattern: '^\d{12}$'
+      example: "123456000001"
 
     contractTokenMeterPath:
       name: contract_token
@@ -3542,7 +3730,7 @@ components:
             date_from:
               - La fecha de inicio no puede ser posterior a la final
             reading_ids:
-              - ID de lectura desconocido: 999
+              - "ID de lectura desconocido: 999"
 
     NotFound:
       description: Recurso no encontrado
@@ -3915,7 +4103,7 @@ components:
         invoice_tokens:
           type: array
           minItems: 1
-          description: Fitxes de las facturas a incluir en el ZIP (se desduplican; todas deben pertenecer al contrato y ser definitivas)
+          description: Tokens de las facturas a incluir en el ZIP (se desduplican; todas deben pertenecer al contrato y ser definitivas)
           items:
             type: string
           example:
@@ -4014,6 +4202,76 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PersonInvoiceItem"
+    PersonContractsResponse:
+      type: object
+      description: Envoltorio paginado de los contratos de una persona.
+      required:
+        - count
+        - page
+        - limit
+        - total_pages
+        - results
+      properties:
+        count:
+          type: integer
+          description: Número total de contratos que cumplen los filtros
+        page:
+          type: integer
+          description: Página actual
+        limit:
+          type: integer
+          description: Tamaño de página aplicado
+        total_pages:
+          type: integer
+          description: Número total de páginas
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/PersonContractItem"
+    PersonContractItem:
+      type: object
+      required:
+        - contract_token
+        - contract_status
+        - supply_point
+        - address
+        - roles
+        - related_now
+      properties:
+        contract_token:
+          type: string
+          nullable: true
+          description: Token del contrato, utilizable como `contract_token` en el resto de endpoints `/ov/`
+        contract_status:
+          type: object
+          nullable: true
+          description: Estado actual del contrato `{token, name}`
+          properties:
+            token:
+              type: string
+              nullable: true
+            name:
+              type: string
+              nullable: true
+        supply_point:
+          type: string
+          nullable: true
+          description: Token (NIC) del punto de suministro por defecto del contrato
+        address:
+          type: string
+          nullable: true
+          description: Dirección del punto de suministro por defecto del contrato
+        roles:
+          type: array
+          description: Papeles de la persona en el contrato, hoy o en sus facturas
+          items:
+            type: string
+            enum: [holder, payer]
+        related_now:
+          type: boolean
+          description: |
+            `true` si hoy la persona es la titular o la titular de la cuenta
+            de domiciliación y el contrato está de alta.
     PersonInvoiceItem:
       type: object
       properties:
@@ -4400,7 +4658,6 @@ components:
         - holder_dni
         - property_token
         - procedure_type_token
-        - tariff_token
         - payment_type_token
       properties:
         holder_dni:
@@ -4467,15 +4724,20 @@ components:
             si la propiedad tiene más de un punto de suministro activo.
           example: "1234/1234"
         procedure_type_token:
-          type: string
-          description: Tipo de solicitud de contrato (`ContractRequestType.token`)
-          example: domestic
-        tariff_token:
-          type: string
           description: |
-            Tarifa que la OV ha mostrado y cobrado (`PriceRate.token`). Es la
-            fuente de verdad de la tarifa de la solicitud.
-          example: TD-2.0TD
+            Paquetes de la contratación (`ContractRequestType.token`), en una
+            lista de como máximo 20; el primero es el tipo de la solicitud.
+            Por compatibilidad, también se acepta un solo token como texto.
+          oneOf:
+            - type: array
+              minItems: 1
+              maxItems: 20
+              items:
+                type: string
+                maxLength: 255
+            - type: string
+              maxLength: 255
+          example: [domestic, sewer_connection]
         payment_type_token:
           type: string
           description: Forma de pago (`PaymentType.token`)
@@ -5623,6 +5885,14 @@ components:
           type: string
           description: Token del contrato (`Contract.token`)
           example: CTR-001
+        dni:
+          type: string
+          nullable: true
+          description: |
+            DNI/NIF de la persona (opcional). Si se indica, solo se incluyen
+            las lecturas facturadas en facturas del contrato donde es titular
+            o pagadora. Vacío o nulo equivale a no indicarlo.
+          example: "12345678A"
         reading_ids:
           type: array
           description: ID de lecturas seleccionadas manualmente (`Reading.id`)
@@ -5779,6 +6049,8 @@ components:
         - registration_tariffs
         - water_tariffs
         - change_of_name_tariffs
+        - registration_price
+        - change_of_name_price
       properties:
         token:
           type: string
@@ -5794,9 +6066,9 @@ components:
           example: true
         registration_tariffs:
           type: array
-          description: Tarifas activas de alta/contratación asociadas; `[]` si no hay
+          description: Tarifas activas de alta/contratación asociadas, con su coste; `[]` si no hay
           items:
-            $ref: "#/components/schemas/DictionaryItem"
+            $ref: "#/components/schemas/ContractRequestTypeTariff"
         water_tariffs:
           type: array
           description: Tarifas activas de consumo de agua asociadas; `[]` si no hay
@@ -5804,9 +6076,50 @@ components:
             $ref: "#/components/schemas/DictionaryItem"
         change_of_name_tariffs:
           type: array
-          description: Tarifas activas de cambio de nombre asociadas; `[]` si no hay
+          description: Tarifas activas de cambio de nombre asociadas, con su coste; `[]` si no hay
           items:
-            $ref: "#/components/schemas/DictionaryItem"
+            $ref: "#/components/schemas/ContractRequestTypeTariff"
+        registration_price:
+          type: number
+          format: float
+          nullable: true
+          description: Suma de los `price` de `registration_tariffs` (importe sin impuestos del alta); `0` si no hay tarifas, `null` si alguna no tiene precio fijo
+          example: 65.4
+        change_of_name_price:
+          type: number
+          format: float
+          nullable: true
+          description: Suma de los `price` de `change_of_name_tariffs` (importe sin impuestos del cambio de titularidad); `0` si no hay tarifas, `null` si alguna no tiene precio fijo
+          example: 0
+
+    ContractRequestTypeTariff:
+      type: object
+      description: Tarifa de un tipo de solicitud con su coste
+      required:
+        - token
+        - name
+        - type_price
+        - price
+      properties:
+        token:
+          type: string
+          description: Token de la tarifa
+          example: registration-domestic
+        name:
+          type: string
+          description: Nombre de la tarifa (o del producto si es genérico)
+          example: Alta doméstica
+        type_price:
+          type: string
+          enum: [fixed, variable]
+          description: "`fixed` si todos los conceptos son importes fijos; `variable` si alguno se tarifa por tramos"
+          example: fixed
+        price:
+          type: number
+          format: float
+          nullable: true
+          description: Suma de los conceptos fijos (importe unitario sin impuestos); `null` si no hay conceptos fijos
+          example: 65.4
 
     DictionaryItem:
       type: object

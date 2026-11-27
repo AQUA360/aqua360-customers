@@ -1,3 +1,4 @@
+from django.utils.translation import gettext
 from django.db import transaction
 from rest_framework import viewsets
 from rest_framework.decorators import action
@@ -111,6 +112,6 @@ class ACADocumentViewSet(viewsets.ModelViewSet):
 
             except Exception as e:
                 logger.exception("Error inesperat")
-                return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_400_BAD_REQUEST)
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

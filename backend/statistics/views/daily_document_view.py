@@ -1,3 +1,4 @@
+from django.utils.translation import gettext
 from rest_framework.decorators import action
 from rest_framework import viewsets, status
 from rest_framework.response import Response
@@ -63,7 +64,9 @@ class DailyDocumentViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         # Custom write actions check can_change explicitly (POST would otherwise
         # map to add_* via StatisticsPermission; regenerate is a GET mutation).
-        if self.action in ('permissions', 'submit', 'regenerate_daily_document'):
+        # `pending` és el comptador del menú, que es consulta a cada pàgina: tothom el pot
+        # demanar i, sense permís d'estadístiques, rep zeros en lloc d'un 403.
+        if self.action in ('permissions', 'submit', 'regenerate_daily_document', 'return_pending_daily_documents'):
             return [IsAuthenticated()]
         return super().get_permissions()
 
@@ -80,6 +83,8 @@ class DailyDocumentViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['get'], url_path='pending')
     def return_pending_daily_documents(self, request):
+        if not StatisticsPermission().has_permission(request, self):
+            return Response({'pending': 0, 'errors': 0}, status=status.HTTP_200_OK)
         try:
             from django.db.models import Q
 
@@ -104,7 +109,7 @@ class DailyDocumentViewSet(viewsets.ModelViewSet):
             )
         except Exception as e:
             logger.exception("Error inesperat")
-            return Response({'error': "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({'error': gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     @action(detail=True, methods=['get'], url_path='regenerate')
     def regenerate_daily_document(self, request, pk=None):
@@ -121,7 +126,7 @@ class DailyDocumentViewSet(viewsets.ModelViewSet):
             return Response({'task_id': task.id}, status=status.HTTP_200_OK)
         except Exception as e:
             logger.exception("Error inesperat")
-            return Response({'error': "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({'error': gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=True, methods=['post'], url_path='submit')
     def submit(self, request, pk=None):
@@ -149,6 +154,6 @@ class DailyDocumentViewSet(viewsets.ModelViewSet):
         except Exception:
             logger.exception("Error submitting daily document")
             return Response(
-                {'error': "Ha ocorregut un error inesperat."},
+                {'error': gettext("An unexpected error has occurred.")},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )

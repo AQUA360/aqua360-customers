@@ -13,7 +13,7 @@ export default defineNuxtPlugin(nuxtApp => {
     client_type_ids = [], use_type_ids = [], category_ids = [],
     product_ids = [], debt_management_types = [], is_checked = false,
     comm_types = [], search_all_address = '', payment_type_ids = [], person_ids = [], search_by_address = '', total_persons_min = null,
-    company_ids = [], holder = null, role = null, block_billing = null, has_debt = null, search_email = '', search_iban = '', search_meter = '', has_positive_balance = null, pending_termination = null, has_virtual_office = null) => {
+    company_ids = [], holder = null, role = null, block_billing = null, has_debt = null, search_email = '', search_iban = '', search_meter = '', has_positive_balance = null, pending_termination = null, has_virtual_office = null, search_phone = '') => {
     let apiUrl = apiHost + entity + '?search=' + encodeURIComponent(searchQuery) + `&page=${page}`;
   
     if (role) {
@@ -129,6 +129,10 @@ export default defineNuxtPlugin(nuxtApp => {
 
     if (search_meter) {
       apiUrl += `&search_meter=${encodeURIComponent(search_meter)}`;
+    }
+
+    if (search_phone) {
+      apiUrl += `&search_phone=${encodeURIComponent(search_phone)}`;
     }
 
     let exploitation_id = localStorage.getItem('exploitation');
@@ -554,7 +558,8 @@ export default defineNuxtPlugin(nuxtApp => {
     comm_types = [], search_all_address = '', payment_type_ids = [],
     person_ids = [], search_by_address = '', total_persons_min = null, company_ids = [],
     block_billing = null, has_debt = null, search_email = '', search_iban = '', search_meter = '',
-    has_positive_balance = null, pending_termination = null, has_virtual_office = null
+    has_positive_balance = null, pending_termination = null, has_virtual_office = null,
+    search_phone = ''
   ) => {
     let apiUrl = apiHost + entity + 'export/excel/';
     let queryParams = [];
@@ -661,6 +666,10 @@ export default defineNuxtPlugin(nuxtApp => {
 
     if (search_meter) {
       queryParams.push(`search_meter=${encodeURIComponent(search_meter)}`);
+    }
+
+    if (search_phone) {
+      queryParams.push(`search_phone=${encodeURIComponent(search_phone)}`);
     }
 
     let exploitation_id = localStorage.getItem('exploitation');

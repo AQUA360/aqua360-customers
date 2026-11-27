@@ -1,3 +1,4 @@
+import logging
 import random
 from celery import shared_task
 from celery_progress.backend import ProgressRecorder
@@ -9,6 +10,12 @@ from service.models import SupplyPoint
 from service.utils.route_scope import effective_route_position, effective_route_select_related, routes_supply_points_q
 from coredata.models import ConfigProject
 from .serializers import RouteAppDetailSerializer, MeterAppSerializer, active_supply_point_q
+
+logger = logging.getLogger(__name__)
+
+# Marca dels resultats d'aquesta tasca: la vista d'estat només retorna resultats que la
+# porten, perquè l'app no pugui llegir per aquí els resultats d'altres tasques de Celery.
+LECTURAPP_ROUTES_TASK_KIND = 'lecturapp_routes_detailed'
 
 
 def meter_included_for_batch(meter, include_telecontrol, include_manual):
@@ -49,9 +56,11 @@ def process_reading_batch_routes_detailed(self, reading_batch_id, include_disabl
         # Pre-fetch batch readings to avoid N+1 queries
         progress_recorder.set_progress(10, 100, "Fetching batch readings...")
         
-        batch_readings = Reading.objects.filter(batch=reading_batch_id).exclude(
+        # Només les lectures originals: les còpies (copied_from) són la mateixa
+        # lectura per a la resta de contractes del comptador
+        batch_readings = Reading.objects.filter(batch=reading_batch_id, copied_from__isnull=True).exclude(
             meter__sub_meters__status__token=token_meter_status_no_meter
-        ).select_related('meter', 'reader_alert')
+        ).select_related('meter', 'reader_alert').order_by('id')
         if not include_telecontrol:
             batch_readings = batch_readings.filter(
                 Q(meter__has_remote_reading=False) | Q(meter__force_manual_reading=True)
@@ -62,6 +71,12 @@ def process_reading_batch_routes_detailed(self, reading_batch_id, include_disabl
             )
             
         
+        # Una lectura per comptador (la primera, si n'hi hagués més d'una)
+        batch_readings_by_meter = {}
+        for reading in batch_readings:
+            if reading.meter_id:
+                batch_readings_by_meter.setdefault(reading.meter_id, reading)
+
         # Handle fix_meters case (when no routes exist)
         if not routes and num_fix_meters > 0:
             progress_recorder.set_progress(15, 100, "Processing fix meters...")
@@ -99,7 +114,7 @@ def process_reading_batch_routes_detailed(self, reading_batch_id, include_disabl
             context = {
                 'reading_batch_id': reading_batch_id,
                 'batch_readings': batch_readings,
-                'batch_readings_by_meter': {reading.meter_id: reading for reading in batch_readings if reading.meter_id},
+                'batch_readings_by_meter': batch_readings_by_meter,
                 'exclude_telecontrol': exclude_telecontrol,
                 'exclude_manual': exclude_manual,
                 'total_meters': total_meters,
@@ -182,7 +197,7 @@ def process_reading_batch_routes_detailed(self, reading_batch_id, include_disabl
                         'longitude': property_obj.longitude if property_obj.longitude else 0,
                         'address_complete': str(property_obj.address_street) + ' ' + str(property_obj.address_street_number),
                         'num_meters': len(meters_for_property),
-                        'num_readings': sum(1 for reading in batch_readings if reading.meter_id in [m.id for m in meters_for_property]),
+                        'num_readings': sum(1 for m in meters_for_property if m.id in batch_readings_by_meter),
                         'route_position': position.id if position else None,
                         'address_street': property_obj.address_street_id,
                         'address_street_number': property_obj.address_street_number_id,
@@ -220,6 +235,7 @@ def process_reading_batch_routes_detailed(self, reading_batch_id, include_disabl
             progress_recorder.set_progress(100, 100, "Processing completed")
             
             return {
+                'kind': LECTURAPP_ROUTES_TASK_KIND,
                 'status': 'completed',
                 'data': serialized_data,
                 'message': f'Successfully processed fix meters route with {len(final_positions)} positions'
@@ -260,7 +276,7 @@ def process_reading_batch_routes_detailed(self, reading_batch_id, include_disabl
         context = {
             'reading_batch_id': reading_batch_id,
             'batch_readings': batch_readings,
-            'batch_readings_by_meter': {reading.meter_id: reading for reading in batch_readings if reading.meter_id},
+            'batch_readings_by_meter': batch_readings_by_meter,
             'exclude_telecontrol': exclude_telecontrol,
             'exclude_manual': exclude_manual,
             'include_telecontrol': include_telecontrol,
@@ -287,15 +303,18 @@ def process_reading_batch_routes_detailed(self, reading_batch_id, include_disabl
         progress_recorder.set_progress(100, 100, "Processing completed")
         
         return {
+            'kind': LECTURAPP_ROUTES_TASK_KIND,
             'status': 'completed',
             'data': serialized_data,
             'message': f'Successfully processed {len(serialized_data)} routes'
         }
         
     except Exception as e:
-        progress_recorder.set_progress(0, 100, f"Error: {str(e)}")
-        
+        logger.exception("Lecturapp: error preparant les rutes del lot %s", reading_batch_id)
+        progress_recorder.set_progress(0, 100, "Error")
+
         return {
+            'kind': LECTURAPP_ROUTES_TASK_KIND,
             'status': 'error',
-            'message': str(e)
+            'message': 'Error processing reading batch routes',
         } 

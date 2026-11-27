@@ -6,7 +6,10 @@ from django.utils.dateparse import parse_datetime
 
 from contract.models import ContractRequest
 from documentmanager.models import DocumentSign
-from documentmanager.utils.document_sign_config import DOCUMENT_SIGN_REFERENCE_PREFIX
+from documentmanager.utils.document_sign_config import (
+    DOCUMENT_SIGN_REFERENCE_PREFIX,
+    DOCUMENT_SIGN_SEPA_ID_PREFIX,
+)
 from documentmanager.utils.main_utils import upload_document
 from integrations.models import ContractSigningSession, IntegrationRequestLog
 from integrations.outbound.signing.client import SigningClient
@@ -64,14 +67,13 @@ def _resolve_document_sign(external_reference):
     return None
 
 
-def save_signed_document_sign_file(document_sign, pdf_bytes, signed_at):
-    filename = f"{document_sign.token or document_sign.id}_signed.pdf"
+def _upload_signed_pdf(document_sign, pdf_bytes, field, filename):
     service = settings.DOCUMENT_MANAGER_SERVICES.get("contract")
     file_obj = SimpleUploadedFile(filename, pdf_bytes, content_type="application/pdf")
-    document = upload_document(
+    return upload_document(
         file_obj,
         "DOCUMENT_SIGN",
-        "DOCUMENT_SIGN",
+        field,
         document_sign.id,
         document_sign.token or "",
         "",
@@ -79,13 +81,59 @@ def save_signed_document_sign_file(document_sign, pdf_bytes, signed_at):
         filename,
     )
 
-    document_sign.contract_file_signed = document
+
+def save_signed_document_sign_file(document_sign, pdf_bytes, signed_at, sepa_pdf_bytes=None):
+    name = document_sign.token or document_sign.id
+    document_sign.contract_file_signed = _upload_signed_pdf(
+        document_sign, pdf_bytes, "DOCUMENT_SIGN", f"{name}_signed.pdf"
+    )
+    if sepa_pdf_bytes:
+        document_sign.sepa_file_signed = _upload_signed_pdf(
+            document_sign, sepa_pdf_bytes, "SEPA", f"{name}_SEPA_signed.pdf"
+        )
     document_sign.status = DocumentSign.STATUS_SIGNED
     document_sign.signed_at = signed_at
     document_sign.error_report = None
     document_sign.save(
-        update_fields=["contract_file_signed", "status", "signed_at", "error_report", "updated_at"]
+        update_fields=[
+            "contract_file_signed", "sepa_file_signed", "status", "signed_at",
+            "error_report", "updated_at",
+        ]
     )
+
+
+def signed_document_sign_ids(documents):
+    """
+    Ids remots dels documents signats d'una sessió de DocumentSign:
+    (contracte, SEPA). El SEPA es reconeix pel prefix de l'`external_document_id`;
+    el contracte és el primer altre document signat (els adjunts no se signen).
+    """
+    contract_id = None
+    sepa_id = None
+    for document in documents or []:
+        if not (isinstance(document, dict) and document.get("signed") and document.get("id")):
+            continue
+        external_id = str(document.get("external_document_id") or "")
+        if external_id.startswith(DOCUMENT_SIGN_SEPA_ID_PREFIX):
+            sepa_id = sepa_id or document["id"]
+        elif contract_id is None:
+            contract_id = document["id"]
+    return contract_id, sepa_id
+
+
+def download_signed_document_sign_files(client, session_id, documents, **log_kwargs):
+    """
+    Baixa el contracte i, si n'hi ha, el SEPA signats. Retorna (contracte, sepa)
+    o (None, None) si no hi ha contracte signat. Aixeca SigningApiError si falla.
+    """
+    contract_id, sepa_id = signed_document_sign_ids(documents)
+    if not contract_id:
+        return None, None
+    contract_bytes = client.download_signed_document(session_id, contract_id, **log_kwargs)
+    sepa_bytes = (
+        client.download_signed_document(session_id, sepa_id, **log_kwargs) if sepa_id else None
+    )
+    return contract_bytes, sepa_bytes
 
 
 def _download_signed_pdf(session_id, payload):
@@ -206,7 +254,12 @@ def _handle_document_sign_signed(document_sign, session_id, payload):
         return {"ok": True, "already_processed": True}
 
     signed_at = _parse_signed_at(payload.get("signed_at"))
-    pdf_bytes = _download_signed_pdf(session_id, payload)
+    try:
+        pdf_bytes, sepa_pdf_bytes = download_signed_document_sign_files(
+            SigningClient(), session_id, payload.get("documents")
+        )
+    except SigningApiError:
+        pdf_bytes = sepa_pdf_bytes = None
 
     if not pdf_bytes:
         raise SigningCallbackError(
@@ -219,7 +272,7 @@ def _handle_document_sign_signed(document_sign, session_id, payload):
     with transaction.atomic():
         document_sign = DocumentSign.objects.select_for_update().get(pk=document_sign.pk)
         _check_document_sign_session(document_sign, session_id)
-        save_signed_document_sign_file(document_sign, pdf_bytes, signed_at)
+        save_signed_document_sign_file(document_sign, pdf_bytes, signed_at, sepa_pdf_bytes)
 
     return {
         "ok": True,

@@ -580,6 +580,40 @@ def publish_order_deleted_event(order):
     publish_event("order.deleted", payload)
 
 
+def _gmao_status_key(status):
+    """L'estat del GMAO que correspon a un estat de l'app (el primer del mapatge)."""
+    if not status:
+        return None
+    from order.services.consumer import GMAO_STATUS_MAPPING
+    return next(
+        (key for key, token in GMAO_STATUS_MAPPING.items() if str(token) == str(status.token)),
+        None,
+    )
+
+
+def publish_order_status_changed(order_token, status, previous_status, reason=None):
+    """
+    Publica un esdeveniment quan l'app canvia l'estat d'una Order, amb la
+    mateixa clau que fa servir el GMAO per avisar-nos dels seus canvis.
+
+    Args:
+        order_token: token de l'Order
+        status: OrderStatus nou (el de la transició, no el de l'ordre en publicar)
+        previous_status: OrderStatus anterior (pot ser None)
+        reason: motiu si el canvi és automàtic (p. ex. per una baixa)
+    """
+    payload = {
+        "order_token": order_token,
+        "status_token": status.token if status else None,
+        "status_name": status.name if status else None,
+        "gmao_status": _gmao_status_key(status),
+        "previous_status_token": previous_status.token if previous_status else None,
+        "previous_status_name": previous_status.name if previous_status else None,
+        "reason": reason,
+    }
+    publish_event("order.status.changed", payload)
+
+
 # def publish_order_updated(order):
 #     """
 #     Publica un esdeveniment quan s'actualitza una Order

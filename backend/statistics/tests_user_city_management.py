@@ -323,3 +323,41 @@ class UserCityManagementDailyDocumentTests(TestCase):
         self.assertIsNone(daily_document.document)
         self.assertTrue(daily_document.creation_error)
         self.assertNotIn('boom', daily_document.creation_error)
+
+
+class ReportUserCityManagementViewTests(TestCase):
+    """Botó de la pantalla del resum d'activitat: encola l'informe amb el rang triat."""
+
+    URL = '/statistics/billing/user-city-management'
+
+    def setUp(self):
+        from rest_framework.test import APIClient
+
+        self.client = APIClient()
+        self.client.force_authenticate(User.objects.create(username='oficina'))
+
+    def test_requires_permission_to_view_other_users(self):
+        from unittest import mock
+
+        with mock.patch('statistics.views.daily_activity_view._can_view_other_users', return_value=False), \
+                mock.patch('statistics.views.daily_activity_view.run_report_task') as task:
+            response = self.client.post(self.URL, {'date_from': '2026-01-01', 'date_to': '2026-03-31'},
+                                        format='json')
+
+        self.assertEqual(response.status_code, 403)
+        task.delay.assert_not_called()
+
+    def test_enqueues_the_report_with_the_selected_range(self):
+        from unittest import mock
+
+        with mock.patch('statistics.views.daily_activity_view._can_view_other_users', return_value=True), \
+                mock.patch('statistics.views.daily_activity_view.run_report_task') as task:
+            task.delay.return_value.id = 'task-1'
+            response = self.client.post(self.URL, {'date_from': '2026-03-31', 'date_to': '2026-01-01'},
+                                        format='json')
+
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(response.data['task_id'], 'task-1')
+        name, payload = task.delay.call_args.args
+        self.assertEqual(name, 'user_city_management_report')
+        self.assertEqual((payload['start_date'], payload['end_date']), ('2026-01-01', '2026-03-31'))

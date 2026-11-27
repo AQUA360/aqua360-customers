@@ -300,3 +300,23 @@ class WebhookEvent(models.Model):
 
     def __str__(self):
         return f"{self.event_type} {self.object_type}:{self.object_id} ({self.status})"
+
+
+class WebhookInvoiceState(models.Model):
+    """Darrer estat avisat de cada factura (foto) per als avisos d'estat de pagament.
+
+    Una tasca periòdica compara l'estat actual de les factures amb aquesta foto i
+    avisa dels canvis (vegeu integrations/outbound/webhooks/invoice_status.py).
+    Sense claus foranes: és una foto que s'escriu en massa i no ha de bloquejar
+    ni esborrar res de facturació.
+    """
+
+    invoice_id = models.BigIntegerField(primary_key=True)
+    status_id = models.BigIntegerField(null=True, blank=True)
+    # La factura no té cap estat «retornada»: es guarda a part si algun rebut actiu
+    # és retornat
+    is_returned = models.BooleanField(default=False)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Invoice {self.invoice_id}: status {self.status_id}, returned {self.is_returned}"

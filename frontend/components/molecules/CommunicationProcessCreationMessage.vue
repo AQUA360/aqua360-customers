@@ -31,6 +31,11 @@ const props = defineProps({
         type: Boolean,
         default: false,
     },
+    // Reclamació d'impagats del procés: el seu pas actual diu quin document s'envia
+    claimRequestId: {
+        type: Number,
+        default: null,
+    },
 })
 
 const emit = defineEmits(['change', 'load', 'change-attachments'])
@@ -54,7 +59,8 @@ const updateAttachment = (key, value) => {
     emit('change-attachments', next)
 }
 const { t } = useI18n();
-const { $ConfiglistApiService, $CommunicationProcessApiService, $MessageTemplateApiService } = useNuxtApp();
+const { $ConfiglistApiService, $CommunicationProcessApiService, $MessageTemplateApiService,
+    $ClaimRequestApiService, $ConfigProjectApiService } = useNuxtApp();
 const toast = useToast();
 const loadingOrigins = ref(false)
 const loadingTemplates = ref(false)
@@ -76,6 +82,46 @@ const messageData = ref({})
 // s'envia amb la comunicació. Agafa el valor de la plantilla i es pot canviar per a aquest procés.
 const isClaimContext = computed(() => props.defaultOriginToken === 'claim')
 const attachClaimDocuments = ref(true)
+
+// Pas actual de la reclamació i configuració del projecte: el text de l'opció diu quin
+// document s'envia i què s'hi adjunta igualment. Sense dades, el text genèric.
+const claimStep = ref(null)
+// Documents que s'adjunten a més del del pas (configProject `claim_attached_documents`)
+const claimAttachedDocuments = ref(['invoices', 'payment_slips'])
+const claimStepDocumentName = computed(() => claimStep.value?.document_type?.name || null)
+// Sense document al pas no hi ha res a triar: el servidor ja no l'adjunta
+const showClaimDocumentsOption = computed(() =>
+    isClaimContext.value && !(claimStep.value && !claimStep.value.document_type))
+const claimExtraDocsInfo = computed(() => {
+    const invoices = claimAttachedDocuments.value.includes('invoices')
+    // Amb els pagaments agrupats el full de pagament és el mateix document del pas
+    const slips = claimAttachedDocuments.value.includes('payment_slips')
+        && !claimStep.value?.step_template?.group_payments
+    if (invoices && slips) return 'informative_block.info_claim_invoices_and_slip_always'
+    if (invoices) return 'informative_block.info_claim_invoices_always'
+    if (slips) return 'informative_block.info_claim_slip_always'
+    return 'informative_block.info_claim_no_invoices'
+})
+
+const loadClaimContext = async () => {
+    if (!isClaimContext.value) return
+    try {
+        // Mateix format que la tasca que genera els documents: llista separada per comes
+        const value = await $ConfigProjectApiService.get('claim_attached_documents')
+        if (value != null) {
+            claimAttachedDocuments.value = String(value).split(',').map(v => v.trim().toLowerCase()).filter(Boolean)
+        }
+    } catch (error) {
+        // Sense configuració, tots dos
+    }
+    if (!props.claimRequestId) return
+    try {
+        const detail = await $ClaimRequestApiService.getDetail(props.claimRequestId)
+        claimStep.value = detail?.current_step || null
+    } catch (error) {
+        console.error('Error fetching claim request step:', error)
+    }
+}
 
 const persons_no_contracts = computed(() => {
     if (props.persons) {
@@ -293,6 +339,7 @@ watch(props.message, async (newVal) => {
 })
 
 onMounted(async () => {
+    loadClaimContext()
     stopWatch.value = true
     await loadData()
     stopWatch.value = false
@@ -375,7 +422,7 @@ onMounted(async () => {
                     </span>
                 </label>
 
-                <label v-if="isClaimContext" class="flex cursor-pointer items-start gap-3 rounded-md border p-2"
+                <label v-if="showClaimDocumentsOption" class="flex cursor-pointer items-start gap-3 rounded-md border p-2"
                     :class="attachClaimDocuments ? 'border-sky-500 bg-sky-50/60' : 'border-slate-200 hover:bg-slate-50'">
                     <input type="checkbox" class="mt-1" v-model="attachClaimDocuments" @change="onAttachClaimDocumentsChange" />
                     <span class="min-w-0 flex-1">
@@ -383,7 +430,12 @@ onMounted(async () => {
                             <Icon name="fa6-solid:file-lines" class="mr-1 text-slate-500" />
                             {{ t('common.attach_claim_documents_to_email') }}
                         </span>
-                        <span class="block text-xs text-slate-500">{{ t('informative_block.info_attach_claim_documents') }}</span>
+                        <span v-if="claimStepDocumentName" class="block text-xs text-slate-600">
+                            {{ t('informative_block.info_claim_step_document', { document: claimStepDocumentName }) }}
+                        </span>
+                        <span class="block text-xs text-slate-500">
+                            {{ t('informative_block.info_attach_claim_documents') }} {{ t(claimExtraDocsInfo) }}
+                        </span>
                     </span>
                 </label>
             </div>

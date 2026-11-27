@@ -1,3 +1,4 @@
+from django.utils.translation import gettext
 import hmac
 import logging
 
@@ -96,4 +97,4 @@ class SigningCallbackView(APIView):
                 error_message=str(exc),
                 response_payload={"detail": str(exc)},
             )
-            return Response({"detail": "Ha ocorregut un error inesperat."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": gettext("An unexpected error has occurred.")}, status=status.HTTP_400_BAD_REQUEST)

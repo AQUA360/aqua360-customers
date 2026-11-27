@@ -459,6 +459,16 @@ python manage.py test integrations.outbound.signing.tests integrations.inbound.s
 
 ---
 
+## Webhooks de sortida
+
+Avisos `POST` signats a un sistema extern (contractes, baixes, sol·licituds anul·lades, factures emeses i canvis d'estat de pagament de les factures).
+
+**Codi:** `integrations/outbound/webhooks/`
+
+**Documentació:** [`docs/integrations/webhooks/data-contract.md`](integrations/webhooks/data-contract.md) (configuració, signatura, avisos, dades i ordres).
+
+---
+
 ## GMAO
 
 Codi: `integrations/inbound/gmao/`

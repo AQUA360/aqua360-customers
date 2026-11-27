@@ -24,6 +24,7 @@ from documentmanager.utils.main_utils import download_document, upload_document
 from service.models import Cluster, ClusterDocumentationFile, ClusterDocumentationType
 
 from .decorators import lecturapp_auth_required
+from .utils.batch_scope_service import cluster_in_open_batch, property_in_open_batch
 
 logger = logging.getLogger(__name__)
 
@@ -134,6 +135,9 @@ def property_clusters(request, property_id):
     """GET: bateries de la finca amb les seves dades i la llista de fotos (sense imatges)."""
     if request.method != 'GET':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
+    # Només finques d'algun lot obert
+    if not property_in_open_batch(property_id):
+        return JsonResponse({'error': 'Property not found'}, status=404)
     return JsonResponse({'results': [_serialize_cluster(c) for c in _property_clusters(property_id)]})
 
 
@@ -142,6 +146,8 @@ def cluster_photo(request, cluster_id, photo_id):
     """GET: una foto de la bateria; ?size=thumbnail per a la miniatura de la llista."""
     if request.method != 'GET':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
+    if not cluster_in_open_batch(cluster_id):
+        return JsonResponse({'error': 'Photo not found'}, status=404)
     photo_file = ClusterDocumentationFile.objects.filter(
         id=photo_id, cluster_id=cluster_id, cluster__is_active=True,
         is_active=True, file__isnull=False, file__is_active=True,
@@ -166,7 +172,8 @@ def upload_cluster_photo(request, cluster_id):
     if request.method != 'POST':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
     cluster = Cluster.objects.filter(id=cluster_id, is_active=True).first()
-    if not cluster:
+    # Només bateries de finques d'algun lot obert
+    if not cluster or not cluster_in_open_batch(cluster_id):
         return JsonResponse({'error': 'Cluster not found'}, status=404)
 
     try:

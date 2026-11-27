@@ -219,3 +219,25 @@ class SigningCallbackTests(TestCase):
         response = self.post(signed_payload("docsign-%s" % self.document_sign.id, DS_SESSION))
         self.assertEqual(response.status_code, 400)
         self.save_document.assert_not_called()
+
+    def test_document_amb_sepa_desa_els_dos_pdf(self):
+        payload = signed_payload("docsign-%s" % self.document_sign.id, DS_SESSION)
+        payload["documents"] = [
+            {"id": 1, "signed": True, "external_document_id": str(self.document_sign.id)},
+            {"id": 2, "signed": True, "external_document_id": "sepa-%s" % self.document_sign.id},
+            {"id": 3, "signed": False, "external_document_id": "invoice-9",
+             "requires_signature": False},
+        ]
+        self.signing_client.download_signed_document.side_effect = (
+            lambda session_id, document_id: b"%PDF-" + str(document_id).encode()
+        )
+        response = self.post(payload)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [c.args for c in self.signing_client.download_signed_document.call_args_list],
+            [(DS_SESSION, 1), (DS_SESSION, 2)],
+        )
+        args = self.save_document.call_args.args
+        self.assertEqual(args[1], b"%PDF-1")
+        self.assertEqual(args[3], b"%PDF-2")
+

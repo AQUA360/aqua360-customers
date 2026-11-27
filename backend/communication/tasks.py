@@ -288,6 +288,21 @@ def check_send_date():
     except Exception as e:
         return {"status": "error", "message": str(e)} 
 
+CLAIM_ATTACHED_DOCUMENTS_TOKEN = 'claim_attached_documents'
+CLAIM_ATTACH_INVOICES = 'invoices'
+CLAIM_ATTACH_PAYMENT_SLIPS = 'payment_slips'
+
+
+def get_claim_attached_documents():
+    """Documents que s'adjunten a les comunicacions d'impagats, a més del document del pas
+    (que es tria a la plantilla de missatge): `invoices`, `payment_slips`, tots dos separats
+    per comes o cap (valor buit). Sense configuració, tots dos."""
+    config = ConfigProject.objects.filter(token=CLAIM_ATTACHED_DOCUMENTS_TOKEN).first()
+    if config is None or config.value is None:
+        return {CLAIM_ATTACH_INVOICES, CLAIM_ATTACH_PAYMENT_SLIPS}
+    return {value.strip().lower() for value in config.value.split(',') if value.strip()}
+
+
 def _create_claim_step_communication_file(
     claim_request,
     contract,
@@ -349,21 +364,16 @@ def render_pending_letter_files(communication_ids):
 def generate_claim_document_pdf_task(communication_ids, process_id, progress_recorder=None, progress_start=70, progress_end=90, claim_id = None, attach_claim_documents=True):
     try:
         service = settings.DOCUMENT_MANAGER_SERVICES.get("communication")
-        try:
-            config_attach_invoices = ConfigProject.objects.get(token='attach_invoices_in_claims').value.lower() == 'true'
-        except ConfigProject.DoesNotExist:
-            ConfigProject.objects.create(
-                token='attach_invoices_in_claims', 
-                name=_("Attach invoices in claims"),
-                value='true'
-                )
-            config_attach_invoices = True
+        attached_documents = get_claim_attached_documents()
         claim_com_files = []
         counter = 0
         communications = Communication.objects.filter(id__in=communication_ids)
         process = CommunicationProcess.objects.get(id=process_id)
         
         claim_request = ClaimRequest.objects.get(id=claim_id) if claim_id else ClaimRequest.objects.get(current_step__communication_process=process, current_step__is_completed=False)
+        if not claim_request.current_step.document_type_id:
+            # Pas sense document (p. ex. només genera ordre): no s'hi adjunta res
+            attached_documents = set()
         
         # Count total contracts to process
         total_contracts = sum(comm.contracts.count() for comm in communications)
@@ -372,10 +382,6 @@ def generate_claim_document_pdf_task(communication_ids, process_id, progress_rec
         # make limit here 2 months forward from today
         limit_date = timezone.now() + timedelta(days=60)
         email_token = ConfigProject.objects.get(token='message_type_email_token').value
-        # Si és 'false', només s'adjunta el document del pas (avís de pagament o carta de suspensió),
-        # sense les factures ni els rebuts
-        attach_extra_docs_config = ConfigProject.objects.filter(token='attach_extra_docs_in_claims').first()
-        attach_extra_docs = not (attach_extra_docs_config and attach_extra_docs_config.value and attach_extra_docs_config.value.lower() == 'false')
         for comm in communications:
             print(f"Communication: {comm.id}")
             invoice_attached_to_comm = False
@@ -388,45 +394,47 @@ def generate_claim_document_pdf_task(communication_ids, process_id, progress_rec
                     and claim_request.current_step.step_template.group_payments
                 )
 
-                # Amb pagaments agrupats també s'adjunten les factures; el rebut és el document agrupat
                 if not claim_payments.exists():
                     print(f"No ClaimRequestPayment found for contract {contract.id}")
-                if config_attach_invoices:
-                    if not attach_extra_docs:
-                        # Sense adjunts extra les factures només es vinculen: el cos del missatge resol %invoice.*
-                        invoices = Invoice.objects.filter(payments__in=claim_payments.values('payment')).distinct()
-                        if invoices.exists():
-                            comm.invoices.add(*invoices)
-                            invoice_attached_to_comm = True
-                    else:
-                        for cr_payment in claim_payments:
-                            invoice = getattr(getattr(cr_payment, "payment", None), "invoice", None)
-                            if invoice and getattr(invoice, "invoice_file", None):
-                                comm.invoices.add(invoice)
-                                invoice_attached_to_comm = True
-                                claim_com_files.append(
-                                    CommunicationFile(
-                                        token=generate_token(CommunicationFile, offset=counter),
-                                        communication=comm,
-                                        file=invoice.invoice_file,
-                                    )
+                # Les factures es vinculen sempre: el cos del missatge resol %invoice.*
+                invoices = Invoice.objects.filter(payments__in=claim_payments.values('payment')).distinct()
+                if invoices.exists():
+                    comm.invoices.add(*invoices)
+                    invoice_attached_to_comm = True
+                for cr_payment in claim_payments:
+                    payment = getattr(cr_payment, "payment", None)
+                    invoice = getattr(payment, "invoice", None)
+                    if CLAIM_ATTACH_INVOICES in attached_documents:
+                        if invoice and getattr(invoice, "invoice_file", None):
+                            claim_com_files.append(
+                                CommunicationFile(
+                                    token=generate_token(CommunicationFile, offset=counter),
+                                    communication=comm,
+                                    file=invoice.invoice_file,
                                 )
-                                counter += 1
-                                if not cr_payment.claim_step and not add_joined_payments:
-                                    try:
-                                        payment_file, _unused = generate_report_payment_pdf(cr_payment.payment, None, limit_date = limit_date)
-                                        claim_com_files.append(
-                                            CommunicationFile(
-                                                token=generate_token(CommunicationFile, offset=counter),
-                                                communication=comm,
-                                                file=payment_file,
-                                            )
-                                        )
-                                        counter += 1
-                                    except Exception as e:
-                                        print(f"Error generating payment PDF: {str(e)}")
-                            else:
-                                print(f"NO INVOICE FILE FOUND for ClaimRequestPayment {cr_payment.id}")
+                            )
+                            counter += 1
+                        else:
+                            print(f"NO INVOICE FILE FOUND for ClaimRequestPayment {cr_payment.id}")
+                    # Amb pagaments agrupats el full de pagament és el document agrupat del pas
+                    if (
+                        CLAIM_ATTACH_PAYMENT_SLIPS in attached_documents
+                        and payment
+                        and not cr_payment.claim_step
+                        and not add_joined_payments
+                    ):
+                        try:
+                            payment_file, _unused = generate_report_payment_pdf(payment, None, limit_date = limit_date)
+                            claim_com_files.append(
+                                CommunicationFile(
+                                    token=generate_token(CommunicationFile, offset=counter),
+                                    communication=comm,
+                                    file=payment_file,
+                                )
+                            )
+                            counter += 1
+                        except Exception as e:
+                            print(f"Error generating payment PDF: {str(e)}")
 
                 joined_payment_ids = joined_payments if add_joined_payments else [None]
                 for joined_payment_id in joined_payment_ids:

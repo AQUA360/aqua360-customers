@@ -6,12 +6,15 @@ from auth.roles import (
     ROLE_ADMIN,
     ROLE_NONE,
     ROLE_SUPERUSER,
+    can_be_superuser,
     get_user_role,
     is_canonical_superuser,
+    is_customers_account,
 )
 from auth.utils import manage_group_permissions
 from .permissions import PermissionManager
 from django.contrib.auth.hashers import make_password
+from django.db import transaction
 from django.core.exceptions import PermissionDenied, ValidationError as DjangoValidationError
 from django.utils.translation import gettext
 
@@ -52,14 +55,15 @@ class UserSerializer(serializers.HyperlinkedModelSerializer):
         representation = super().to_representation(instance)
         representation['group_id'] = instance.groups.first().id if instance.groups.first() else None
         representation['role'] = get_user_role(instance)
+        representation['can_be_superuser'] = can_be_superuser(instance.username)
         return representation
 
     def _apply_role(self, user, role, group_id=None, update_group=False):
-        """Aplica rol. Només `customers` pot ser superuser."""
+        """Aplica rol. Només `customers` i els superusuaris addicionals poden ser superuser."""
         if role == ROLE_SUPERUSER:
-            if user.username != CANONICAL_SUPERUSER_USERNAME:
+            if not can_be_superuser(user.username):
                 raise PermissionDenied(
-                    f"Only the '{CANONICAL_SUPERUSER_USERNAME}' account can be a superuser"
+                    "This account is not allowed to be a superuser"
                 )
             user.is_superuser = True
             user.is_staff = True
@@ -93,8 +97,8 @@ class UserSerializer(serializers.HyperlinkedModelSerializer):
         return user
 
     def _normalize_residual_superuser(self, user):
-        """Rebaixa is_superuser residual a admin (excepte `customers`)."""
-        if user.username != CANONICAL_SUPERUSER_USERNAME and user.is_superuser:
+        """Rebaixa is_superuser residual a admin (excepte els comptes que poden ser superuser)."""
+        if not can_be_superuser(user.username) and user.is_superuser:
             user.is_superuser = False
             user.is_staff = True
             user.save(update_fields=['is_superuser', 'is_staff'])
@@ -139,17 +143,34 @@ class UserSerializer(serializers.HyperlinkedModelSerializer):
                 f"The '{CANONICAL_SUPERUSER_USERNAME}' account cannot be created via the API"
             )
         if role == ROLE_SUPERUSER:
-            raise PermissionDenied(
-                f"Only the '{CANONICAL_SUPERUSER_USERNAME}' account can be a superuser"
-            )
+            if not is_customers_account(user_request):
+                raise PermissionDenied(
+                    f"Only the '{CANONICAL_SUPERUSER_USERNAME}' account can grant superuser rights"
+                )
+            if not can_be_superuser(username):
+                raise PermissionDenied(
+                    "This account is not allowed to be a superuser"
+                )
 
         user = User.objects.create_user(username, email, new_pwd, **validated_data)
         return self._apply_role(user, role, group_id=group_id, update_group=True)
 
+    @transaction.atomic
     def update(self, instance, validated_data):
         user_request = self.context.get('request').user
         if not is_canonical_superuser(user_request):
             raise PermissionDenied("Only a superuser can update users")
+        # Comprovar i desar sobre la fila bloquejada: un canvi de rol simultani (p. ex. una
+        # revocació) no es pot perdre amb un desament fet amb dades antigues
+        instance = User.objects.select_for_update().get(pk=instance.pk)
+        if instance.pk == user_request.pk:
+            if not is_canonical_superuser(instance):
+                raise PermissionDenied("Only a superuser can update users")
+        elif instance.is_superuser and not is_customers_account(user_request):
+            # Com check_superuser_target, però sobre la fila bloquejada (pot haver canviat)
+            raise PermissionDenied(
+                f"Only the '{CANONICAL_SUPERUSER_USERNAME}' account can modify another superuser"
+            )
 
         new_pwd = validated_data.pop('new_pwd', None)
         username = validated_data.pop('username', None)
@@ -171,11 +192,31 @@ class UserSerializer(serializers.HyperlinkedModelSerializer):
             raise PermissionDenied(
                 f"Cannot rename a user to '{CANONICAL_SUPERUSER_USERNAME}'"
             )
+        # Un canvi de nom que fes perdre el rol de superusuari és una revocació: només `customers`
+        if (
+            target_username != instance.username
+            and get_user_role(instance) == ROLE_SUPERUSER
+            and not can_be_superuser(target_username)
+            and not is_customers_account(user_request)
+        ):
+            raise PermissionDenied(
+                f"Only the '{CANONICAL_SUPERUSER_USERNAME}' account can grant or revoke superuser rights"
+            )
         # Validar el rol abans de mutar (contrasenya, etc.) per no deixar canvis parcials
         if role is not None:
-            if role == ROLE_SUPERUSER and target_username != CANONICAL_SUPERUSER_USERNAME:
+            # Donar o treure drets de superusuari: només el compte `customers`
+            current_role = get_user_role(instance)
+            if (
+                role != current_role
+                and ROLE_SUPERUSER in (role, current_role)
+                and not is_customers_account(user_request)
+            ):
                 raise PermissionDenied(
-                    f"Only the '{CANONICAL_SUPERUSER_USERNAME}' account can be a superuser"
+                    f"Only the '{CANONICAL_SUPERUSER_USERNAME}' account can grant or revoke superuser rights"
+                )
+            if role == ROLE_SUPERUSER and not can_be_superuser(target_username):
+                raise PermissionDenied(
+                    "This account is not allowed to be a superuser"
                 )
             if target_username == CANONICAL_SUPERUSER_USERNAME and role != ROLE_SUPERUSER:
                 raise PermissionDenied(
@@ -191,6 +232,12 @@ class UserSerializer(serializers.HyperlinkedModelSerializer):
         if last_name:
             instance.last_name = last_name
         if new_pwd:
+            # validate() ho ha comprovat abans del bloqueig: es repeteix amb el rol final de la fila
+            is_superuser = (role == ROLE_SUPERUSER) if role is not None else instance.is_superuser
+            try:
+                validate_user_password(new_pwd, instance, is_superuser)
+            except DjangoValidationError as error:
+                raise serializers.ValidationError({'new_pwd': list(error.messages)})
             instance.password = make_password(new_pwd)
         instance.save()
 
@@ -223,6 +270,56 @@ class UserMinimalSerializer(serializers.HyperlinkedModelSerializer):
     class Meta:
         model = User
         fields = [ 'id', 'first_name', 'last_name', 'username', 'email' ]
+
+class OwnProfileSerializer(serializers.ModelSerializer):
+    """Dades del propi usuari: pot canviar nom, cognoms i correu.
+
+    El nom d'usuari, el rol i el grup només es mostren: els canvia un superusuari des de la
+    gestió d'usuaris (el nom d'usuari decideix qui pot ser superusuari).
+
+    Canviar el correu demana la contrasenya actual: el correu rep l'enllaç de recuperació,
+    i amb una sessió robada n'hi hauria prou per apoderar-se del compte."""
+    email = serializers.EmailField(required=True, allow_blank=False, max_length=254)
+    current_password = serializers.CharField(
+        write_only=True, required=False, allow_blank=True, trim_whitespace=False)
+    role = serializers.SerializerMethodField()
+    group_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = ['id', 'username', 'first_name', 'last_name', 'email', 'current_password',
+                  'role', 'group_name', 'date_joined', 'last_login']
+        read_only_fields = ['id', 'username', 'date_joined', 'last_login']
+
+    def validate(self, attrs):
+        current_password = attrs.pop('current_password', '')
+        email = attrs.get('email')
+        user = self.instance
+        if user is not None and email is not None and email.strip().lower() != (user.email or '').strip().lower():
+            if not current_password:
+                raise serializers.ValidationError(
+                    {'current_password': [gettext("Enter your current password to change the email.")]})
+            if not user.check_password(current_password):
+                raise serializers.ValidationError(
+                    {'current_password': [gettext("The current password is not correct.")]})
+        return attrs
+
+    def update(self, instance, validated_data):
+        # Només es desen els camps que s'han canviat: un desament complet podria tornar enrere
+        # canvis fets mentrestant (p. ex. la contrasenya, que també tancaria les sessions)
+        for field, value in validated_data.items():
+            setattr(instance, field, value)
+        if validated_data:
+            instance.save(update_fields=list(validated_data))
+        return instance
+
+    def get_role(self, obj):
+        return get_user_role(obj)
+
+    def get_group_name(self, obj):
+        group = obj.groups.first()
+        return group.name if group else None
+
 
 class GroupSerializer(serializers.HyperlinkedModelSerializer):
     permissions = serializers.SerializerMethodField()

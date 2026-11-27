@@ -61,7 +61,7 @@ from .views.reading_batch_import_column_view import ReadingBatchImportColumnView
 from .views.available_report_view import AvailableReportViewSet, ReportQueueListView, ReportQueueStatusView, ReportQueueActionView
 from .views.update_statistics_view import TriggerDailyConsumptionUpdate, TriggerBillingConsumptionBackfill, TaskStatusView
 from .views.summary_statistics_view import ConsumptionSummaryByUseType, BillingSummaryByUseType
-from .views.daily_activity_view import DailyActivitySummaryView, ReportDailyActivitySummary
+from .views.daily_activity_view import DailyActivitySummaryView, ReportDailyActivitySummary, ReportUserCityManagement
 from .views.daily_document_status_view import DailyDocumentStatusViewSet
 from .views.daily_document_submission_status_view import DailyDocumentSubmissionStatusViewSet
 from .views.daily_document_template_view import DailyDocumentTemplateViewSet
@@ -172,6 +172,7 @@ urlpatterns = [
   path('billing/claim-response-time', ReportClaimResponseTime.as_view(http_method_names=['post']), name='report-claim-response-time'),
   path('billing/management-volume', ReportManagementVolume.as_view(http_method_names=['post']), name='report-management-volume'),
   path('billing/daily-activity-summary', ReportDailyActivitySummary.as_view(http_method_names=['post']), name='report-daily-activity-summary'),
+  path('billing/user-city-management', ReportUserCityManagement.as_view(http_method_names=['post']), name='report-user-city-management'),
 
   path('update-daily-consumption', TriggerDailyConsumptionUpdate.as_view(), name='trigger-daily-consumption'),
   path('update-billing-backfill', TriggerBillingConsumptionBackfill.as_view(), name='trigger-billing-backfill'),

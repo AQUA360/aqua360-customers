@@ -2,21 +2,26 @@ from rest_framework import viewsets, generics
 from rest_framework.decorators import action
 from rest_framework import status
 from rest_framework.authtoken.views import ObtainAuthToken
-from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
+from rest_framework.permissions import AllowAny, IsAuthenticated, DjangoModelPermissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.throttling import ScopedRateThrottle
 from axes.handlers.proxy import AxesProxyHandler
+from axes.utils import reset as axes_reset
 
 from django.shortcuts import render
 from django.utils.translation import gettext_lazy as _
 from django.contrib.auth.models import Group, User, Permission
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import transaction
 
 from auth.filters import UserFilter, GroupFilter
-from auth.roles import CANONICAL_SUPERUSER_USERNAME, get_user_role, is_canonical_superuser
-from auth.serializers import GroupSerializer, UserSerializer, PermissionSerializer
+from auth.roles import CANONICAL_SUPERUSER_USERNAME, get_user_role, is_canonical_superuser, is_customers_account
+from auth.serializers import GroupSerializer, OwnProfileSerializer, UserSerializer, PermissionSerializer
 from auth.permissions import PermissionManager
+from auth.validators import validate_user_password
+from auth import password_reset_service
 from coredata.authentication import issue_token_key
 from coredata.permissions import can_edit_config_project
 
@@ -33,10 +38,14 @@ def check_user_management_permission(request, action, resource):
         raise PermissionDenied(f"Only a superuser can modify {resource}.")
 
 
-def check_superuser_target(user, target):
-    """Només el superusuari canònic pot modificar o eliminar un altre superusuari."""
-    if target.is_superuser and not is_canonical_superuser(user):
-        raise PermissionDenied("You are not allowed to modify a superuser")
+def check_superuser_target(user, target, allow_self=False):
+    """Un superusuari (o un is_superuser residual) només el pot modificar o eliminar el
+    compte `customers`; amb allow_self, un superusuari addicional pot editar el seu compte."""
+    if not target.is_superuser or is_customers_account(user):
+        return
+    if allow_self and target.pk == user.pk and is_canonical_superuser(user):
+        return
+    raise PermissionDenied("You are not allowed to modify a superuser")
 
 
 class LoginIPThrottle(ScopedRateThrottle):
@@ -88,6 +97,130 @@ class LogoutView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
     
 
+def _request_text(request, field):
+    """Camp de text del cos de la petició; 400 (no 500) si arriba un número, una llista..."""
+    data = request.data if isinstance(request.data, dict) else {}
+    value = data.get(field)
+    if value is not None and not isinstance(value, str):
+        raise ValidationError({field: [_('This field must be text.')]})
+    return value
+
+
+class PasswordResetRequestView(APIView):
+    """Demana el correu de recuperació de la contrasenya des del login (sense sessió).
+
+    POST {username} → sempre {status: "sent"}, s'hagi pogut enviar o no (usuari inexistent, sense
+    correu, empresa sense correu configurat...): respondre diferent diria quins usuaris existeixen.
+    El motiu real només queda al log; la pantalla diu que, si no arriba, s'adrecin a l'administrador.
+    """
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    # Límit per IP (LoginIPThrottle llegeix l'scope de `throttle_scope`)
+    throttle_classes = [LoginIPThrottle]
+    throttle_scope = 'password_reset'
+
+    def post(self, request):
+        password_reset_service.request_password_reset(_request_text(request, 'username'), request)
+        return Response({'status': password_reset_service.STATUS_SENT}, status=status.HTTP_200_OK)
+
+
+class PasswordResetConfirmView(APIView):
+    """Desa la contrasenya nova a partir de l'enllaç del correu (sense sessió).
+
+    POST {uid, token} → {valid, strict_rules}: comprova l'enllaç abans d'ensenyar el formulari.
+    POST {uid, token, new_password} → 204 i es tanquen totes les sessions de l'usuari.
+    """
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    # Límit per IP propi, separat de la demanda del correu: cada recuperació en fa diverses
+    # peticions (comprovar l'enllaç, contrasenyes rebutjades, desar) i, compartint-lo, una
+    # oficina darrere d'una sola IP es quedaria sense recuperacions
+    throttle_classes = [LoginIPThrottle]
+    throttle_scope = 'password_reset_confirm'
+
+    def post(self, request):
+        uid = _request_text(request, 'uid')
+        token = _request_text(request, 'token')
+        new_password = _request_text(request, 'new_password')
+        if new_password is None:
+            user = password_reset_service.get_user_from_reset_token(uid, token)
+            return Response({
+                'valid': user is not None,
+                'strict_rules': bool(user and is_canonical_superuser(user)),
+            }, status=status.HTTP_200_OK)
+        # Fer servir l'enllaç és atòmic: la fila de l'usuari queda bloquejada fins a desar i una
+        # petició simultània amb el mateix token, en continuar, ja el troba gastat
+        with transaction.atomic():
+            user = password_reset_service.get_user_from_reset_token(uid, token, for_update=True)
+            if user is None:
+                raise ValidationError({'token': [_('The link is not valid or has expired. Request a new one.')]})
+            try:
+                validate_user_password(new_password, user, is_canonical_superuser(user))
+            except DjangoValidationError as error:
+                raise ValidationError({'new_password': list(error.messages)})
+            user.set_password(new_password)
+            user.save(update_fields=['password'])
+        # Si l'usuari estava bloquejat per intents fallits, amb la contrasenya nova ja pot entrar
+        axes_reset(username=user.username)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class OwnProfileView(generics.RetrieveUpdateAPIView):
+    """Fitxa de l'usuari autenticat (consultar i canviar nom, cognoms i correu).
+
+    Oberta a qualsevol usuari autenticat, sigui quin sigui el seu rol o permisos, i sempre
+    sobre `request.user`: no accepta cap id d'usuari."""
+    serializer_class = OwnProfileSerializer
+    permission_classes = [IsAuthenticated]
+    throttle_scope = 'password_change'
+
+    def get_throttles(self):
+        # Canviar el correu comprova la contrasenya actual: comparteix el límit del canvi de
+        # contrasenya perquè no serveixi per endevinar-la. Consultar la fitxa no té límit.
+        if self.request.method in ('PUT', 'PATCH'):
+            return [ScopedRateThrottle()]
+        return []
+
+    def get_object(self):
+        return self.request.user
+
+
+class ChangeOwnPasswordView(APIView):
+    """Canvi de la contrasenya de l'usuari autenticat, sigui quin sigui el seu rol o permisos.
+
+    Només actua sobre `request.user` (no accepta cap id d'usuari): canviar la contrasenya
+    d'un altre usuari es fa des de la gestió d'usuaris, reservada als superusuaris.
+    Demana la contrasenya actual i aplica les mateixes regles que la gestió d'usuaris.
+    En desar, es tanquen les altres sessions de l'usuari i es conserva l'actual.
+    """
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'password_change'
+
+    def post(self, request):
+        user = request.user
+        current_password = _request_text(request, 'current_password') or ''
+        new_password = _request_text(request, 'new_password') or ''
+
+        if not current_password or not user.check_password(current_password):
+            raise ValidationError({'current_password': [_('The current password is not correct.')]})
+        if not new_password:
+            raise ValidationError({'new_password': [_('The new password is required.')]})
+        if new_password == current_password:
+            raise ValidationError({'new_password': [_('The new password must be different from the current one.')]})
+
+        try:
+            validate_user_password(new_password, user, is_canonical_superuser(user))
+        except DjangoValidationError as error:
+            raise ValidationError({'new_password': list(error.messages)})
+
+        user.set_password(new_password)
+        # El senyal de canvi de contrasenya tanca les sessions; es conserva la d'aquesta petició
+        user._keep_token_key = getattr(request.auth, 'key', None)
+        user.save(update_fields=['password'])
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
 class UserViewSet(viewsets.ModelViewSet):
     """
     API endpoint that allows users to be viewed or edited.
@@ -105,7 +238,7 @@ class UserViewSet(viewsets.ModelViewSet):
 
     def update(self, request, *args, **kwargs):
         # Abans de validar les dades: si no pot tocar el superusuari, 403 (no errors de contrasenya)
-        check_superuser_target(request.user, self.get_object())
+        check_superuser_target(request.user, self.get_object(), allow_self=True)
         return super().update(request, *args, **kwargs)
 
     def perform_destroy(self, instance):

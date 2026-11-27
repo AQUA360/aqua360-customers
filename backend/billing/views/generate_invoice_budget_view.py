@@ -15,6 +15,7 @@ from service.models import ConnectionRequest, CompanyBank, Exploitation
 from service.utils.route_scope import effective_route
 from coredata.models import ConfigProject, Person, PersonBank
 from contract.models import PaymentType
+from pricing.models import ProductOrigin
 
 from billing.models import Billing, BillingBatch, EstimatedBagMovement, Invoice, Reading
 from billing.serializers.invoice_serializer import InvoiceFullSerializer
@@ -26,6 +27,7 @@ from billing.utils.invoice_service import (
     invoice_connection_generate,
     invoice_contract_generate,
     generate_empty_invoice,
+    TerminationCloseReadingMissingError,
 )
 
 logger = logging.getLogger(__name__)
@@ -196,8 +198,17 @@ class GenerateInvoiceBudgetView(APIView):
                     ContractTerminationRequest.objects.filter(id=contract_termination_request.id).update(ignore_invoice=False)
                 Invoice.objects.filter(contract_termination=contract_termination_request, type__token=budget_type_token).delete()
                 #invoice = invoice_contract_termination_generate(None, object_id, payment_type, payment_bank, is_budget, electronic_data)
-                invoice = invoice_contract_termination_generate(None, contract_termination_request.id, payment_type, payment_bank, is_budget, electronic_data, billing_entity=linked_contract_request, is_initiation=(linked_contract_request is not None), bill_termination_requester=bill_termination_requester, company_bank=company_bank)
-        
+                try:
+                    invoice = invoice_contract_termination_generate(None, contract_termination_request.id, payment_type, payment_bank, is_budget, electronic_data, billing_entity=linked_contract_request, is_initiation=(linked_contract_request is not None), bill_termination_requester=bill_termination_requester, company_bank=company_bank)
+                except TerminationCloseReadingMissingError:
+                    logger.warning("Termination %s budget without closing reading", contract_termination_request.id, exc_info=True)
+                    # No es perd el pressupost anterior ni el canvi d'ignore_invoice.
+                    transaction.set_rollback(True)
+                    return Response({'error': (
+                        "La baixa no té lectura de tancament: les lectures del contracte ja estan facturades. "
+                        "Introduïu la lectura de tancament a la baixa."
+                    )}, status=status.HTTP_400_BAD_REQUEST)
+
         elif entity == "connection_request":
             connection_request = ConnectionRequest.objects.get(id=object_id)
             
@@ -470,7 +481,20 @@ class GenerateInvoiceBudgetView(APIView):
                 
                 invoice = generate_consumption_invoice_multiple(contract, readings, title, None, is_budget=True, extra_payment_data=payment_data, period_months=period_months, billing=billing, billing_batch=billing_batch)
             else:
-                invoice = generate_empty_invoice(contract, None, person, title, payment_data, exploitation, billing=billing, billing_batch=billing_batch)
+                origin = None
+                origin_id = selected_custom.get("origin")
+                if origin_id is not None:
+                    # Un 400 no desfà la transacció: sense el rollback, el pressupost
+                    # que s'està regenerant (redo_budget) ja s'hauria esborrat.
+                    try:
+                        origin = ProductOrigin.objects.get(id=origin_id)
+                    except (ProductOrigin.DoesNotExist, ValueError, TypeError):
+                        transaction.set_rollback(True)
+                        return Response({'error': 'L\'origen seleccionat no existeix.'}, status=status.HTTP_400_BAD_REQUEST)
+                    if origin.token == ConfigProject.objects.get(token='origin_reading_token').value:
+                        transaction.set_rollback(True)
+                        return Response({'error': 'L\'origen d\'aigua només es pot fer servir en la facturació per lectures.'}, status=status.HTTP_400_BAD_REQUEST)
+                invoice = generate_empty_invoice(contract, None, person, title, payment_data, exploitation, billing=billing, billing_batch=billing_batch, origin=origin)
 
         if not invoice:
             if readings is not None and len(readings) > 0 and readings[0] and readings[0].consumption_days < 0:

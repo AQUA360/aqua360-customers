@@ -5,7 +5,15 @@ class OrderStatusSerializer(serializers.ModelSerializer):
     class Meta:
         model = OrderStatus
         fields = '__all__'
+class OrderTypeMinimalSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = OrderType
+        fields = ['id', 'name', 'token']
+
 class OrderReasonSerializer(serializers.ModelSerializer):
+    # Vista inversa: tipus d'ordre als quals està associat el motiu (només lectura).
+    types = OrderTypeMinimalSerializer(source='type', many=True, read_only=True)
+
     class Meta:
         model = OrderReason
         fields = '__all__'
@@ -14,11 +22,6 @@ class OrderReasonMinimalSerializer(serializers.ModelSerializer):
     class Meta:
         model = OrderReason
         fields = ['id', 'name']
-
-class OrderTypeMinimalSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = OrderType
-        fields = ['id', 'name', 'token']
         
 class OrderTypeSerializer(serializers.ModelSerializer):
     reasons = OrderReasonSerializer(many=True, read_only=True) 

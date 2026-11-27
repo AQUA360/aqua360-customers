@@ -1,3 +1,4 @@
+from django.utils.translation import gettext
 import datetime
 import math
 import os
@@ -21,7 +22,9 @@ from rest_framework import status
 from rest_framework.response import Response
 
 from billing.utils.aca_company_service import ACACompanyError, get_records_company, resolve_aca_company, use_multiple_companies
-from billing.utils.generate_factdeta_service import AGRICULTURAL_USE_ACA, factdeta_invoice_volumes, use_aca_invoices_q
+from billing.utils.generate_factdeta_service import (
+    AGRICULTURAL_USE_ACA, ALTA_USE_ACA, DECLARATION_ALTA_USE_ACA, factdeta_invoice_volumes, use_aca_invoices_q,
+)
 from billing.models import Biller, Billing, Invoice, InvoiceLineItem, InvoiceStatus, Payment, PaymentRemittance, Reading
 from billing.utils.invoice_service import get_invoice_status, get_totals
 from billing.utils.payment_service import get_status_map
@@ -32,6 +35,7 @@ from coredata.utils.other_utils import round_ceil
 from coredata.utils.validators_utils import validate_nif
 from pricing.models import ArticleCode, LineItemType, Product, Tax
 from service.models import Company, Exploitation, SupplyPointType
+from service.utils.route_scope import effective_route_position
 from statistics.views.reports_views import add_row, adjust_column_widths, filter_pending_invoices, save_report, jump_row
 from statistics.utils.report_filters import (get_billing_ids, get_multi_ids, has_serie_final_range, invoice_multi_filter_q,
                                              payment_multi_filter_q, serie_final_range_invoices, serie_final_range_period)
@@ -136,12 +140,24 @@ def _aca_date_range_trimester(start_date, end_date):
 
 
 def _aca_effective_use_annotation():
-    return Case(
-        When(
-            Q(invoice__used_aca__isnull=False) & ~Q(invoice__used_aca=''),
-            then=F('invoice__used_aca'),
-        ),
+    """Ús ACA de la línia per a la Declaració ACA: el de la factura o, si no en té, el del contracte (el de
+    la baixa si la factura no té contracte, com als volums). L'alta, que el FACTDETA declara a part, aquí es
+    declara com a industrial."""
+    has_used_aca = Q(invoice__used_aca__isnull=False) & ~Q(invoice__used_aca='')
+    contract_use = Case(
+        When(invoice__contract__isnull=True, then=F('invoice__contract_termination__contract__use_aca')),
         default=F('invoice__contract__use_aca'),
+        output_field=CharField(),
+    )
+    return Case(
+        When(has_used_aca & Q(invoice__used_aca=ALTA_USE_ACA), then=Value(DECLARATION_ALTA_USE_ACA)),
+        When(has_used_aca, then=F('invoice__used_aca')),
+        When(
+            Q(invoice__contract__use_aca=ALTA_USE_ACA)
+            | Q(invoice__contract__isnull=True, invoice__contract_termination__contract__use_aca=ALTA_USE_ACA),
+            then=Value(DECLARATION_ALTA_USE_ACA),
+        ),
+        default=contract_use,
         output_field=CharField(),
     )
 
@@ -163,11 +179,9 @@ def _aca_price_to_interval(invoice_dom_lines, part_fixa_token):
 
 
 def _invoice_effective_use_aca(invoice):
-    if invoice.used_aca:
-        return invoice.used_aca
-    if invoice.contract:
-        return invoice.contract.use_aca or ''
-    return ''
+    contract = invoice.contract or (invoice.contract_termination.contract if invoice.contract_termination else None)
+    use_aca = invoice.used_aca or (contract.use_aca if contract else None) or ''
+    return DECLARATION_ALTA_USE_ACA if use_aca == ALTA_USE_ACA else use_aca
 
 
 def _split_aca_product_tokens(aca_product_token):
@@ -480,7 +494,7 @@ def get_report_billing_summary(request, black_fill, white_bold_font, task=None):
         return response, document_id, None
     except Exception as e:
         logger.exception("Error inesperat")
-        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
 def _social_adjustment_ids():
     """
@@ -849,7 +863,7 @@ def generate_billing_summary_by_rate_report(request, black_fill, white_bold_font
         return None, document_id, filename
     except Exception as e:
         logger.exception("Error inesperat")
-        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
 def generate_aca_summary_report(request, black_fill=None, white_bold_font=None, task=None):
     try:
@@ -1054,14 +1068,7 @@ def generate_aca_summary_report(request, black_fill=None, white_bold_font=None, 
                 print(f"dom lines units: {dom_lines.aggregate(total_units=Sum('units'))['total_units'] or 0}")
                 print(f"dom lines units: {dom_lines.exclude(line_item_type__article__token=part_fixa_token).distinct().aggregate(total_units=Sum('units'))['total_units'] or 0}")
                 
-                # ALTA
-                alta_lines = aca_line_items_ex.filter(effective_use_aca="L").distinct()
-                alta_invoices = invoices_exploitation.filter(id__in=alta_lines.values_list('invoice__id', flat=True)).distinct()
-                
-                serie_final_row = _add_invoices_to_sheet(serie_final_sheet, serie_final_row, alta_invoices, alta_lines, part_fixa_token, written_invoice_ids=written_invoice_ids, volumes_by_invoice=volumes_by_invoice)
-                print(f"alta lines units: {alta_lines.aggregate(total_units=Sum('units'))['total_units'] or 0}")
-                
-                #IND
+                #IND (l'alta hi entra: l'ús efectiu la declara com a industrial)
                 #watch out on diff corr, currently getting by price_unit
                 ind_lines = aca_line_items_ex.filter(effective_use_aca="I").exclude(
                         price_unit__range=(-0.001, 0.001)).distinct()
@@ -1258,7 +1265,7 @@ def generate_aca_summary_report(request, black_fill=None, white_bold_font=None, 
         return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST), None, None
     except Exception as e:
         logger.exception("Error inesperat")
-        error_response = Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        error_response = Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         return error_response, None, None
 
 def _add_invoices_to_sheet(sheet, row, invoices, aca_lines, part_fixa_token, forced_aca = None, is_industrial = False, written_invoice_ids=None, volumes_by_invoice=None, include_invoices_without_lines=False):
@@ -1772,7 +1779,7 @@ def generate_aca_summary_report_second_ver(request, black_fill=None, white_bold_
         return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST), None, None
     except Exception as e:
         logger.exception("Error inesperat")
-        error_response = Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        error_response = Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         return error_response, None, None
 
 
@@ -1930,7 +1937,7 @@ def generate_detailed_billing_summary(request, black_fill=None, white_bold_font=
         return response, document_id, None
     except Exception as e:
         logger.exception("Error inesperat")
-        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
 def generate_billing_summary_by_supply_type(request, black_fill=None, white_bold_font=None, task=None):
     try:
@@ -2135,7 +2142,7 @@ def generate_billing_summary_by_supply_type(request, black_fill=None, white_bold
         return response, document_id, None
     except Exception as e:
         logger.exception("Error inesperat")
-        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
 def generate_billing_summary_by_rates(request, black_fill=None, white_bold_font=None, task=None):
     try:
@@ -2250,7 +2257,7 @@ def generate_billing_summary_by_rates(request, black_fill=None, white_bold_font=
         return response, document_id, None
     except Exception as e:
         logger.exception("Error inesperat")
-        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
 def generate_billing_taxes_summary(request, black_fill=None, white_bold_font=None, task=None):
     try:
@@ -2492,7 +2499,7 @@ def generate_billing_taxes_summary(request, black_fill=None, white_bold_font=Non
     except Exception as e:
         logger.exception("Error inesperat")
         print("ERROR: ", e)
-        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
 #NAVISION MURCIA
 def generate_billing_taxes_detailed_summary(request, black_fill=None, white_bold_font=None, task=None):
@@ -2891,7 +2898,7 @@ def generate_billing_taxes_detailed_summary(request, black_fill=None, white_bold
     except Exception as e:
         logger.exception("Error inesperat")
         print("ERROR: ", e)
-        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
 
 def generate_billing_detailed_consumption_summary(request, black_fill=None, white_bold_font=None, task=None):
@@ -2953,6 +2960,8 @@ def generate_billing_detailed_consumption_summary(request, black_fill=None, whit
             'contract__supply_point_default__meter__caliber',
             'contract__supply_point_default__placement',
             'contract__supply_point_default__cluster_nozzle__cluster',
+            'contract__supply_point_default__route_position__route',
+            'contract__supply_point_default__property__route_position__route',
             'contract__use_type',
             'contract_termination__contract',
             'contract_request',
@@ -2985,7 +2994,8 @@ def generate_billing_detailed_consumption_summary(request, black_fill=None, whit
         titles = [
             _("Explotació"), _("Factura"), _("Ident."), _("Abonat"), _("Adreça"), _("Nº comptador"),
             _("Calibre"), _("Bateria"), _("Ubicació"), _("Tipus de subministrament"),
-            _("Dies"), _("Valor lectura"), _("Data lectura"), _("Tipus lectura"), _("Tipus telelectura")
+            _("Dies"), _("Valor lectura"), _("Data lectura"), _("Tipus lectura"), _("Tipus telelectura"),
+            _("Contracte"), _("Ruta"), _("Ordre")
         ]
         
         totals_sum = []
@@ -3043,7 +3053,15 @@ def generate_billing_detailed_consumption_summary(request, black_fill=None, whit
                 # Prefer the contract linked via Contract.contract_request (reverse FK)
                 contract = getattr(i.contract_request, 'contract', None) or Contract.objects.filter(contract_request=i.contract_request).first()
             reading = i.readings.first() if i.readings.exists() else None
-            
+            # Ruta i ordre dins la ruta del punt de subministrament (el propi o el de la finca)
+            route_position = effective_route_position(contract.supply_point_default) if contract else None
+            route = route_position.route if route_position else None
+            route_label = (route.token or route.name or "").strip() if route else ""
+            if route_position and route_position.position is not None:
+                route_order = route_position.position
+            else:
+                route_order = (route_position.token or "").strip() if route_position else ""
+
             i_data = [
                 i.exploitation.name,
                 i.serie_final,
@@ -3059,7 +3077,10 @@ def generate_billing_detailed_consumption_summary(request, black_fill=None, whit
                 reading.reading_value if reading else "",
                 reading.reading_date if reading else "",
                 reading.origin if reading else "",
-                contract.supply_point_default.meter.comm_technology if contract and contract.supply_point_default and contract.supply_point_default.meter else ""]
+                contract.supply_point_default.meter.comm_technology if contract and contract.supply_point_default and contract.supply_point_default.meter else "",
+                contract.token if contract else "",
+                route_label,
+                route_order]
             for even_product, product in enumerate(products):
                 # Use the same filtered queryset used to compute product_stretches,
                 # restricted to the current invoice and product, to keep counts aligned.
@@ -3084,7 +3105,7 @@ def generate_billing_detailed_consumption_summary(request, black_fill=None, whit
             
             row = add_row(sheet, row, i_data, colored=colored)
         
-        totals = [_("Totals"), invoices.count(), "","", "", "", "","", "", "", "", "","", "", ""]
+        totals = [_("Totals"), invoices.count(), "","", "", "", "","", "", "", "", "","", "", "", "", "", ""]
         totals.extend(totals_sum)
         
         row = add_row(sheet, row, totals, fill=black_fill, font=white_bold_font)
@@ -3105,7 +3126,7 @@ def generate_billing_detailed_consumption_summary(request, black_fill=None, whit
     except Exception as e:
         logger.exception("Error inesperat")
         print("ERROR: ", e)
-        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
 def generate_report_billing_total_by_person(request, black_fill=None, white_bold_font=None, task=None):
     
@@ -3268,7 +3289,7 @@ def generate_report_billing_total_by_person(request, black_fill=None, white_bold
         return response, document_id, None
     except Exception as e:
         logger.exception("Error inesperat")
-        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
 def generate_report_billing_347(request, black_fill=None, white_bold_font=None, task=None):
     try:
@@ -3446,7 +3467,7 @@ def generate_report_billing_347(request, black_fill=None, white_bold_font=None, 
     except Exception as e:
         logger.exception("Error inesperat")
         print("error: ", e)
-        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
 def generate_cobraments_report(request, black_fill=None, white_bold_font=None, task=None):
     """
@@ -4427,7 +4448,7 @@ def generate_recaptacio_conceptes_excel(request, black_fill=None, white_bold_fon
         import traceback
         print("Error in generate_recaptacio_conceptes_excel: ", e)
         traceback.print_exc()
-        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
 
 
@@ -4706,7 +4727,7 @@ def generate_clavegueram_invoices_excel(request, black_fill=None, white_bold_fon
         import traceback
         print("Error in generate_clavegueram_invoices_excel: ", e)
         traceback.print_exc()
-        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
 def generate_no_register_aca_contracts_report(request, black_fill=None, white_bold_font=None, task=None):
     try:
@@ -4840,7 +4861,7 @@ def generate_no_register_aca_contracts_report(request, black_fill=None, white_bo
         import traceback
         print("Error in generate_no_register_aca_contracts_report: ", e)
         traceback.print_exc()
-        return Response({"error": "Ha ocorregut un error inesperat."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
+        return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR), None, None
 
 # Permet personalitzar els reports per client: si existeix report_billing_service_personalized,
 # s'usen les seves funcions en lloc de les d'aquest mòdul.

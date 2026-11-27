@@ -1,3 +1,4 @@
+from django.utils.translation import gettext
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.files.base import ContentFile
@@ -224,7 +225,7 @@ class SepaDocumentSendEmailView(APIView):
                     "detail": "No s'ha pogut enviar el correu.",
                     "sent": False,
                     "communication_id": comm.id,
-                    "error": "Ha ocorregut un error inesperat.",
+                    "error": gettext("An unexpected error has occurred."),
                 },
                 status=status.HTTP_502_BAD_GATEWAY,
             )

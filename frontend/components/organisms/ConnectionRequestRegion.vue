@@ -23,6 +23,7 @@ const { permissions, loading } = usePermissions();
 
 const props = defineProps({
   id: Number, // ID de l'element
+  isSubRegion: { type: Boolean, default: false },
   // Només des del llistat de sol·licituds: dins d'un altre panell (ordre, escomesa, factura) no té sentit.
   allowDelete: { type: Boolean, default: false },
 });
@@ -281,7 +282,8 @@ const newOrder = () => {
               <span class="ml-1">{{ t('order_block.new_order') }}</span>
             </button>
           </div>
-          <OrderMiniDetail :connection_request_id="props.id" @show-detail="showDetail" @update:count="updateOrdersCount" />
+          <OrderMiniDetail :connection_request_id="props.id" @show-detail="showDetail" @update:count="updateOrdersCount"
+            :isSubRegion="isSubRegion" />
         </section>
         <section v-show="activeTab === 'documents'" role="tabpanel" id="tab_documents" class="bg-white antialiased pt-2">
           <ConnectionRequestDocumentsData v-if="data" :request="data" :readonly="!objectPermissions?.can_change"

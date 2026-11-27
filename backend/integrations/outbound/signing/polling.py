@@ -25,7 +25,9 @@ from documentmanager.utils.document_sign_config import (
 )
 from integrations.inbound.signing.services import (
     _parse_signed_at,
+    download_signed_document_sign_files,
     save_signed_document_sign_file,
+    signed_document_sign_ids,
 )
 from integrations.models import ContractSigningSession
 from integrations.outbound.signing.client import SigningClient
@@ -121,7 +123,7 @@ def poll_document_sign(document_sign, client=None, dry_run=False, fail_on_error=
         return {"document_sign_id": document_sign.id, "action": "pending",
                 "detail": remote_status}
 
-    document_id = _signed_document_id(session_data)
+    document_id, _sepa_id = signed_document_sign_ids(session_data.get("documents"))
     if not document_id:
         return _remote_failure(
             document_sign,
@@ -134,8 +136,8 @@ def poll_document_sign(document_sign, client=None, dry_run=False, fail_on_error=
                 "session_id": session_id, "document_id": document_id}
 
     try:
-        pdf_bytes = client.download_signed_document(
-            session_id, document_id,
+        pdf_bytes, sepa_pdf_bytes = download_signed_document_sign_files(
+            client, session_id, session_data.get("documents"),
             object_type="document_sign", object_id=str(document_sign.id),
         )
     except SigningApiError:
@@ -143,7 +145,7 @@ def poll_document_sign(document_sign, client=None, dry_run=False, fail_on_error=
         return _remote_failure(document_sign, SIGNING_SERVICE_ERROR, fail_on_error)
 
     save_signed_document_sign_file(
-        document_sign, pdf_bytes, _parse_signed_at(session_data.get("signed_at"))
+        document_sign, pdf_bytes, _parse_signed_at(session_data.get("signed_at")), sepa_pdf_bytes
     )
     return {"document_sign_id": document_sign.id, "action": "signed",
             "session_id": session_id, "document_id": document_id}

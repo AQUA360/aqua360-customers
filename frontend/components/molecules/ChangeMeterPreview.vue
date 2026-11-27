@@ -77,8 +77,15 @@ const applyChangeMeter = async () => {
         <div>{{ data.supply_point.address }}</div>
       </div>
 
+      <!-- Instal·lació: no hi ha comptador sortint (o és el fictici) -->
+      <div v-if="data.is_installation && data.meter_old?.matches"
+        class="flex items-center gap-2 text-sm text-slate-600 bg-slate-50 border border-slate-200 rounded-md p-3">
+        <Icon name="fa6-solid:circle-info" />
+        <span>{{ t('order_block.installation_no_outgoing_meter') }}</span>
+      </div>
+
       <!-- Comptador sortint -->
-      <div class="border border-gray-300 rounded p-4 bg-white">
+      <div v-else class="border border-gray-300 rounded p-4 bg-white">
         <h3 class="font-medium text-slate-700 mb-3">{{ t('order_block.outgoing_meter') }}</h3>
         <div class="grid grid-cols-2 gap-3 text-sm">
           <div>

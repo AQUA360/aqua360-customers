@@ -783,6 +783,7 @@ onMounted(async () => {
           <CommunicationProcessCreationMessage :message="messageData" :persons="persons"
             :default-origin-token="contextToken" @change="onMessageChange"
             :attachments="attachments" :invoices-context="invoicesContext" :has-readings="hasReadings"
+            :claim-request-id="isClaimRequest ? Number(objectSearchData.id) || null : null"
             @change-attachments="onAttachmentsChange"/>
         </div>
 

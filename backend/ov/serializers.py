@@ -4,6 +4,7 @@ from django.conf import settings
 from rest_framework import serializers
 from ov.invoice_visibility import exclude_future_invoices
 from ov.invoice_returns import ov_return_info
+from ov.blocked_dni import reject_ov_blocked_dni
 from contract.models import (
     Contract,
     ContractDataChange,
@@ -18,6 +19,7 @@ from contract.models import (
 from pricing.models import PriceRate
 from billing.models import (
     GeneralPayment,
+    GeneralPaymentMandateLog,
     GeneralPaymentSepaDocument,
     Invoice,
     InvoiceLineItem,
@@ -26,7 +28,12 @@ from billing.models import (
     PaymentStatus,
     Reading,
 )
-from billing.utils.payment_service import get_status_map
+from billing.utils.payment_service import (
+    general_payment_reference_count,
+    generate_mandate_id,
+    get_status_map,
+    split_general_payment,
+)
 from billing.utils.remittance_mark_service import in_pending_remittance
 from decouple import config
 from coredata.models import (
@@ -42,7 +49,7 @@ from coredata.models import (
 from coredata.utils.iban_validator_utils import validate_iban as is_valid_iban
 from coredata.utils.person_dni_utils import normalize_person_dni, normalized_dni_expression
 from django.utils import timezone
-from django.core.exceptions import SuspiciousFileOperation
+from django.core.exceptions import ImproperlyConfigured, SuspiciousFileOperation
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import validate_email
 from django.db import transaction
@@ -52,6 +59,7 @@ from django.utils.dateparse import parse_date
 from django.utils.text import get_valid_filename
 import copy
 import logging
+import re
 from decimal import Decimal
 import base64
 import binascii
@@ -458,11 +466,21 @@ class UpdateBillingDataOVSerializer(serializers.Serializer):
             )
 
 
+# Format mínim d'un IBAN (de qualsevol país): país, dos dígits i fins a 30
+# caràcters alfanumèrics. No es valida el dígit de control: n'hi ha d'estrangers
+# que no sabríem validar, i d'això s'ocupa l'Oficina Virtual.
+IBAN_BASIC_FORMAT = re.compile(r"^[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}$")
+
+
 class UpdateBillingDataOVIBANSerializer(serializers.Serializer):
-    iban = serializers.CharField(required=True)
-    nif = serializers.CharField(required=True)
-    iban_holder_name = serializers.CharField(required=True)
-    iban_holder_dni = serializers.CharField(required=True)
+    iban = serializers.CharField(required=True, max_length=64)
+    nif = serializers.CharField(
+        required=True, max_length=50, validators=[reject_ov_blocked_dni]
+    )
+    iban_holder_name = serializers.CharField(required=True, max_length=255)
+    iban_holder_dni = serializers.CharField(
+        required=True, max_length=50, validators=[reject_ov_blocked_dni]
+    )
 
     def validate(self, data):
         """Validate input data"""
@@ -485,31 +503,78 @@ class UpdateBillingDataOVIBANSerializer(serializers.Serializer):
         # Clean NIF format
         data["nif"] = data["nif"].strip().upper()
         data["iban_holder_dni"] = data["iban_holder_dni"].strip().upper()
+        if not IBAN_BASIC_FORMAT.match(data["iban"]):
+            raise serializers.ValidationError({"iban": "Invalid IBAN format."})
         return data
 
     def update(self, instance: Contract, validated_data):
-        try:
-            holder: Person = instance.holder
-            if not holder:
-                raise serializers.ValidationError({"error": "Contract has no holder"})
+        """Posa el compte nou a la forma de pagament del contracte i la passa a
+        domiciliació (`ConfigProject` `direct_debit_token`).
 
-            # Validate NIF matches contract holder
-            if holder.token != validated_data["nif"]:
-                raise serializers.ValidationError(
-                    {"error": "NIF does not match the contract holder's NIF"}
-                )
+        - Si la forma de pagament és compartida amb altres contractes o
+          sol·licituds, se'n fa una còpia per a aquest contracte (com la
+          pantalla interna) i el compte vell no es desactiva.
+        - Si l'IBAN canvia, es genera un mandat nou i es retira el mandat SEPA
+          signat de l'IBAN vell (el document queda arxivat).
+        - Si l'IBAN és el mateix i ja és domiciliada, no es canvia res.
+        - Les factures ja emeses mantenen la forma de pagament que tenien.
+        """
+        holder: Person = instance.holder
+        if not holder:
+            raise serializers.ValidationError({"error": "Contract has no holder"})
 
-            if not instance.payment:
-                raise serializers.ValidationError(
-                    {"error": "Contract has no payment method to update IBAN"}
-                )
-            with transaction.atomic():
+        # Validate NIF matches contract holder
+        if holder.token != validated_data["nif"]:
+            raise serializers.ValidationError(
+                {"error": "NIF does not match the contract holder's NIF"}
+            )
+
+        direct_debit = _ov_direct_debit_payment_type()
+        user = (
+            self.context["request"].user if self.context.get("request") else None
+        )
+        new_iban = validated_data["iban"]
+
+        with transaction.atomic():
+            general_payment = None
+            if instance.payment_id:
                 general_payment = GeneralPayment.objects.select_for_update().get(
                     pk=instance.payment_id
                 )
+            person_bank_current = general_payment.IBAN if general_payment else None
+            previous_type = general_payment.type if general_payment else None
+            same_iban = bool(
+                person_bank_current
+                and (person_bank_current.iban or "").replace(" ", "").upper()
+                == new_iban
+            )
+            type_changed = previous_type != direct_debit
+            if same_iban and not type_changed:
+                # Ja domiciliada amb aquest IBAN: res a fer
                 instance.payment = general_payment
-                person_bank_current = general_payment.IBAN
-                if person_bank_current:
+                return instance
+
+            created_payment = None
+            if general_payment is None:
+                created_payment = general_payment = GeneralPayment.objects.create(
+                    token=instance.token, type=direct_debit
+                )
+            elif general_payment_reference_count(general_payment) > 1:
+                # Compartida: el canvi només ha d'afectar aquest contracte
+                created_payment = general_payment = split_general_payment(
+                    general_payment
+                )
+            instance.payment = general_payment
+
+            if same_iban:
+                person_bank_new = person_bank_current
+            else:
+                if (
+                    person_bank_current
+                    and not GeneralPayment.objects.filter(IBAN=person_bank_current)
+                    .exclude(pk=general_payment.pk)
+                    .exists()
+                ):
                     person_bank_current.is_active = False
                     person_bank_current.is_default = False
                     person_bank_current.deactivated_at = timezone.now()
@@ -517,36 +582,52 @@ class UpdateBillingDataOVIBANSerializer(serializers.Serializer):
 
                 person_bank_new = PersonBank.objects.create(
                     person=holder,
-                    iban=validated_data["iban"],
-                    account_number=validated_data["iban"],
+                    iban=new_iban,
+                    account_number=new_iban,
                     name=validated_data["iban_holder_name"],
                     dni=validated_data["iban_holder_dni"],
                     is_active=True,
                     is_default=True,
                     origin=PersonBank.ORIGIN_OV,
-                    country=Country.objects.filter(
-                        iso_code=validated_data["iban"][:2]
-                    ).first(),
+                    country=Country.objects.filter(iso_code=new_iban[:2]).first(),
                     token=f"{holder.token}_BANK_{PersonBank.objects.filter(person=holder).count() + 1}",
                 )
                 general_payment.IBAN = person_bank_new
-                general_payment.save()
-                instance.save()
+                # El mandat signat era de l'IBAN vell: deixa de ser vigent,
+                # però el document queda al gestor documental.
+                GeneralPaymentSepaDocument.objects.filter(
+                    general_payment=general_payment
+                ).delete()
 
-                # Log the change in ContractDataChange
-                ContractDataChange.objects.create(
-                    token=f"CDC_{instance.token}_{ContractDataChange.objects.filter(contract=instance).count() + 1}",
-                    requested_at=timezone.now(),
-                    approved_at=timezone.now(),
-                    contract=instance,
-                    new_payment=person_bank_new,
-                    previous_payment=person_bank_current,
-                    user=(
-                        self.context["request"].user
-                        if self.context.get("request")
-                        else None
-                    ),
-                )
+            general_payment.type = direct_debit
+            if not same_iban or not general_payment.mandate_id:
+                new_mandate_id = generate_mandate_id(general_payment, instance.token)
+                if new_mandate_id and new_mandate_id != general_payment.mandate_id:
+                    GeneralPaymentMandateLog.objects.create(
+                        general_payment=general_payment,
+                        previous_mandate_id=general_payment.mandate_id,
+                        new_mandate_id=new_mandate_id,
+                        user=user,
+                        is_manual=False,
+                    )
+                    general_payment.mandate_id = new_mandate_id
+            general_payment.save()
+            instance.save()
+
+            # Log the change in ContractDataChange
+            ContractDataChange.objects.create(
+                token=f"CDC_{instance.token}_{ContractDataChange.objects.filter(contract=instance).count() + 1}",
+                requested_at=timezone.now(),
+                approved_at=timezone.now(),
+                contract=instance,
+                new_payment=person_bank_new,
+                previous_payment=person_bank_current,
+                new_payment_type=direct_debit,
+                previous_payment_type=previous_type,
+                new_general_payment=created_payment,
+                user=user,
+            )
+            if not same_iban:
                 ContractLog.objects.create(
                     contract=instance,
                     field_name="payment_IBAN",
@@ -555,20 +636,33 @@ class UpdateBillingDataOVIBANSerializer(serializers.Serializer):
                     ),
                     new_value=person_bank_new.iban,
                     operation_token=f"LOG_{instance.token}_{ContractLog.objects.filter(contract=instance).count() + 1}",
-                    user=(
-                        self.context["request"].user
-                        if self.context.get("request")
-                        else None
-                    ),
+                    user=user,
+                )
+            if type_changed:
+                ContractLog.objects.create(
+                    contract=instance,
+                    field_name="payment_type",
+                    old_value=previous_type.token if previous_type else "None",
+                    new_value=direct_debit.token,
+                    operation_token=f"LOG_{instance.token}_{ContractLog.objects.filter(contract=instance).count() + 1}",
+                    user=user,
                 )
 
-            return instance
+        return instance
 
-        except Exception as e:
-            logger.exception("Error inesperat")
-            raise serializers.ValidationError(
-                {"error": "Failed to update IBAN data."}
-            )
+
+def _ov_direct_debit_payment_type():
+    """`PaymentType` de domiciliació (`ConfigProject` `direct_debit_token`).
+    `ImproperlyConfigured` (500) si no està configurat o no existeix."""
+    token = (
+        ConfigProject.objects.filter(token="direct_debit_token")
+        .values_list("value", flat=True)
+        .first()
+    )
+    payment_type = PaymentType.objects.filter(token=token).first() if token else None
+    if not payment_type:
+        raise ImproperlyConfigured("direct_debit_token is not a valid PaymentType")
+    return payment_type
 
 
 def ov_pdf_from_date():
@@ -791,6 +885,14 @@ class InvoiceInPendingRemittance(Exception):
 class InvoicePaidSerializer(serializers.Serializer):
     contract_token = serializers.CharField(required=True)
     invoice_token = serializers.CharField(required=True)
+    # Opcionals: si l'OV els envia, l'import es contrasta amb els rebuts que es
+    # marquen com a pagats i la referència del TPV queda al registre.
+    amount = serializers.DecimalField(
+        max_digits=10, decimal_places=2, required=False, min_value=Decimal("0")
+    )
+    transaction_reference = serializers.CharField(
+        required=False, allow_blank=True, max_length=100
+    )
 
     # Després d'`update`: si la factura ja estava pagada abans de la crida
     already_paid = False
@@ -811,7 +913,6 @@ class InvoicePaidSerializer(serializers.Serializer):
         return data
 
     def update(self, validated_data):
-        print("--------------------------------")
         #invoice type invoice to avoid getting budgets
         invoice_type_invoice_token = ConfigProject.objects.get(token="invoice_type_invoice_token").value
         invoice: Invoice = exclude_future_invoices(Invoice.objects).filter(
@@ -819,7 +920,6 @@ class InvoicePaidSerializer(serializers.Serializer):
             contract__token=validated_data["contract_token"],
             type_final=invoice_type_invoice_token
         ).first()
-        print("--------------------------------")
         if not invoice:
             raise serializers.ValidationError(
                 {"error": "Invoice not found for the given contract."}
@@ -853,6 +953,18 @@ class InvoicePaidSerializer(serializers.Serializer):
                     raise InvoiceInPendingRemittance()
                 self.already_paid = not active_unpaid_ids
 
+                amount = validated_data.get("amount")
+                if amount is not None and active_unpaid_ids:
+                    pending_total = sum(
+                        (p.amount or Decimal("0"))
+                        for p in unpaid
+                        if p.is_active
+                    )
+                    if pending_total.quantize(Decimal("0.01")) != amount.quantize(Decimal("0.01")):
+                        raise serializers.ValidationError(
+                            {"amount": "Amount does not match the pending amount of the invoice."}
+                        )
+
                 for payment in unpaid:
                     if not payment.is_active:
                         continue
@@ -869,7 +981,7 @@ class InvoicePaidSerializer(serializers.Serializer):
 
             return invoice
 
-        except InvoiceInPendingRemittance:
+        except (InvoiceInPendingRemittance, serializers.ValidationError):
             raise
         except Exception as e:
             logger.exception("Error inesperat")
@@ -1784,6 +1896,14 @@ class ConsumptionDownloadRequestSerializer(serializers.Serializer):
     `ConsumptionDownloadRequest` del documento OpenAPI."""
 
     contract_token = serializers.CharField(required=True)
+    # Opcional: només les lectures facturades a aquesta persona (titular o
+    # pagadora). Buit o nul, com si no hi fos.
+    dni = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        validators=[reject_ov_blocked_dni],
+    )
     reading_ids = serializers.ListField(
         child=serializers.IntegerField(), required=False, allow_empty=True
     )
@@ -1979,23 +2099,69 @@ class PriceRateDictionarySerializer(serializers.ModelSerializer):
         fields = ("token", "name")
 
 
+class PricedPriceRateDictionarySerializer(PriceRateDictionarySerializer):
+    """Tarifa del diccionari de tipus de sol·licitud amb el seu cost
+    (`token`, `name`, `type_price`, `price`).
+
+    `type_price` i `price` es calculen igual que a
+    `/ov/dictionary/procedure-tariffs/` (suma dels components fixos, sense
+    impostos). La vista ha de precarregar el període actiu i els seus
+    conceptes per no fer consultes per tarifa.
+    """
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        cost = ProcedureTariffDictionarySerializer(instance).data
+        data["type_price"] = cost["type_price"]
+        data["price"] = cost["price"]
+        return data
+
+
+def _tariffs_total_price(tariffs):
+    """Suma dels preus d'un grup de tarifes ja serialitzades.
+
+    `0` si el grup és buit; `None` si alguna tarifa no té preu fix (va per
+    trams o no té cap concepte fix), perquè el total no es pot saber sense
+    les dades del punt de subministrament.
+    """
+    total = 0
+    for tariff in tariffs:
+        if tariff["type_price"] != "fixed" or tariff["price"] is None:
+            return None
+        total += tariff["price"]
+    return round(total, 2)
+
+
 class ContractRequestTypeDictionarySerializer(serializers.ModelSerializer):
     """Entrada del diccionari de tipus de sol·licitud de contracte.
 
     Les llistes de tarifes llegeixen els atributs `active_*` que la vista
     precarrega amb `Prefetch(to_attr=...)` (només tarifes actives), de manera
-    que no hi ha consultes addicionals per tipus.
+    que no hi ha consultes addicionals per tipus. Les tarifes de contractació
+    i de canvi de nom porten el seu cost i el paquet en suma el total
+    (`registration_price`, `change_of_name_price`); les d'aigua són
+    periòdiques i no en porten.
     """
 
-    registration_tariffs = PriceRateDictionarySerializer(
+    registration_tariffs = PricedPriceRateDictionarySerializer(
         source="active_registration_tariffs", many=True, read_only=True
     )
     water_tariffs = PriceRateDictionarySerializer(
         source="active_water_tariffs", many=True, read_only=True
     )
-    change_of_name_tariffs = PriceRateDictionarySerializer(
+    change_of_name_tariffs = PricedPriceRateDictionarySerializer(
         source="active_change_of_name_tariffs", many=True, read_only=True
     )
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data["registration_price"] = _tariffs_total_price(
+            data["registration_tariffs"]
+        )
+        data["change_of_name_price"] = _tariffs_total_price(
+            data["change_of_name_tariffs"]
+        )
+        return data
 
     class Meta:
         model = ContractRequestType
@@ -2030,11 +2196,17 @@ class ProcedureTariffDictionarySerializer(serializers.Serializer):
     def to_representation(self, instance):
         billing_range = instance.billing_range_active
         if not billing_range:
-            billing_range = (
-                instance.billing_ranges.filter(is_active=True)
-                .order_by("-start")
-                .first()
-            )
+            # Períodes actius precarregats per la vista (més recent primer);
+            # si no hi són, es consulten.
+            prefetched = getattr(instance, "active_billing_ranges", None)
+            if prefetched is not None:
+                billing_range = prefetched[0] if prefetched else None
+            else:
+                billing_range = (
+                    instance.billing_ranges.filter(is_active=True)
+                    .order_by("-start")
+                    .first()
+                )
 
         components = []
         if billing_range:
@@ -2703,23 +2875,67 @@ def sepa_signed_filename(value):
     return name
 
 
+# Màxim de paquets per contractació: evita llistes desmesurades.
+PROCEDURE_TYPE_TOKENS_MAX = 20
+
+
+class ProcedureTypeTokensField(serializers.Field):
+    """Llista de tokens de tipus de sol·licitud (paquets).
+
+    Accepta una llista de tokens o, per compatibilitat amb les integracions
+    que enviaven un sol paquet, un token sol. Torna la llista sense blancs ni
+    repetits, en l'ordre rebut: el primer és el tipus de la sol·licitud.
+    """
+
+    default_error_messages = {
+        "invalid": "Must be a procedure type token or a list of them.",
+        "empty": "At least one procedure type is required.",
+        "too_many": "No more than {max} procedure types are allowed.",
+    }
+
+    def to_internal_value(self, data):
+        values = [data] if isinstance(data, str) else data
+        # Els caràcters nuls fallarien a la consulta (500): es rebutgen aquí,
+        # com feia el CharField d'abans.
+        if not isinstance(values, list) or not all(
+            isinstance(value, str) and len(value) <= 255 and "\x00" not in value
+            for value in values
+        ):
+            self.fail("invalid")
+        # El límit compta la llista rebuda, abans de treure'n els repetits.
+        if len(values) > PROCEDURE_TYPE_TOKENS_MAX:
+            self.fail("too_many", max=PROCEDURE_TYPE_TOKENS_MAX)
+        tokens = list(
+            dict.fromkeys(value.strip() for value in values if value.strip())
+        )
+        if not tokens:
+            self.fail("empty")
+        return tokens
+
+    def to_representation(self, value):
+        return value
+
+
 class ContractProcedureRequestSerializer(ProcedureNewHolderSerializer):
     """Sol·licitud d'alta de contracte enviada per l'OV.
 
-    El `tariff_token` és la tarifa que l'OV ha mostrat i cobrat a l'abonat, i
-    és la font de veritat de la tarifa de la sol·licitud (`ContractRequest`).
+    `procedure_type_token` és la llista de paquets de la contractació (o un
+    sol token); el primer és el tipus de la sol·licitud. Les tarifes
+    periòdiques surten dels paquets: no hi ha camp de tarifa, i si l'OV encara
+    envia `tariff_token` s'ignora com qualsevol camp desconegut.
 
     Si `holder_dni` no existeix, els camps `holder_*` permeten crear el
     titular (vegeu `ProcedureNewHolderSerializer`).
     """
 
-    holder_dni = serializers.CharField(max_length=255)
+    holder_dni = serializers.CharField(
+        max_length=255, validators=[reject_ov_blocked_dni]
+    )
     property_token = serializers.CharField(max_length=255)
     supply_point_token = serializers.CharField(
         max_length=255, required=False, allow_blank=True, allow_null=True
     )
-    procedure_type_token = serializers.CharField(max_length=255)
-    tariff_token = serializers.CharField(max_length=255)
+    procedure_type_token = ProcedureTypeTokensField()
     payment_type_token = serializers.CharField(max_length=255)
     iban = serializers.CharField(
         max_length=34, required=False, allow_blank=True, allow_null=True
@@ -2728,7 +2944,11 @@ class ContractProcedureRequestSerializer(ProcedureNewHolderSerializer):
         max_length=255, required=False, allow_blank=True, allow_null=True
     )
     iban_holder_dni = serializers.CharField(
-        max_length=255, required=False, allow_blank=True, allow_null=True
+        max_length=255,
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        validators=[reject_ov_blocked_dni],
     )
     iban_holder_swift = serializers.CharField(
         max_length=11, required=False, allow_blank=True, allow_null=True
@@ -2805,7 +3025,9 @@ class ContractTerminationProcedureRequestSerializer(serializers.Serializer):
     """
 
     contract_token = serializers.CharField(max_length=255)
-    holder_dni = serializers.CharField(max_length=255)
+    holder_dni = serializers.CharField(
+        max_length=255, validators=[reject_ov_blocked_dni]
+    )
     observation = serializers.CharField(max_length=1000, required=False, allow_blank=True, allow_null=True)
     reason_token = serializers.CharField(
         max_length=255
@@ -2863,7 +3085,9 @@ class ContractChangeOutgoingSerializer(serializers.Serializer):
     """
 
     contract_token = serializers.CharField(max_length=255)
-    holder_dni = serializers.CharField(max_length=255)
+    holder_dni = serializers.CharField(
+        max_length=255, validators=[reject_ov_blocked_dni]
+    )
     reason_token = serializers.CharField(
         max_length=255, required=False, allow_blank=True, allow_null=True
     )
@@ -2906,7 +3130,9 @@ class ContractChangeIncomingSerializer(ProcedureNewHolderSerializer):
     `holder` (o `None` si s'ha de crear).
     """
 
-    holder_dni = serializers.CharField(max_length=255)
+    holder_dni = serializers.CharField(
+        max_length=255, validators=[reject_ov_blocked_dni]
+    )
     procedure_type_token = serializers.CharField(max_length=255)
     payment_type_token = serializers.CharField(max_length=255)
     iban = serializers.CharField(
@@ -2916,7 +3142,11 @@ class ContractChangeIncomingSerializer(ProcedureNewHolderSerializer):
         max_length=255, required=False, allow_blank=True, allow_null=True
     )
     iban_holder_dni = serializers.CharField(
-        max_length=255, required=False, allow_blank=True, allow_null=True
+        max_length=255,
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        validators=[reject_ov_blocked_dni],
     )
     iban_holder_swift = serializers.CharField(
         max_length=11, required=False, allow_blank=True, allow_null=True

@@ -4,6 +4,7 @@ from django.conf import settings
 from django.db import connection, transaction
 from django.contrib.postgres.aggregates import ArrayAgg
 from django.db.models import (
+    BooleanField,
     Case,
     CharField,
     Count,
@@ -24,6 +25,7 @@ from django.utils.dateparse import parse_date
 from django.utils.translation import gettext as _
 import base64
 import csv
+from collections import defaultdict
 import re
 import zipfile
 import logging
@@ -54,7 +56,7 @@ from logger.models import LogIncidentStatusChange, LogContractRequestStatus
 from notification.models import Incident, IncidentStatus, IncidentType
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.response import Response
-from rest_framework import status
+from rest_framework import serializers, status
 from rest_framework.views import APIView
 from rest_framework.generics import RetrieveAPIView
 from rest_framework.exceptions import NotFound, ValidationError
@@ -85,11 +87,13 @@ from billing.models import (
     Reading,
 )
 from documentmanager.utils.main_utils import download_document, upload_document
-from pricing.models import PriceRate, Product
+from order.models import OrderType
+from pricing.models import BillingRange, PriceRate, Product
 from service.models import Property, SupplyPoint
 from service.utils.route_scope import effective_route
 from ov.invoice_visibility import exclude_future_invoices
 from ov.invoice_returns import annotate_ov_returns
+from ov.blocked_dni import OVBlockedDniQueryMixin
 from ov.serializers import (
     BASE64_TOO_LARGE_CODE,
     SEPA_SIGNED_DEFAULT_FILENAME,
@@ -149,7 +153,10 @@ from ov.throttles import (
     ContractTerminationProcedureThrottle,
     ContractChangeProcedureThrottle,
     DniEnumerationThrottle,
+    IbanUpdateThrottle,
+    InvoicePaidThrottle,
     PaymentReceiptThrottle,
+    PersonContractsThrottle,
     PersonDataThrottle,
     PersonInvoicesThrottle,
     QuickPayThrottle,
@@ -159,7 +166,7 @@ from ov.throttles import (
 logger = logging.getLogger(__name__)
 
 
-class ContractOVView(APIView):
+class ContractOVView(OVBlockedDniQueryMixin, APIView):
     """Detalle completo del contrato por `contract_token` (query string).
 
     `GET /ov/contract-detail/?contract_token=<token>` devuelve directamente
@@ -272,7 +279,8 @@ class BillingDataOVView(APIView):
 
 class BillingDataOVUpdateIBANView(APIView):
     queryset = Contract.objects.all()
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsOVUser]
+    throttle_classes = [IbanUpdateThrottle]
     LookupField = "token"
 
     def post(self, request):
@@ -308,6 +316,8 @@ class BillingDataOVUpdateIBANView(APIView):
                 },
                 status=status.HTTP_200_OK,
             )
+        except serializers.ValidationError as e:
+            return Response({"error": e.detail}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             logger.exception("Error inesperat")
             return Response(
@@ -515,7 +525,8 @@ class InvoicePaidView(APIView):
     pagada respon 200 igual, amb `already_paid: true`.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsOVUser]
+    throttle_classes = [InvoicePaidThrottle]
 
     def post(self, request):
         serializer = InvoicePaidSerializer(data=request.data)
@@ -530,6 +541,16 @@ class InvoicePaidView(APIView):
                     },
                     status=status.HTTP_409_CONFLICT,
                 )
+            logger.info(
+                "OV: factura %s del contracte %s marcada com a pagada pel compte %s "
+                "(ja pagada: %s, import: %s, referència: %r)",
+                invoice.token,
+                serializer.validated_data["contract_token"],
+                request.user.pk,
+                serializer.already_paid,
+                serializer.validated_data.get("amount"),
+                serializer.validated_data.get("transaction_reference"),
+            )
             return Response(
                 {
                     "success": True,
@@ -707,7 +728,7 @@ class CreateReadingOVView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-class ContractsListOVView(APIView):
+class ContractsListOVView(OVBlockedDniQueryMixin, APIView):
     """
     GET /ov/contracts/?dni=<DNI>[&estado=<token>][&page=<n>][&limit=<n>]
 
@@ -759,7 +780,7 @@ class ContractsListOVView(APIView):
         return paginator.get_paginated_response(serializer.data)
 
 
-class ContractDetailByTokenOVView(RetrieveAPIView):
+class ContractDetailByTokenOVView(OVBlockedDniQueryMixin, RetrieveAPIView):
     """GET /ov/contract/{token}/ — detalle completo de un contrato por token."""
 
     queryset = Contract.objects.select_related(
@@ -786,20 +807,24 @@ class ContractDetailByTokenOVView(RetrieveAPIView):
         return contract
 
 
+NIC_LENGTH = 12
+
+
 def is_valid_nic(nic):
-    r"""Equivale a re.fullmatch(r"\d+(?:/\d+){1,2}", nic) sin regex: de 2 a 3
-    grupos de dígitos separados por «/» (CodeQL marca la regex como ReDoS)."""
-    parts = nic.split("/")
-    return 2 <= len(parts) <= 3 and all(part.isdecimal() for part in parts)
+    """El NIC són 12 xifres sense separadors (p. ex. `123456000001`)."""
+    return len(nic) == NIC_LENGTH and nic.isdecimal()
 
 
 class ContractByNicView(RetrieveAPIView):
-    """GET /ov/contract/by-nic/<nic>/ — detalle del contrato por NIC (token del
-    punto de suministro). El NIC incluye «/» con una o dos barras (p. ej.
-    `12345/1234` o `012345/654321/12345678`), por eso la
-    ruta usa `<path:nic>`; el formato se valida con regex ANTES de consultar la
-    BD. Si el punto de suministro es el por defecto de varios contratos se
-    devuelve el más reciente (`created_at` desc)."""
+    """GET /ov/contract/by-nic/<nic>/ — detall del contracte per NIC.
+
+    El NIC és la referència de mandat de 12 xifres de la forma de pagament
+    (`GeneralPayment.mandate_id`). Si el canvi de domiciliació n'ha generat una
+    de nova, el NIC antic es busca a l'historial de mandats
+    (`GeneralPaymentMandateLog.previous_mandate_id`). Quan el NIC el comparteixen
+    diversos contractes, es retorna primer el d'alta, després el del mandat
+    vigent i després el més recent (`created_at` desc). El format es valida
+    ABANS de consultar la BD."""
 
     permission_classes = [IsAuthenticated]
     throttle_classes = [DniEnumerationThrottle]
@@ -816,22 +841,48 @@ class ContractByNicView(RetrieveAPIView):
     )
 
     def get_object(self):
-        """Valida el NIC, busca el contrato más reciente y comprueba los permisos.
+        """Valida el NIC, busca el contracte i en comprova els permisos.
 
-        Prioriza el punto de suministro por defecto y después busca en los demás.
-        Lanza ValidationError si el NIC es inválido o NotFound si no hay contrato.
+        Candidats: els contractes amb el NIC com a referència de mandat vigent i
+        els que l'havien tingut (historial). Ordre: primer el d'alta
+        (`contract_active_token`), després el del mandat vigent i, per acabar,
+        el més recent. Així, si un canvi d'IBAN des de l'OV separa la forma de
+        pagament compartida, el NIC continua trobant el contracte d'alta i no
+        el de baixa que s'ha quedat la referència. Llança ValidationError si el
+        NIC no és vàlid o NotFound si no hi ha cap contracte.
         """
         nic = (self.kwargs.get("nic") or "").strip()
         if not is_valid_nic(nic):
             raise ValidationError({"error": "Invalid NIC format"})
-        contract = (
-            self.queryset.filter(supply_point_default__token=nic)
-            .order_by("-created_at")
-            .first()
-            or self.queryset.filter(supply_points__token=nic)
-            .order_by("-created_at")
+        active_token = (
+            ConfigProject.objects.filter(token="contract_active_token")
+            .values_list("value", flat=True)
             .first()
         )
+        active_token = str(active_token).strip() if active_token is not None else ""
+        candidates = (
+            self.queryset.filter(
+                Q(payment__mandate_id=nic)
+                | Q(payment__mandate_logs__previous_mandate_id=nic)
+            )
+            .annotate(
+                not_active=Case(
+                    When(status__token=active_token, then=Value(0)),
+                    default=Value(1),
+                    output_field=IntegerField(),
+                ),
+                not_current=Case(
+                    When(payment__mandate_id=nic, then=Value(0)),
+                    default=Value(1),
+                    output_field=IntegerField(),
+                ),
+            )
+            .distinct()
+        )
+        ordering = ["not_current", "-created_at", "-id"]
+        if active_token:
+            ordering.insert(0, "not_active")
+        contract = candidates.order_by(*ordering).first()
         if contract is None:
             raise NotFound({"error": "Contract not found"})
         self.check_object_permissions(self.request, contract)
@@ -907,33 +958,73 @@ def _contract_readings(contract):
     return queryset
 
 
-def _contract_billed_readings(queryset, contract):
+def _ov_optional_dni(value):
+    """DNI opcional dels endpoints de consums, normalitzat com a
+    `/ov/person-invoices/`. Buit (o només separadors) torna `None`: llavors
+    no es filtra per persona i tot funciona com sense el paràmetre."""
+    return _normalize_person_dni(value) or None
+
+
+def _person_contract_invoices(contract, dni):
+    """Factures de `contract` on la persona amb `dni` (ja normalitzat) és
+    titular o pagadora, amb el criteri de `/ov/person-invoices/`: segons les
+    dades congelades a la factura, sense prefactures ni factures amb data
+    futura. Si la factura no té pagador, el pagador és el titular, que ja hi
+    entra per `customer_token_final`.
+
+    Els DNI de la factura es normalitzen també aquí perquè es copien tal com
+    són a la fitxa de la persona o al compte bancari, que no sempre estan
+    normalitzats. Només afecta les factures d'un contracte, que són poques.
+    """
+    return (
+        exclude_future_invoices(Invoice.objects.filter(contract=contract))
+        .exclude(status__token="1")  # excloem les prefactures
+        .annotate(
+            ov_customer_dni=_normalized_dni_expression("customer_token_final"),
+            ov_payer_dni=_normalized_dni_expression("payer_token_final"),
+        )
+        .filter(Q(ov_customer_dni=dni) | Q(ov_payer_dni=dni))
+    )
+
+
+def _contract_billed_readings(queryset, contract, dni=None):
     """Restrict `queryset` to readings billed in an invoice of `contract`.
 
     A reading must belong to the contract and be linked to one of its own
     invoices; inconsistent links to another contract's invoices are ignored.
     Only the contract's invoices are prefetched, so the `period` never comes
     from another contract's invoice.
+
+    With `dni` (already normalized), only the contract's invoices where that
+    person is holder or payer count, both for the filter and for the
+    `period` (see `_person_contract_invoices`). Without it the behaviour is
+    unchanged.
     """
+    if dni:
+        invoices = _person_contract_invoices(contract, dni)
+        queryset = queryset.filter(invoices__in=invoices.values("pk"))
+    else:
+        invoices = Invoice.objects.filter(contract=contract)
+        queryset = queryset.filter(invoices__contract=contract)
     return (
-        queryset.filter(invoices__contract=contract)
-        .distinct()
+        queryset.distinct()
         .select_related("previous_reading")
-        .prefetch_related(
-            Prefetch("invoices", queryset=Invoice.objects.filter(contract=contract))
-        )
+        .prefetch_related(Prefetch("invoices", queryset=invoices))
         .order_by("-reading_date", "-id")
     )
 
 
-class ConsumptionHistoryOVView(APIView):
-    """GET /ov/consumptions/?contract_token=<token>[&date_from=&date_to=&page=&page_size=]
+class ConsumptionHistoryOVView(OVBlockedDniQueryMixin, APIView):
+    """GET /ov/consumptions/?contract_token=<token>[&dni=&date_from=&date_to=&page=&page_size=]
 
     Historial de consumos facturados del contrato en nomenclatura HF
     (`{any}-{q}T`). Solo incluye lecturas del propio contrato y de su periodo
     de vigencia (nunca las de contratos anteriores o posteriores del mismo
-    punto de suministro o contador). Devuelve el envoltorio estándar DRF
-    `{count, next, previous, results}` (esquema `ConsumptionHistoryResponse`).
+    punto de suministro o contador). Con `dni`, solo las lecturas facturadas
+    en facturas del contrato donde esa persona es titular o pagadora (mismo
+    criterio que `/ov/person-invoices/`); sin `dni` o vacío, todas. Devuelve
+    el envoltorio estándar DRF `{count, next, previous, results}` (esquema
+    `ConsumptionHistoryResponse`).
     """
 
     permission_classes = [IsAuthenticated]
@@ -968,8 +1059,12 @@ class ConsumptionHistoryOVView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Només consums facturats del propi contracte i del seu període.
-        queryset = _contract_billed_readings(_contract_readings(contract), contract)
+        # Només consums facturats del propi contracte i del seu període; amb
+        # DNI, només els de les factures d'aquella persona.
+        dni = _ov_optional_dni(request.query_params.get("dni"))
+        queryset = _contract_billed_readings(
+            _contract_readings(contract), contract, dni
+        )
         if date_from:
             queryset = queryset.filter(reading_date__gte=date_from)
         if date_to:
@@ -1032,13 +1127,14 @@ def _download_response(payload, content_type, filename):
     )
 
 
-class ConsumptionDownloadOVView(APIView):
-    """GET /ov/consumption/{id}/download/?contract_token=<token>[&format=pdf|csv]
+class ConsumptionDownloadOVView(OVBlockedDniQueryMixin, APIView):
+    """GET /ov/consumption/{id}/download/?contract_token=<token>[&dni=<DNI>][&format=pdf|csv]
 
     Descarga el fichero de una única lectura del historial de consumos. El `id`
     es el `Reading.id` expuesto por `GET /ov/consumptions/`; una lectura de
-    otro contrato o fuera del periodo del contrato devuelve 404. CSV real; PDF es
-    un stub mientras no se implemente la maquetación.
+    otro contrato o fuera del periodo del contrato devuelve 404, y con `dni`
+    también una lectura no facturada a esa persona. CSV real; PDF es un stub
+    mientras no se implemente la maquetación.
     """
 
     permission_classes = [IsAuthenticated]
@@ -1066,7 +1162,9 @@ class ConsumptionDownloadOVView(APIView):
             )
 
         reading = _contract_billed_readings(
-            _contract_readings(contract).filter(pk=id), contract
+            _contract_readings(contract).filter(pk=id),
+            contract,
+            _ov_optional_dni(request.query_params.get("dni")),
         ).first()
 
         if not reading:
@@ -1093,8 +1191,9 @@ class ConsumptionsDownloadOVView(APIView):
     `reading_ids` (filas marcadas) o, si no se indican, todo el conjunto
     filtrado por `date_from`/`date_to` (botón «Seleccionar todo»). Solo se
     incluyen lecturas del propio contrato y de su periodo de vigencia; un id
-    de otro contrato se trata como desconocido (400). CSV real;
-    PDF y ZIP son stubs.
+    de otro contrato se trata como desconocido (400). Con `dni`, solo las
+    lecturas facturadas a esa persona (las demás se omiten, como las no
+    facturadas). CSV real; PDF y ZIP son stubs.
     """
 
     permission_classes = [IsAuthenticated]
@@ -1141,8 +1240,11 @@ class ConsumptionsDownloadOVView(APIView):
             if data.get("date_to"):
                 queryset = queryset.filter(reading_date__lte=data["date_to"])
 
-        # Només consums facturats: les lectures no facturades s'ometen del fitxer
-        queryset = _contract_billed_readings(queryset, contract)
+        # Només consums facturats: les lectures no facturades (o, amb DNI, no
+        # facturades a aquella persona) s'ometen del fitxer
+        queryset = _contract_billed_readings(
+            queryset, contract, _ov_optional_dni(data.get("dni"))
+        )
 
         if export_format == "csv":
             payload = _consumptions_csv(queryset)
@@ -1700,8 +1802,12 @@ class ContractRequestTypeDictionaryOVView(APIView):
     ordenats alfabèticament per `name`. Per cada tipus retorna `token`,
     `name`, `has_persons` i les tarifes actives associades
     (`registration_tariffs`, `water_tariffs`, `change_of_name_tariffs`, cada
-    una amb `token` i `name`; `[]` si no n'hi ha). El `token` és el que cal
-    enviar com a `procedure_type_token` en sol·licitar un tràmit.
+    una amb `token` i `name`; `[]` si no n'hi ha). Les de contractació i de
+    canvi de nom porten també `type_price` i `price` (com a
+    `/ov/dictionary/procedure-tariffs/`) i el tipus en suma el total a
+    `registration_price` i `change_of_name_price` (`0` sense tarifes, `null`
+    si alguna no té preu fix). El `token` és el que cal enviar com a
+    `procedure_type_token` en sol·licitar un tràmit.
     """
 
     permission_classes = [IsAuthenticated]
@@ -1725,29 +1831,54 @@ class ContractRequestTypeDictionaryOVView(APIView):
             default=F("name"),
         )
 
-        def active_rates(relation, to_attr):
+        def active_rates(relation, to_attr, with_price=False):
             """Prefetch active tariffs from relation into the list named by to_attr,
             ordered by display name and ID."""
-            return Prefetch(
-                relation,
-                queryset=PriceRate.objects.filter(is_active=True)
+            queryset = (
+                PriceRate.objects.filter(is_active=True)
                 .select_related("product")
                 .annotate(display_name=resolved_rate_name)
-                .order_by("display_name", "id"),
-                to_attr=to_attr,
+                .order_by("display_name", "id")
             )
+            if with_price:
+                # Mateixa precàrrega que `/ov/dictionary/procedure-tariffs/`
+                # per calcular el cost sense consultes per tarifa, més els
+                # períodes actius de reserva (`active_billing_ranges`) per a
+                # les tarifes sense `billing_range_active`.
+                line_items = (
+                    "line_item_types__price_interval"
+                    "__price_interval_stretches",
+                    "line_item_types__price_variable"
+                    "__price_variable_interval_stretches",
+                )
+                queryset = queryset.select_related(
+                    "billing_range_active"
+                ).prefetch_related(
+                    *(f"billing_range_active__{path}" for path in line_items),
+                    Prefetch(
+                        "billing_ranges",
+                        queryset=BillingRange.objects.filter(is_active=True)
+                        .order_by("-start")
+                        .prefetch_related(*line_items),
+                        to_attr="active_billing_ranges",
+                    ),
+                )
+            return Prefetch(relation, queryset=queryset, to_attr=to_attr)
 
         request_types = (
             ContractRequestType.objects.filter(is_active=True)
             .order_by("name", "id")
             .prefetch_related(
                 active_rates(
-                    "registration_price_rates", "active_registration_tariffs"
+                    "registration_price_rates",
+                    "active_registration_tariffs",
+                    with_price=True,
                 ),
                 active_rates("price_rates", "active_water_tariffs"),
                 active_rates(
                     "change_of_name_registration_price_rates",
                     "active_change_of_name_tariffs",
+                    with_price=True,
                 ),
             )
         )
@@ -2098,7 +2229,7 @@ class AddressesOVView(APIView):
         return paginator.get_paginated_response(serializer.data)
 
 
-class PersonDataOVView(APIView):
+class PersonDataOVView(OVBlockedDniQueryMixin, APIView):
     """GET /ov/person-data/?dni=<DNI>
 
     Dades de contacte de la persona identificada pel DNI: telèfons, correus
@@ -2197,7 +2328,7 @@ def _parse_ov_iso_date(value):
         return None
 
 
-class PersonInvoicesOVView(APIView):
+class PersonInvoicesOVView(OVBlockedDniQueryMixin, APIView):
     """GET /ov/person-invoices/?dni=<DNI>[&date_from=YYYY-MM-DD][&date_to=YYYY-MM-DD]
 
     Totes les factures on la persona ha estat titular o pagadora, segons les
@@ -2305,6 +2436,203 @@ class PersonInvoicesOVView(APIView):
             "supply_address": str(address) if address else None,
             "invoices": [],
         }
+
+
+class PersonContractsOVView(OVBlockedDniQueryMixin, APIView):
+    """GET /ov/person-contracts/?dni=<DNI>[&role=holder|payer][&related_now=true|false][&page=<n>][&limit=<n>]
+
+    Contractes actuals i antics d'una persona, amb el seu paper a cadascun.
+    Hi surten els contractes on la persona:
+
+    - és ara la titular (`Contract.holder`) o la titular del compte de
+      domiciliació (`payment.IBAN`), encara que no tinguin factures; o
+    - consta com a titular (`customer_token_final`) o pagadora
+      (`payer_token_final`, o la titular si la factura no en té) en alguna
+      factura del contracte, amb els mateixos criteris que
+      `/ov/person-invoices/` (sense prefactures ni factures amb data futura).
+
+    `roles` diu si hi és (o hi ha estat) titular (`holder`) i/o pagadora
+    (`payer`). Avui és pagadora la titular del compte de domiciliació (pel DNI
+    del compte) i, si el contracte no té compte o el compte no té DNI, la
+    titular, com en facturar. `related_now` és cert si avui és la
+    titular o la titular del compte i el contracte és d'alta (estat de
+    `contract_active_token`); un contracte de baixa sempre surt a fals.
+
+    El DNI es normalitza com a `/ov/person-data/`. Tot es resol amb unes
+    poques consultes per petició (configuració, contractes candidats, recompte
+    i pàgina), no una per contracte.
+    """
+
+    # Només el compte de servei de l'OV (i superusuaris): amb un DNI es veu
+    # l'històric de contractes d'una persona.
+    permission_classes = [IsAuthenticated, IsOVUser]
+    throttle_classes = [PersonContractsThrottle]
+    pagination_class = OVLimitPagination
+
+    ROLES = ("holder", "payer")
+    BOOLEANS = {"true": True, "false": False}
+
+    def get(self, request):
+        dni = _normalize_person_dni(request.query_params.get("dni"))
+        if not dni:
+            return Response(
+                {"error": "DNI is required"}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        role = (request.query_params.get("role") or "").strip().lower()
+        if role and role not in self.ROLES:
+            return Response(
+                {"error": "Invalid role (expected holder or payer)"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        related_raw = (request.query_params.get("related_now") or "").strip().lower()
+        if related_raw and related_raw not in self.BOOLEANS:
+            return Response(
+                {"error": "Invalid related_now (expected true or false)"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        contracts = self._contracts(dni)
+        if role:
+            contracts = contracts.filter(**{f"is_{role}": True})
+        if related_raw:
+            contracts = contracts.filter(related_now=self.BOOLEANS[related_raw])
+
+        paginator = self.pagination_class()
+        try:
+            page = paginator.paginate_queryset(contracts, request, view=self)
+        except NotFound:
+            return Response(
+                {"error": "Invalid page"}, status=status.HTTP_400_BAD_REQUEST
+            )
+        return paginator.get_paginated_response([self._item(c) for c in page])
+
+    @staticmethod
+    def _contracts(dni):
+        # Persones i comptes del DNI com a subconsultes: no fan cap consulta
+        # a part, van dins la dels contractes. El compte és de qui diu el seu
+        # DNI (`PersonBank.dni`), no de la fitxa a què està lligat: és el
+        # pagador que posa la facturació (`invoice_service`).
+        persons = (
+            Person.objects.annotate(normalized_token=_normalized_dni_expression("token"))
+            .filter(normalized_token=dni)
+            .values("id")
+        )
+        accounts = (
+            PersonBank.objects.annotate(normalized_dni=_normalized_dni_expression("dni"))
+            .filter(normalized_dni=dni)
+            .values("id")
+        )
+
+        # Les factures es comparen exactament amb el DNI normalitzat, com a
+        # `/ov/person-invoices/`, per fer servir els índexs dels dos camps.
+        invoices = exclude_future_invoices(Invoice.objects).exclude(status__token="1")
+        invoice_contracts = invoices.filter(
+            Q(customer_token_final=dni) | Q(payer_token_final=dni),
+            contract__isnull=False,
+        )
+        contract_invoices = invoices.filter(contract=OuterRef("pk"))
+        # Si la factura no té pagador, la pagadora és la titular.
+        no_payer = Q(payer_token_final__isnull=True) | Q(payer_token_final="")
+        as_invoice_holder = contract_invoices.filter(customer_token_final=dni)
+        as_invoice_payer = contract_invoices.filter(
+            Q(payer_token_final=dni) | (Q(customer_token_final=dni) & no_payer)
+        )
+
+        holder_now = Q(holder__in=persons)
+        account_now = Q(payment__IBAN__in=accounts)
+        # Com en facturar: sense compte o amb un compte sense DNI, la
+        # pagadora és la titular.
+        account_without_dni = (
+            Q(payment__IBAN__isnull=True)
+            | Q(payment__IBAN__dni__isnull=True)
+            | Q(payment__IBAN__dni="")
+        )
+        payer_now = account_now | (holder_now & account_without_dni)
+        active_token = (
+            ConfigProject.objects.filter(token="contract_active_token")
+            .values_list("value", flat=True)
+            .first()
+        )
+        active_token = str(active_token).strip() if active_token is not None else ""
+        if active_token:
+            related_now = Case(
+                When(
+                    (holder_now | account_now) & Q(status__token=active_token),
+                    then=Value(True),
+                ),
+                default=Value(False),
+                output_field=BooleanField(),
+            )
+        else:
+            related_now = Value(False, output_field=BooleanField())
+
+        # Primer els ids candidats amb una UNION, on cada branca fa servir el
+        # seu índex; un OR dins la consulta principal recorre tots els
+        # contractes.
+        candidate_ids = list(
+            Contract.objects.filter(holder_now)
+            .values_list("pk", flat=True)
+            .union(
+                Contract.objects.filter(account_now).values_list("pk", flat=True),
+                invoice_contracts.values_list("contract_id", flat=True),
+            )
+        )
+
+        return (
+            Contract.objects.filter(pk__in=candidate_ids)
+            .annotate(
+                invoice_holder=Exists(as_invoice_holder),
+                invoice_payer=Exists(as_invoice_payer),
+            )
+            .annotate(
+                is_holder=Case(
+                    When(holder_now | Q(invoice_holder=True), then=Value(True)),
+                    default=Value(False),
+                    output_field=BooleanField(),
+                ),
+                is_payer=Case(
+                    When(payer_now | Q(invoice_payer=True), then=Value(True)),
+                    default=Value(False),
+                    output_field=BooleanField(),
+                ),
+                related_now=related_now,
+            )
+            .select_related(
+                "status",
+                "supply_point_default__address__street__type",
+                "supply_point_default__address__street_number__number_type",
+                "supply_point_default__address__city",
+                "supply_point_default__address__country",
+            )
+            .order_by("-related_now", "token", "pk")
+        )
+
+    @staticmethod
+    def _item(contract):
+        supply_point = contract.supply_point_default
+        address = supply_point.address if supply_point else None
+        roles = [
+            role
+            for role, present in (
+                ("holder", contract.is_holder),
+                ("payer", contract.is_payer),
+            )
+            if present
+        ]
+        return {
+            "contract_token": contract.token,
+            "contract_status": (
+                {"token": contract.status.token, "name": contract.status.name}
+                if contract.status
+                else None
+            ),
+            "supply_point": supply_point.token if supply_point else None,
+            "address": str(address) if address else None,
+            "roles": roles,
+            "related_now": contract.related_now,
+        }
+
 
 QUICK_PAY_NON_PAYABLE_STATUS_CONFIG_TOKENS = [
     "invoice_status_paid_token",
@@ -2470,7 +2798,7 @@ def _resolve_payment_receipt_language(request):
     return "ca"
 
 
-class PaymentReceiptOVView(APIView):
+class PaymentReceiptOVView(OVBlockedDniQueryMixin, APIView):
     """GET /ov/payment-receipt/?contract_token=&payment_token=&dni=
 
     Returns the in-memory PDF proof of payment ("Justificant de pagament") for
@@ -2963,13 +3291,16 @@ class ContractProcedureOVView(APIView):
     (meter, registration date, billing address, ...) and finalizes it through
     the existing flow.
 
-    The tariff (`tariff_token`) is the one the Virtual Office showed and
-    charged to the customer, so it is authoritative for the request. We do not
-    let the procedure type derive it: `ContractRequestType.price_rates` is an
-    M2M that may hold zero, one or many tariffs and is unrelated to the active
-    tariff catalogue the OV exposes, so deriving it would risk billing
-    mismatches. `registration_price_rates` and `order_types` remain
-    type-driven, which is the correct behaviour for them.
+    Tariffs are type-driven, as in the back-office screen: the request gets
+    every active periodic tariff of the procedure type (package,
+    `ContractRequestType.price_rates`, exposed by the OV dictionary as
+    `water_tariffs`), plus its `registration_price_rates` and `order_types`.
+    `procedure_type_token` may list several packages: the request gets the
+    union of all of them and its `type` is the first one. The contract created
+    from the request copies the tariffs and bills one line per periodic
+    tariff, so a request with only one of them would bill incompletely.
+    Packages without any active periodic tariff, or two different tariffs of
+    the same product, are rejected (400).
     """
 
     permission_classes = [IsAuthenticated]
@@ -3056,22 +3387,64 @@ class ContractProcedureOVView(APIView):
             )
         supply_point = supply_points[0]
 
-        procedure_type = ContractRequestType.objects.filter(
-            token=data["procedure_type_token"], is_active=True
-        ).first()
-        if procedure_type is None:
+        # Paquets de la contractació, en l'ordre rebut: el primer és el tipus
+        # de la sol·licitud.
+        procedure_type_tokens = data["procedure_type_token"]
+        procedure_types_by_token = {
+            procedure_type.token: procedure_type
+            for procedure_type in ContractRequestType.objects.filter(
+                token__in=procedure_type_tokens, is_active=True
+            )
+        }
+        if len(procedure_types_by_token) != len(procedure_type_tokens):
             return Response(
                 {"error": "Procedure type not found"},
                 status=status.HTTP_404_NOT_FOUND,
             )
+        procedure_types = [
+            procedure_types_by_token[token] for token in procedure_type_tokens
+        ]
+        procedure_type = procedure_types[0]
 
-        tariff = PriceRate.objects.filter(
-            token=data["tariff_token"], is_active=True
-        ).first()
-        if tariff is None:
+        # Totes les tarifes periòdiques actives dels paquets, com a la
+        # pantalla: el contracte en factura una línia per tarifa.
+        tariffs = list(
+            PriceRate.objects.filter(
+                contract_request_type_price_rates__in=procedure_types,
+                is_active=True,
+            )
+            .select_related("product")
+            .distinct()
+            .order_by("id")
+        )
+        if not tariffs:
             return Response(
-                {"error": "Tariff not found"},
-                status=status.HTTP_404_NOT_FOUND,
+                {"error": "Procedure type has no active periodic tariffs"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        # Dues tarifes del mateix producte facturarien dues vegades el
+        # mateix concepte.
+        tariffs_by_product = defaultdict(list)
+        for tariff in tariffs:
+            if tariff.product_id is not None:
+                tariffs_by_product[tariff.product_id].append(tariff)
+        conflicting_products = sorted(
+            {
+                rates[0].product.token or rates[0].product.name or ""
+                for rates in tariffs_by_product.values()
+                if len(rates) > 1
+            }
+        )
+        if conflicting_products:
+            return Response(
+                {
+                    "error": (
+                        "Procedure types have different tariffs for the "
+                        "same product"
+                    ),
+                    "products": conflicting_products,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         payment_type = PaymentType.objects.filter(
@@ -3160,19 +3533,30 @@ class ContractProcedureOVView(APIView):
             )
             contract_request.supply_points.set([supply_point])
 
-            contract_price_rate = ContractPriceRate.objects.filter(
-                supply_point=supply_point, price_rate=tariff, is_active=True
-            ).first()
-            if contract_price_rate is None:
-                contract_price_rate = ContractPriceRate.objects.create(
+            contract_price_rates = []
+            for tariff in tariffs:
+                contract_price_rate = ContractPriceRate.objects.filter(
                     supply_point=supply_point, price_rate=tariff, is_active=True
-                )
-            contract_request.price_rates.set([contract_price_rate])
+                ).first()
+                if contract_price_rate is None:
+                    contract_price_rate = ContractPriceRate.objects.create(
+                        supply_point=supply_point,
+                        price_rate=tariff,
+                        is_active=True,
+                    )
+                contract_price_rates.append(contract_price_rate)
+            contract_request.price_rates.set(contract_price_rates)
             contract_request.registration_price_rates.set(
-                procedure_type.registration_price_rates.all()
+                PriceRate.objects.filter(
+                    contract_request_type_registration_price_rates__in=(
+                        procedure_types
+                    )
+                ).distinct()
             )
             contract_request.order_types.set(
-                procedure_type.order_types.all()
+                OrderType.objects.filter(
+                    contractrequesttype__in=procedure_types
+                ).distinct()
             )
 
             LogContractRequestStatus.objects.create(

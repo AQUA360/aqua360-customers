@@ -27,6 +27,10 @@ const email = ref(null);
 const password = ref(null);
 const repeatPassword = ref(null);
 const userRole = ref('none'); // superuser | admin | none
+const originalUsername = ref(null);
+const originalRole = ref('none');
+// El backend diu si el compte pot ser superusuari (customers o la llista de la instal·lació)
+const canBeSuperuser = ref(false);
 const groups = ref([]);
 const selectedGroupId = ref(null);
 
@@ -38,7 +42,15 @@ const showDetailId = ref(null);
 
 const canManageUsers = computed(() => Boolean(permissions?.value?.permissions?.change_user));
 const isCustomersAccount = computed(() => username.value === CANONICAL_SUPERUSER_USERNAME);
-const canSelectSuperuser = computed(() => isCustomersAccount.value);
+// Només el compte customers dona o treu el rol de superusuari
+const isCurrentUserCustomers = computed(() => permissions?.value?.user?.username === CANONICAL_SUPERUSER_USERNAME);
+const usernameUnchanged = computed(() => !!props.id && username.value === originalUsername.value);
+const canSelectSuperuser = computed(() => {
+  if (isCustomersAccount.value) return true;
+  return isCurrentUserCustomers.value && usernameUnchanged.value && canBeSuperuser.value;
+});
+// Un superusuari que no és customers no pot rebaixar-se ni rebaixar ningú
+const roleLocked = computed(() => originalRole.value === 'superuser' && !isCurrentUserCustomers.value);
 const groupSelectDisabled = computed(() => {
   return !canManageUsers.value || userRole.value === 'superuser' || userRole.value === 'admin';
 });
@@ -84,6 +96,9 @@ const getData = async () => {
       lastName.value = response.last_name;
       email.value = response.email;
       userRole.value = getUserRole(response);
+      originalUsername.value = response.username;
+      originalRole.value = userRole.value;
+      canBeSuperuser.value = !!response.can_be_superuser;
       selectedGroupId.value = response.group_id || null;
     }
     else {
@@ -92,6 +107,9 @@ const getData = async () => {
       lastName.value = null;
       email.value = null;
       userRole.value = 'none';
+      originalUsername.value = null;
+      originalRole.value = 'none';
+      canBeSuperuser.value = false;
       selectedGroupId.value = null;
     }
   } catch (error) {
@@ -110,7 +128,8 @@ const save = async () => {
     return;
   }
 
-  if (userRole.value === 'superuser' && !isCustomersAccount.value) {
+  if (userRole.value !== originalRole.value && (userRole.value === 'superuser' || originalRole.value === 'superuser')
+    && !isCurrentUserCustomers.value) {
     toast.error(t('user_group.only_customers_superuser'));
     return;
   }
@@ -195,7 +214,11 @@ watch(userRole, (newValue) => {
 });
 
 watch(username, (newValue) => {
-  if (newValue !== CANONICAL_SUPERUSER_USERNAME && userRole.value === 'superuser') {
+  // En carregar la fitxa (o tornar al nom original) es conserva el rol que ja tenia
+  if (props.id && newValue === originalUsername.value) return;
+  // Si el rol està bloquejat no es toca: el servidor ja rebutja el canvi de nom que el faria perdre
+  if (roleLocked.value) return;
+  if (newValue !== CANONICAL_SUPERUSER_USERNAME && userRole.value === 'superuser' && !canSelectSuperuser.value) {
     userRole.value = 'admin';
   }
 });
@@ -253,14 +276,14 @@ const handleSubRegionEvent = (value) => {
               </abbr>
             </label>
             <label class="flex items-center gap-x-2 text-slate-700" :class="canManageUsers ? 'cursor-pointer' : 'cursor-not-allowed'">
-              <input v-model="userRole" value="admin" :disabled="!canManageUsers || isCustomersAccount" type="radio" name="userRole" />
+              <input v-model="userRole" value="admin" :disabled="!canManageUsers || isCustomersAccount || roleLocked" type="radio" name="userRole" />
               {{ t('common.admin') }}
               <abbr :title="t('user_group.admin_permissions')" class="flex items-center">
                 <Icon name="fa6-solid:circle-info" class="text-slate-500" />
               </abbr>
             </label>
             <label class="flex items-center gap-x-2 text-slate-700" :class="canManageUsers ? 'cursor-pointer' : 'cursor-not-allowed'">
-              <input v-model="userRole" value="none" :disabled="!canManageUsers || isCustomersAccount" type="radio" name="userRole" />
+              <input v-model="userRole" value="none" :disabled="!canManageUsers || isCustomersAccount || roleLocked" type="radio" name="userRole" />
               {{ t('user_group.role_none') }}
               <abbr :title="t('user_group.role_none_permissions')" class="flex items-center">
                 <Icon name="fa6-solid:circle-info" class="text-slate-500" />

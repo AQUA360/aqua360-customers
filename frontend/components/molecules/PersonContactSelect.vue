@@ -12,7 +12,7 @@ const { $PersonContactApiService } = useNuxtApp();
 
 const { t } = useI18n();
 
-const emit = defineEmits(['selected-item']);
+const emit = defineEmits(['selected-item', 'deleted-item']);
 
 const props = defineProps({
   title: String,
@@ -54,6 +54,8 @@ const deletePersonContact = (person, contact) => {
     if (idx > -1) {
       person.contacts.splice(idx, 1);
     }
+    // El pare l'ha de treure de la seva selecció: si no, en desar enviaria un id que ja no existeix
+    emit('deleted-item', contact);
   }).catch((err) => {
     console.error(err);
   });

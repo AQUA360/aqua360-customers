@@ -6,6 +6,9 @@ Avisos (event_type):
 - contract_termination.cancelled: es desfà una baixa.
 - invoice.issued: factura solta que rep el número legal (no pressupostos).
 - billing.issued: facturació massiva confirmada, amb les factures en paquets.
+- contract_request.cancelled: una sol·licitud d'alta passa a anul·lada (senyal, vegeu signals.py).
+- invoice.paid, invoice.returned, invoice.expired, invoice.cancelled: canvis d'estat
+  de pagament de les factures, detectats per una tasca periòdica (invoice_status.py).
 
 Cada registre porta l'id intern (estable) i el codi: en un canvi de titular que
 conserva el codi, el contracte antic canvia de codi i només l'id el segueix.
@@ -27,6 +30,7 @@ CONTRACT_TERMINATION_CONFIRMED = "contract_termination.confirmed"
 CONTRACT_TERMINATION_CANCELLED = "contract_termination.cancelled"
 INVOICE_ISSUED = "invoice.issued"
 BILLING_ISSUED = "billing.issued"
+CONTRACT_REQUEST_CANCELLED = "contract_request.cancelled"
 
 
 # --- Peces comunes ---------------------------------------------------------
@@ -154,6 +158,25 @@ def emit_contract_termination_cancelled(contract, termination_request):
     )
 
 
+def contract_request_cancelled_data(contract_request):
+    return {
+        "contract_request": {"id": contract_request.id, "code": contract_request.token},
+        "status": _token_name(contract_request.status),
+    }
+
+
+def emit_contract_request_cancelled(contract_request):
+    """La sol·licitud d'alta passa a l'estat anul·lat. Sense clau: es pot reobrir i
+    tornar a anul·lar. Qui la crida (signals.py) només ho fa quan l'estat canvia."""
+    cancel_token = _config_value("contract_request_cancel_token")
+    if not cancel_token or not contract_request.status or contract_request.status.token != cancel_token:
+        return None
+    return emit(
+        CONTRACT_REQUEST_CANCELLED, "contract_request", contract_request.id,
+        lambda: contract_request_cancelled_data(contract_request),
+    )
+
+
 # --- Factures --------------------------------------------------------------
 
 def _corrected_invoice(invoice, cache=None):
@@ -179,6 +202,7 @@ def invoice_data(invoice, direct_debit_token=None, line_items=None, corrected_ca
     holder_id = invoice.person_id or (invoice.contract.holder_id if invoice.contract else None)
     return {
         "id": invoice.id,
+        "token": invoice.token,
         "number": invoice.serie_final,
         "serie": invoice.serie_token_final,
         "type": _token_name(invoice.type),

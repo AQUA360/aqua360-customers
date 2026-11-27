@@ -697,7 +697,8 @@ const denyPolicyToken = () => {
           <div v-if="documentSignEnabled" class="my-3">
             <MoleculesDocumentSignStatus :contractId="signContractId" :contractRequestId="signContractRequestId"
               :contractFileId="fileDetail?.id" :defaultName="signOtpDefaultName" :defaultEmail="signOtpDefaultEmail"
-              :defaultPhone="signOtpDefaultPhone" />
+              :defaultPhone="signOtpDefaultPhone"
+              :invoiceId="finalInvoice?.id || null" />
           </div>
 
           <div class="my-3">

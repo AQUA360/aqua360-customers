@@ -1,5 +1,6 @@
 <script setup>
 import ContractInvalidAccountAlert from '~/components/molecules/ContractInvalidAccountAlert.vue';
+import ContractRemittanceBlockedAlert from '~/components/molecules/ContractRemittanceBlockedAlert.vue';
 import { useFixedObjectsStore } from '~/stores/useFixedObjects';
 import { useToast } from 'vue-toastification';
 import { openAuthenticatedFileUrl } from '~/utils/open-authenticated-file';
@@ -664,6 +665,7 @@ const setActiveTab = (tab) => {
             </div>
 
             <ContractInvalidAccountAlert :alert="contract?.invalid_account_payment_alert" />
+            <ContractRemittanceBlockedAlert :alert="contract?.remittance_blocked_alert" />
 
             <ContractDetail :data="contract" :isSubRegion="isSubRegion" :isSubRegionOpen="isSubRegionOpen"
                 :canChange="objectPermissions.can_change" :showDebtDetail="true" :showBailTab="true"
