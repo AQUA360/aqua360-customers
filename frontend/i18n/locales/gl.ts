@@ -3493,6 +3493,13 @@ export default {
     last_login: 'Último acceso',
     change_password_sessions_help: 'Ao cambiar o contrasinal pecharanse as demais sesións abertas; esta mantense.',
     password_section_help: 'O contrasinal co que entras na aplicación.',
+    password_strength: 'Seguridade',
+    password_strength_level: {
+      weak: 'Feble',
+      fair: 'Aceptable',
+      good: 'Boa',
+      strong: 'Forte',
+    },
     password_rule: {
       min_length: 'Mínimo 8 caracteres',
       letter: 'Debe incluír polo menos unha letra',

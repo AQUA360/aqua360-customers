@@ -3609,6 +3609,13 @@ export default {
     last_login: 'Último acceso',
     change_password_sessions_help: 'Al cambiar la contraseña se cerrarán las demás sesiones abiertas; esta se mantiene.',
     password_section_help: 'La contraseña con la que entras en la aplicación.',
+    password_strength: 'Seguridad',
+    password_strength_level: {
+      weak: 'Débil',
+      fair: 'Aceptable',
+      good: 'Buena',
+      strong: 'Fuerte',
+    },
     password_rule: {
       min_length: 'Mínimo 8 caracteres',
       letter: 'Debe incluir mínimo una letra',

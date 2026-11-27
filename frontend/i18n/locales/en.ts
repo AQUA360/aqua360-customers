@@ -3493,6 +3493,13 @@ export default {
     last_login: 'Last login',
     change_password_sessions_help: 'Changing the password will close your other open sessions; this one stays open.',
     password_section_help: 'The password you use to log in.',
+    password_strength: 'Strength',
+    password_strength_level: {
+      weak: 'Weak',
+      fair: 'Fair',
+      good: 'Good',
+      strong: 'Strong',
+    },
     password_rule: {
       min_length: 'At least 8 characters',
       letter: 'Must include at least one letter',

@@ -3609,6 +3609,13 @@ export default {
     last_login: 'Darrer accés',
     change_password_sessions_help: 'En canviar la contrasenya es tancaran les altres sessions obertes; aquesta es manté.',
     password_section_help: 'La contrasenya amb què entres a l\'aplicació.',
+    password_strength: 'Seguretat',
+    password_strength_level: {
+      weak: 'Feble',
+      fair: 'Acceptable',
+      good: 'Bona',
+      strong: 'Forta',
+    },
     password_rule: {
       min_length: 'Mínim 8 caràcters',
       letter: 'Ha d\'incloure mínim una lletra',
