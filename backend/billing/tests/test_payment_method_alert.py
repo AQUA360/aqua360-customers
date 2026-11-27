@@ -4,7 +4,7 @@ from datetime import timedelta
 from django.apps import apps
 from django.utils import timezone
 
-from billing.models import Invoice
+from billing.models import Invoice, InvoiceStatus
 from billing.serializers.invoice_serializer import InvoiceFullSerializer
 from billing.tests.test_return_invalid_account import InvalidAccountReturnBase
 from billing.utils.invoice_service import apply_invoice_payment_method
@@ -28,6 +28,8 @@ class PaymentMethodAlertBase(InvalidAccountReturnBase):
         super().setUpTestData()
         # Desar una factura passa pels senyals, que llegeixen l'estat d'anul·lada
         ConfigProject.objects.update_or_create(token='invoice_status_cancelled_token', defaults={'value': 'CANCELLED'})
+        ConfigProject.objects.update_or_create(token='invoice_status_dropped_token', defaults={'value': 'DROPPED'})
+        cls.invoice_status['DROPPED'], _ = InvoiceStatus.objects.get_or_create(token='DROPPED', defaults={'name': 'Abonada'})
 
     def create_blocked_invoice(self, token, status='CONFIRMED', observation=BLOCKED_OBSERVATION, auto_reason=BLOCKED):
         """Factura nova que el procés de facturació ha passat a pagament bancari (com fa invoice_service)."""
@@ -109,6 +111,7 @@ class TestRemittanceBlockedAlert(PaymentMethodAlertBase):
     def test_paid_or_inactive_invoices_are_not_counted(self):
         self.create_blocked_invoice('BLK1')
         self.create_blocked_invoice('BLK2', status='PAID')
+        self.create_blocked_invoice('BLK4', status='DROPPED')
         inactive = self.create_blocked_invoice('BLK3')
         Invoice.objects.filter(id=inactive.id).update(is_active=False)
 

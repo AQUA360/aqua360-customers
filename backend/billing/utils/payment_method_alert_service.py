@@ -9,16 +9,16 @@ Hi ha dos casos, que queden marcats a l'historial de la factura (`LogInvoiceData
   continua domiciliat, així que l'avís ha de sortir també a la fitxa del contracte.
 
 L'avís d'una factura només surt mentre la factura conserva el mètode de pagament que hi va posar el
-sistema (qualsevol canvi posterior, a mà o automàtic, el treu) i no està cobrada ni anul·lada.
+sistema (qualsevol canvi posterior, a mà o automàtic, el treu) i no està cobrada, anul·lada ni abonada.
 """
 from coredata.models import ConfigProject
 from logger.models import LogInvoiceDataChange
 
 
 def _closed_status_tokens():
-    """Estats de factura en què ja no té sentit avisar: cobrada o anul·lada."""
+    """Estats de factura en què ja no té sentit avisar: cobrada, anul·lada o abonada."""
     tokens = ConfigProject.objects.filter(
-        token__in=['invoice_status_paid_token', 'invoice_status_cancelled_token'],
+        token__in=['invoice_status_paid_token', 'invoice_status_cancelled_token', 'invoice_status_dropped_token'],
     ).values_list('value', flat=True)
     return {token for token in tokens if token}
 
