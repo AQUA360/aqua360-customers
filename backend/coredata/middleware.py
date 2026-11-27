@@ -1,4 +1,4 @@
-from django.db import connection
+from django.db import DatabaseError, connection
 
 
 class SetPostgresUserMiddleware:
@@ -28,11 +28,21 @@ class SetPostgresUserMiddleware:
                     "SELECT set_config('myapp.user_id', '', false)"
                 )
         
-        response = self.get_response(request)
-        
-        # Optionally clear the config after request (though it's session-scoped)
-        # This is optional since PostgreSQL session variables are automatically cleared
-        # when the connection is closed
-        
-        return response
+        try:
+            return self.get_response(request)
+        finally:
+            # La variable és de sessió (els triggers d'auditoria la llegeixen a cada sentència,
+            # i fora d'una transacció una variable local desapareixeria): s'esborra en acabar,
+            # també si la vista falla, perquè una connexió reutilitzada no arrossegui l'usuari
+            # d'aquesta petició a la següent.
+            self._clear_user()
+
+    @staticmethod
+    def _clear_user():
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT set_config('myapp.user_id', '', false)")
+        except DatabaseError:
+            # Connexió trencada o transacció avortada: el servidor la descarta igualment
+            pass
 

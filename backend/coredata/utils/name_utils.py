@@ -2,6 +2,11 @@ import datetime
 
 
 def generate_token(model_class, field='-id', *args, offset=1, **kwargs):
+    """Identificador de negoci (data + número correlatiu), previsible a propòsit.
+
+    NO és un secret: cap endpoint pot fer servir aquest token com a única credencial
+    d'accés. Per a un enllaç o una sessió d'accés cal un valor aleatori (`secrets`/uuid4).
+    """
     token = ''
     now = datetime.datetime.now()
     #token += now.strftime("%y%m%d%H%M%S")
@@ -13,7 +18,6 @@ def generate_token(model_class, field='-id', *args, offset=1, **kwargs):
     
     if 'token' in field:
         next_id = (int(last_instance.token) if last_instance else 0) + offset
-        print(next_id)
     else:
         next_id = (last_instance.id if last_instance else 0) + offset
 

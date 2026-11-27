@@ -26,6 +26,25 @@ class ConfigProjectSerializer(serializers.ModelSerializer):
     class Meta:
         model = ConfigProject
         fields = ['token','name', 'value','file']
+
+    def validate_token(self, value):
+        # El token és l'identificador amb què el codi cerca la configuració: no es canvia ni
+        # es duplica des de l'API.
+        if self.instance is not None:
+            if value != self.instance.token:
+                raise serializers.ValidationError(gettext('The token of a configuration cannot be changed.'))
+        elif ConfigProject.objects.filter(token=value).exists():
+            raise serializers.ValidationError(gettext('This configuration already exists.'))
+        return value
+
+    def to_representation(self, instance):
+        from coredata.permissions import visible_config_value
+
+        data = super().to_representation(instance)
+        # Sense petició (ús intern) es tracta com un usuari sense permís: mai es treu un secret
+        request = self.context.get('request')
+        data['value'] = visible_config_value(instance.token, data.get('value'), getattr(request, 'user', None))
+        return data
 class CnaeSerializer(serializers.ModelSerializer):
     class Meta:
         model = CNAE
