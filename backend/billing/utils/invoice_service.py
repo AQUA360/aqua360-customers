@@ -3321,8 +3321,15 @@ def check_person_piggy_bank(invoice, total, generate_payment=False):
         return 0
     
 
-def generate_empty_invoice(contract, connection_request, person, title, payment_data, exploitation_instance, billing=None, billing_batch=None, price_rates=None, is_budget=True, invoice=None):
-    pass  # log removed
+def generate_empty_invoice(contract, connection_request, person, title, payment_data, exploitation_instance, billing=None, billing_batch=None, price_rates=None, is_budget=True, invoice=None, origin=None):
+    """Crea un pressupost o factura personalitzada, sense lectures.
+
+    `origin` és el ProductOrigin triat; sense, «Altres» (`origin_other_token`).
+    L'origen d'aigua (`origin_reading_token`) és el de la facturació per
+    lectures i no s'hi admet.
+    """
+    if origin is not None and origin.token == ConfigProject.objects.get(token='origin_reading_token').value:
+        raise ValueError("L'origen d'aigua només és per a la facturació per lectures")
     simplified = contract.simplified_invoice if contract else False
     exploitation = exploitation_instance
     try:
@@ -3413,7 +3420,8 @@ def generate_empty_invoice(contract, connection_request, person, title, payment_
             address_fields = get_connection_request_billing_address(connection_request)
         else:
             address_fields = get_address_fields(address) if address else None
-        origin = ProductOrigin.objects.get(token=ConfigProject.objects.get(token='origin_other_token').value)
+        if origin is None:
+            origin = ProductOrigin.objects.get(token=ConfigProject.objects.get(token='origin_other_token').value)
         invoice_type = InvoiceType.objects.get(token=ConfigProject.objects.get(token='invoice_type_budget_token').value) if is_budget else InvoiceType.objects.get(token=ConfigProject.objects.get(token='invoice_type_invoice_token').value)
 
         # L'empresa emissora la mana el contracte, com a

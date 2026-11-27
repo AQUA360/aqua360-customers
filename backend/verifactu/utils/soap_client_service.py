@@ -11,6 +11,8 @@ Following Spanish government specifications for Verifactu integration.
 
 import logging
 import os
+import secrets
+import ssl
 import tempfile
 import traceback
 from typing import Dict, Any, Optional, Tuple
@@ -18,6 +20,7 @@ from zeep import Client, Settings
 from zeep.exceptions import Fault, TransportError, XMLSyntaxError
 from django.conf import settings
 from decouple import config
+from requests.adapters import HTTPAdapter
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.backends import default_backend
 
@@ -34,6 +37,27 @@ WSDL_SOAP_NAMESPACE = "http://schemas.xmlsoap.org/wsdl/soap/"
 # WSDL 1.1 namespace
 # Reference: http://schemas.xmlsoap.org/wsdl/
 WSDL_11_NAMESPACE = "http://schemas.xmlsoap.org/wsdl/"
+
+
+
+class _SSLContextAdapter(HTTPAdapter):
+    """Adaptador de requests que fa servir un SSLContext ja carregat.
+
+    El certificat de client viu a la memòria del context: no cal deixar cap
+    fitxer amb la clau privada al disc mentre dura la connexió.
+    """
+
+    def __init__(self, ssl_context, *args, **kwargs):
+        self._ssl_context = ssl_context
+        super().__init__(*args, **kwargs)
+
+    def init_poolmanager(self, *args, **kwargs):
+        kwargs["ssl_context"] = self._ssl_context
+        super().init_poolmanager(*args, **kwargs)
+
+    def proxy_manager_for(self, *args, **kwargs):
+        kwargs["ssl_context"] = self._ssl_context
+        return super().proxy_manager_for(*args, **kwargs)
 
 
 class VerifactuSOAPClient:
@@ -98,10 +122,6 @@ class VerifactuSOAPClient:
         self.cert_file = cert_file or config('VERIFACTU_CERT_FILE', default=None)
         self.key_file = key_file or config('VERIFACTU_KEY_FILE', default=None)
         
-        # Temporary files for extracted cert/key (cleaned up on deletion)
-        self._temp_cert_file: Optional[str] = None
-        self._temp_key_file: Optional[str] = None
-        
         # Store raw XML responses
         self._last_raw_xml_response: Optional[str] = None
         
@@ -118,7 +138,7 @@ class VerifactuSOAPClient:
         self.client: Optional[Client] = None
         self._initialize_client()
     
-    def _load_pkcs12_certificate(self) -> Tuple[Optional[str], Optional[str]]:
+    def _load_pkcs12_ssl_context(self) -> ssl.SSLContext:
         """
         Load certificate and key from PKCS#12 file (.pfx or .p12).
         
@@ -126,7 +146,10 @@ class VerifactuSOAPClient:
         This function supports both extensions.
         
         Returns:
-            Tuple of (cert_file_path, key_file_path) as temporary files
+            SSLContext amb el certificat de client carregat. La clau privada
+            només passa per disc el temps de carregar-la: es desa xifrada amb
+            una contrasenya aleatòria en memòria i el fitxer s'esborra de
+            seguida, tant si va bé com si falla.
         """
         if not self.cert_file_path:
             return None, None
@@ -187,40 +210,44 @@ class VerifactuSOAPClient:
             if not private_key:
                 raise ValueError("No private key found in PKCS#12 file")
             
-            # Create temporary files for cert and key
-            cert_fd, cert_path = tempfile.mkstemp(suffix='.pem', prefix='verifactu_cert_')
-            key_fd, key_path = tempfile.mkstemp(suffix='.pem', prefix='verifactu_key_')
+            # ssl.load_cert_chain només accepta fitxers: la clau hi passa xifrada amb una
+            # contrasenya aleatòria que només existeix en memòria, i s'esborren al finally.
+            key_password = secrets.token_hex(32)
+            cert_path = key_path = None
             
             try:
-                # Write certificate to temp file
+                cert_fd, cert_path = tempfile.mkstemp(suffix='.pem', prefix='verifactu_cert_')
+                key_fd, key_path = tempfile.mkstemp(suffix='.pem', prefix='verifactu_key_')
+                
                 with os.fdopen(cert_fd, 'wb') as cert_file:
                     cert_file.write(certificate.public_bytes(serialization.Encoding.PEM))
                 
-                # Write private key to temp file
                 with os.fdopen(key_fd, 'wb') as key_file:
                     key_file.write(
                         private_key.private_bytes(
                             encoding=serialization.Encoding.PEM,
                             format=serialization.PrivateFormat.PKCS8,
-                            encryption_algorithm=serialization.NoEncryption()
+                            encryption_algorithm=serialization.BestAvailableEncryption(
+                                key_password.encode('ascii')
+                            )
                         )
                     )
                 
-                # Store paths for cleanup
-                self._temp_cert_file = cert_path
-                self._temp_key_file = key_path
-                
-                logger.info(f"Successfully extracted certificate and key from {self.cert_file_path}")
-                
-                return cert_path, key_path
-                
-            except Exception as e:
-                # Clean up temp files on error
-                if os.path.exists(cert_path):
-                    os.unlink(cert_path)
-                if os.path.exists(key_path):
-                    os.unlink(key_path)
-                raise
+                context = ssl.create_default_context()
+                if not self.verify_ssl:
+                    context.check_hostname = False
+                    context.verify_mode = ssl.CERT_NONE
+                context.load_cert_chain(cert_path, key_path, password=key_password)
+            finally:
+                for path in (cert_path, key_path):
+                    if path:
+                        try:
+                            os.unlink(path)
+                        except FileNotFoundError:
+                            pass
+            
+            logger.info(f"Successfully extracted certificate and key from {self.cert_file_path}")
+            return context
                 
         except ImportError:
             raise ImportError(
@@ -230,20 +257,6 @@ class VerifactuSOAPClient:
         except Exception as e:
             logger.error(f"Error loading PKCS#12 certificate: {str(e)}")
             raise
-    
-    def __del__(self):
-        """Clean up temporary certificate files."""
-        if self._temp_cert_file and os.path.exists(self._temp_cert_file):
-            try:
-                os.unlink(self._temp_cert_file)
-            except Exception:
-                pass
-        
-        if self._temp_key_file and os.path.exists(self._temp_key_file):
-            try:
-                os.unlink(self._temp_key_file)
-            except Exception:
-                pass
     
     def _initialize_client(self):
         """Initialize the Zeep SOAP client with proper configuration."""
@@ -275,30 +288,21 @@ class VerifactuSOAPClient:
             })
             
             # Determine which certificate method to use
-            cert_path = None
-            key_path = None
-            
             # Priority: PKCS#12 file (.pfx/.p12) > separate PEM files
             if self.cert_file_path:
-                # Load from PKCS#12 file (.pfx or .p12)
-                cert_path, key_path = self._load_pkcs12_certificate()
+                # PKCS#12 (.pfx o .p12): el certificat queda dins d'un SSLContext, sense fitxers
+                ssl_context = self._load_pkcs12_ssl_context()
+                adapter = _SSLContextAdapter(ssl_context)
+                session.mount('https://', adapter)
                 logger.info(f"Using PKCS#12 certificate file: {self.cert_file_path}")
             elif self.cert_file and self.key_file:
                 # Use separate PEM files (legacy support)
-                cert_path = self.cert_file
-                key_path = self.key_file
+                if not os.path.exists(self.cert_file):
+                    raise FileNotFoundError(f"Certificate file not found: {self.cert_file}")
+                if not os.path.exists(self.key_file):
+                    raise FileNotFoundError(f"Key file not found: {self.key_file}")
+                session.cert = (self.cert_file, self.key_file)
                 logger.info("Using separate PEM certificate files")
-            
-            # Add client certificate if available
-            # NOTE: The certificate is needed both for WSDL access AND for SOAP calls
-            if cert_path and key_path:
-                if not os.path.exists(cert_path):
-                    raise FileNotFoundError(f"Certificate file not found: {cert_path}")
-                if not os.path.exists(key_path):
-                    raise FileNotFoundError(f"Key file not found: {key_path}")
-                
-                session.cert = (cert_path, key_path)
-                logger.info(f"Client certificate configured: {cert_path}")
             else:
                 logger.warning("No client certificate configured. Requests may fail if authentication is required.")
             
