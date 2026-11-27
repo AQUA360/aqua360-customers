@@ -2062,23 +2062,69 @@ class PriceRateDictionarySerializer(serializers.ModelSerializer):
         fields = ("token", "name")
 
 
+class PricedPriceRateDictionarySerializer(PriceRateDictionarySerializer):
+    """Tarifa del diccionari de tipus de sol·licitud amb el seu cost
+    (`token`, `name`, `type_price`, `price`).
+
+    `type_price` i `price` es calculen igual que a
+    `/ov/dictionary/procedure-tariffs/` (suma dels components fixos, sense
+    impostos). La vista ha de precarregar el període actiu i els seus
+    conceptes per no fer consultes per tarifa.
+    """
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        cost = ProcedureTariffDictionarySerializer(instance).data
+        data["type_price"] = cost["type_price"]
+        data["price"] = cost["price"]
+        return data
+
+
+def _tariffs_total_price(tariffs):
+    """Suma dels preus d'un grup de tarifes ja serialitzades.
+
+    `0` si el grup és buit; `None` si alguna tarifa no té preu fix (va per
+    trams o no té cap concepte fix), perquè el total no es pot saber sense
+    les dades del punt de subministrament.
+    """
+    total = 0
+    for tariff in tariffs:
+        if tariff["type_price"] != "fixed" or tariff["price"] is None:
+            return None
+        total += tariff["price"]
+    return round(total, 2)
+
+
 class ContractRequestTypeDictionarySerializer(serializers.ModelSerializer):
     """Entrada del diccionari de tipus de sol·licitud de contracte.
 
     Les llistes de tarifes llegeixen els atributs `active_*` que la vista
     precarrega amb `Prefetch(to_attr=...)` (només tarifes actives), de manera
-    que no hi ha consultes addicionals per tipus.
+    que no hi ha consultes addicionals per tipus. Les tarifes de contractació
+    i de canvi de nom porten el seu cost i el paquet en suma el total
+    (`registration_price`, `change_of_name_price`); les d'aigua són
+    periòdiques i no en porten.
     """
 
-    registration_tariffs = PriceRateDictionarySerializer(
+    registration_tariffs = PricedPriceRateDictionarySerializer(
         source="active_registration_tariffs", many=True, read_only=True
     )
     water_tariffs = PriceRateDictionarySerializer(
         source="active_water_tariffs", many=True, read_only=True
     )
-    change_of_name_tariffs = PriceRateDictionarySerializer(
+    change_of_name_tariffs = PricedPriceRateDictionarySerializer(
         source="active_change_of_name_tariffs", many=True, read_only=True
     )
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data["registration_price"] = _tariffs_total_price(
+            data["registration_tariffs"]
+        )
+        data["change_of_name_price"] = _tariffs_total_price(
+            data["change_of_name_tariffs"]
+        )
+        return data
 
     class Meta:
         model = ContractRequestType

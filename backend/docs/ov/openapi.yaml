@@ -52,7 +52,7 @@ info:
     | `/ov/dictionary/contract-statuses/` | GET | Diccionario de estados de contrato (`token`, `name`) |
     | `/ov/dictionary/payment-types/` | GET | Diccionario de formas de pago (`token`, `name`) |
     | `/ov/dictionary/invoice-statuses/` | GET | Diccionario de estados de factura (`token`, `name`) |
-    | `/ov/dictionary/contract-request-types/` | GET | Diccionario de tipos de solicitud de contrato activos (`token`, `name`) |
+    | `/ov/dictionary/contract-request-types/` | GET | Diccionario de tipos de solicitud de contrato activos con sus tarifas y el precio de contratación y de cambio de nombre |
     | `/ov/dictionary/procedure-tariffs/` | GET | Diccionario de tarifas activas de trámites con precio fijo o tabla por calibre/consumo |
     | `/ov/properties/` | GET | Autocompletado de propiedades por dirección (resultados paginados) |
     | `/ov/addresses/` | GET | Autocompletado de direcciones de puntos de suministro con escalera, piso y puerta (resultados paginados) |
@@ -3334,6 +3334,16 @@ paths:
         El `name` de cada tarifa es el de la tarifa, salvo que sea genérico
         (`GENERAL`), vacío o solo espacios: entonces se devuelve el nombre del
         producto asociado.
+        Las tarifas de `registration_tariffs` y `change_of_name_tariffs`
+        incluyen además su coste, calculado igual que en
+        `/ov/dictionary/procedure-tariffs/`: `type_price` (`fixed` o
+        `variable`) y `price` (suma de los conceptos fijos, importe sin
+        impuestos; `null` si no tiene ninguno). Las de `water_tariffs` son
+        periódicas (se cobran con el consumo) y no llevan precio.
+        Cada tipo suma el coste del trámite en `registration_price` (alta) y
+        `change_of_name_price` (cambio de titularidad): `0` si no hay
+        tarifas y `null` si alguna no tiene precio fijo (va por tramos o no
+        tiene conceptos), porque entonces depende del punto de suministro.
         El `token` es el que debe enviarse como `procedure_type_token` al
         solicitar un trámite.
       operationId: listContractRequestTypesDictionary
@@ -3355,10 +3365,14 @@ paths:
                   registration_tariffs:
                     - token: registration-domestic
                       name: Alta doméstica
+                      type_price: fixed
+                      price: 65.4
                   water_tariffs:
                     - token: water-domestic
                       name: Agua doméstica
                   change_of_name_tariffs: []
+                  registration_price: 65.4
+                  change_of_name_price: 0
         "401":
           $ref: "#/components/responses/Unauthorized"
 
@@ -6014,6 +6028,8 @@ components:
         - registration_tariffs
         - water_tariffs
         - change_of_name_tariffs
+        - registration_price
+        - change_of_name_price
       properties:
         token:
           type: string
@@ -6029,9 +6045,9 @@ components:
           example: true
         registration_tariffs:
           type: array
-          description: Tarifas activas de alta/contratación asociadas; `[]` si no hay
+          description: Tarifas activas de alta/contratación asociadas, con su coste; `[]` si no hay
           items:
-            $ref: "#/components/schemas/DictionaryItem"
+            $ref: "#/components/schemas/ContractRequestTypeTariff"
         water_tariffs:
           type: array
           description: Tarifas activas de consumo de agua asociadas; `[]` si no hay
@@ -6039,9 +6055,50 @@ components:
             $ref: "#/components/schemas/DictionaryItem"
         change_of_name_tariffs:
           type: array
-          description: Tarifas activas de cambio de nombre asociadas; `[]` si no hay
+          description: Tarifas activas de cambio de nombre asociadas, con su coste; `[]` si no hay
           items:
-            $ref: "#/components/schemas/DictionaryItem"
+            $ref: "#/components/schemas/ContractRequestTypeTariff"
+        registration_price:
+          type: number
+          format: float
+          nullable: true
+          description: Suma de los `price` de `registration_tariffs` (importe sin impuestos del alta); `0` si no hay tarifas, `null` si alguna no tiene precio fijo
+          example: 65.4
+        change_of_name_price:
+          type: number
+          format: float
+          nullable: true
+          description: Suma de los `price` de `change_of_name_tariffs` (importe sin impuestos del cambio de titularidad); `0` si no hay tarifas, `null` si alguna no tiene precio fijo
+          example: 0
+
+    ContractRequestTypeTariff:
+      type: object
+      description: Tarifa de un tipo de solicitud con su coste
+      required:
+        - token
+        - name
+        - type_price
+        - price
+      properties:
+        token:
+          type: string
+          description: Token de la tarifa
+          example: registration-domestic
+        name:
+          type: string
+          description: Nombre de la tarifa (o del producto si es genérico)
+          example: Alta doméstica
+        type_price:
+          type: string
+          enum: [fixed, variable]
+          description: "`fixed` si todos los conceptos son importes fijos; `variable` si alguno se tarifa por tramos"
+          example: fixed
+        price:
+          type: number
+          format: float
+          nullable: true
+          description: Suma de los conceptos fijos (importe unitario sin impuestos); `null` si no hay conceptos fijos
+          example: 65.4
 
     DictionaryItem:
       type: object

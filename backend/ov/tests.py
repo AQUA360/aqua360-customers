@@ -2342,6 +2342,21 @@ class DictionaryEndpointsTests(TestCase):
         rate_blank = PriceRate.objects.create(
             token="dict-rate-blank", name="  ", is_active=True, product=product_blank
         )
+        # Cost de les tarifes de contractació i de canvi de nom: imports
+        # fixos (dos conceptes al canvi de nom per comprovar-ne la suma).
+        for rate, prices in ((rate_reg, (50.0,)), (rate_cn, (20.5, 4.25))):
+            billing_range = BillingRange.objects.create(
+                price_rate=rate, start=date(2026, 1, 1), is_active=True
+            )
+            for index, price in enumerate(prices):
+                LineItemType.objects.create(
+                    billing_range=billing_range,
+                    token=f"{rate.token}-lit-{index}",
+                    name=f"Concepte {index}",
+                    price=price,
+                )
+            rate.billing_range_active = billing_range
+            rate.save(update_fields=["billing_range_active"])
         cls.crt_b.registration_price_rates.set([rate_general, rate_blank])
         cls.crt_a.registration_price_rates.set([rate_reg, rate_off])
         cls.crt_a.price_rates.set([rate_water, rate_off])
@@ -2706,6 +2721,8 @@ class DictionaryEndpointsTests(TestCase):
                 "registration_tariffs",
                 "water_tariffs",
                 "change_of_name_tariffs",
+                "registration_price",
+                "change_of_name_price",
             },
         )
         names = [item["name"] or "" for item in response.data]
@@ -2723,16 +2740,68 @@ class DictionaryEndpointsTests(TestCase):
 
         self.assertEqual(
             [dict(r) for r in populated["registration_tariffs"]],
-            [{"token": "dict-rate-reg", "name": "Alta"}],
+            [
+                {
+                    "token": "dict-rate-reg",
+                    "name": "Alta",
+                    "type_price": "fixed",
+                    "price": 50.0,
+                }
+            ],
         )
+        # Les tarifes d'aigua són periòdiques: sense preu.
         self.assertEqual(
             [dict(r) for r in populated["water_tariffs"]],
             [{"token": "dict-rate-water", "name": "Aigua"}],
         )
         self.assertEqual(
             [dict(r) for r in populated["change_of_name_tariffs"]],
-            [{"token": "dict-rate-cn", "name": "Canvi de nom"}],
+            [
+                {
+                    "token": "dict-rate-cn",
+                    "name": "Canvi de nom",
+                    "type_price": "fixed",
+                    "price": 24.75,
+                }
+            ],
         )
+
+    def test_contract_request_types_return_package_prices(self):
+        _, ours = self._request_types_by_token()
+        populated = ours["dict-test-a"]
+
+        self.assertEqual(populated["registration_price"], 50.0)
+        self.assertEqual(populated["change_of_name_price"], 24.75)
+
+    def test_contract_request_types_sum_several_fixed_tariffs(self):
+        self.crt_a.registration_price_rates.add(
+            PriceRate.objects.get(token="TR-FIXED")
+        )
+
+        _, ours = self._request_types_by_token()
+
+        self.assertEqual(ours["dict-test-a"]["registration_price"], 150.0)
+
+    def test_contract_request_types_without_fixed_price_return_null_total(
+        self,
+    ):
+        # Tarifa per trams (calibre): el total depèn del punt de subministrament.
+        self.crt_a.registration_price_rates.add(
+            PriceRate.objects.get(token="TR-VAR")
+        )
+
+        _, ours = self._request_types_by_token()
+        populated = ours["dict-test-a"]
+
+        self.assertIsNone(populated["registration_price"])
+        by_token = {
+            item["token"]: item for item in populated["registration_tariffs"]
+        }
+        self.assertEqual(by_token["TR-VAR"]["type_price"], "variable")
+        self.assertIsNone(by_token["TR-VAR"]["price"])
+        self.assertEqual(by_token["dict-rate-reg"]["price"], 50.0)
+        # Les tarifes sense cap concepte tampoc tenen preu: total null.
+        self.assertIsNone(ours["dict-test-b"]["registration_price"])
 
     def test_contract_request_types_without_tariffs_return_empty_lists(self):
         _, ours = self._request_types_by_token()
@@ -2740,6 +2809,7 @@ class DictionaryEndpointsTests(TestCase):
 
         self.assertEqual(empty["water_tariffs"], [])
         self.assertEqual(empty["change_of_name_tariffs"], [])
+        self.assertEqual(empty["change_of_name_price"], 0)
 
     def test_contract_request_types_resolve_generic_tariff_names_from_product(
         self,
@@ -2747,10 +2817,13 @@ class DictionaryEndpointsTests(TestCase):
         _, ours = self._request_types_by_token()
 
         self.assertEqual(
-            [dict(r) for r in ours["dict-test-b"]["registration_tariffs"]],
             [
-                {"token": "dict-rate-blank", "name": "Producte alta buit"},
-                {"token": "dict-rate-general", "name": "Producte alta general"},
+                (r["token"], r["name"])
+                for r in ours["dict-test-b"]["registration_tariffs"]
+            ],
+            [
+                ("dict-rate-blank", "Producte alta buit"),
+                ("dict-rate-general", "Producte alta general"),
             ],
         )
 
