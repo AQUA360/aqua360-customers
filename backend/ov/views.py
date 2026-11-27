@@ -93,6 +93,7 @@ from service.models import Property, SupplyPoint
 from service.utils.route_scope import effective_route
 from ov.invoice_visibility import exclude_future_invoices
 from ov.invoice_returns import annotate_ov_returns
+from ov.blocked_dni import OVBlockedDniQueryMixin
 from ov.serializers import (
     BASE64_TOO_LARGE_CODE,
     SEPA_SIGNED_DEFAULT_FILENAME,
@@ -165,7 +166,7 @@ from ov.throttles import (
 logger = logging.getLogger(__name__)
 
 
-class ContractOVView(APIView):
+class ContractOVView(OVBlockedDniQueryMixin, APIView):
     """Detalle completo del contrato por `contract_token` (query string).
 
     `GET /ov/contract-detail/?contract_token=<token>` devuelve directamente
@@ -727,7 +728,7 @@ class CreateReadingOVView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-class ContractsListOVView(APIView):
+class ContractsListOVView(OVBlockedDniQueryMixin, APIView):
     """
     GET /ov/contracts/?dni=<DNI>[&estado=<token>][&page=<n>][&limit=<n>]
 
@@ -779,7 +780,7 @@ class ContractsListOVView(APIView):
         return paginator.get_paginated_response(serializer.data)
 
 
-class ContractDetailByTokenOVView(RetrieveAPIView):
+class ContractDetailByTokenOVView(OVBlockedDniQueryMixin, RetrieveAPIView):
     """GET /ov/contract/{token}/ — detalle completo de un contrato por token."""
 
     queryset = Contract.objects.select_related(
@@ -1013,7 +1014,7 @@ def _contract_billed_readings(queryset, contract, dni=None):
     )
 
 
-class ConsumptionHistoryOVView(APIView):
+class ConsumptionHistoryOVView(OVBlockedDniQueryMixin, APIView):
     """GET /ov/consumptions/?contract_token=<token>[&dni=&date_from=&date_to=&page=&page_size=]
 
     Historial de consumos facturados del contrato en nomenclatura HF
@@ -1126,7 +1127,7 @@ def _download_response(payload, content_type, filename):
     )
 
 
-class ConsumptionDownloadOVView(APIView):
+class ConsumptionDownloadOVView(OVBlockedDniQueryMixin, APIView):
     """GET /ov/consumption/{id}/download/?contract_token=<token>[&dni=<DNI>][&format=pdf|csv]
 
     Descarga el fichero de una única lectura del historial de consumos. El `id`
@@ -2228,7 +2229,7 @@ class AddressesOVView(APIView):
         return paginator.get_paginated_response(serializer.data)
 
 
-class PersonDataOVView(APIView):
+class PersonDataOVView(OVBlockedDniQueryMixin, APIView):
     """GET /ov/person-data/?dni=<DNI>
 
     Dades de contacte de la persona identificada pel DNI: telèfons, correus
@@ -2327,7 +2328,7 @@ def _parse_ov_iso_date(value):
         return None
 
 
-class PersonInvoicesOVView(APIView):
+class PersonInvoicesOVView(OVBlockedDniQueryMixin, APIView):
     """GET /ov/person-invoices/?dni=<DNI>[&date_from=YYYY-MM-DD][&date_to=YYYY-MM-DD]
 
     Totes les factures on la persona ha estat titular o pagadora, segons les
@@ -2437,7 +2438,7 @@ class PersonInvoicesOVView(APIView):
         }
 
 
-class PersonContractsOVView(APIView):
+class PersonContractsOVView(OVBlockedDniQueryMixin, APIView):
     """GET /ov/person-contracts/?dni=<DNI>[&role=holder|payer][&related_now=true|false][&page=<n>][&limit=<n>]
 
     Contractes actuals i antics d'una persona, amb el seu paper a cadascun.
@@ -2797,7 +2798,7 @@ def _resolve_payment_receipt_language(request):
     return "ca"
 
 
-class PaymentReceiptOVView(APIView):
+class PaymentReceiptOVView(OVBlockedDniQueryMixin, APIView):
     """GET /ov/payment-receipt/?contract_token=&payment_token=&dni=
 
     Returns the in-memory PDF proof of payment ("Justificant de pagament") for

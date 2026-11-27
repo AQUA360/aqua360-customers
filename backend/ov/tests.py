@@ -8681,7 +8681,7 @@ class PersonInvoicesOVTests(TestCase):
         self.assertIn("PINV-1", self._invoices(response))
 
     def test_unknown_dni_returns_empty_results(self):
-        response = self._get(dni="99999999R")
+        response = self._get(dni="87654321X")
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data, {"results": []})
@@ -9087,7 +9087,7 @@ class PersonContractsOVTests(TestCase):
         self.assertEqual(set(self._by_token(response)), set(self.EXPECTED))
 
     def test_unknown_dni_returns_empty_results(self):
-        response = self._get(dni="99999999R")
+        response = self._get(dni="87654321X")
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["count"], 0)
@@ -10069,3 +10069,131 @@ class UpdateIbanDirectDebitOVTests(TestCase):
         self.assertTrue(
             GeneralPaymentSepaDocument.objects.filter(general_payment=self.contract.payment).exists()
         )
+
+
+class OVBlockedDniTests(TestCase):
+    """Els DNI genèrics (99999999R) es rebutgen a tots els endpoints de l'OV
+    que reben un DNI, abans de cap consulta, encara que hi hagi dades."""
+
+    BLOCKED_VARIANTS = ("99999999R", " 99.999.999-r ")
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(
+            username="ov-blocked-dni-test", password="not-used"
+        )
+        cls.user.groups.add(Group.objects.get_or_create(name="ov")[0])
+        # Una fitxa amb el DNI genèric: no s'ha de poder consultar.
+        Person.objects.create(token="99999999R", name="Generic", surname="Dni")
+        ConfigProject.objects.get_or_create(
+            token="contract_terminated_status", defaults={"value": "-1"}
+        )
+
+    def setUp(self):
+        cache.clear()
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def _assert_query_blocked(self, url, extra=None):
+        for dni in self.BLOCKED_VARIANTS:
+            with self.subTest(url=url, dni=dni):
+                cache.clear()
+                response = self.client.get(url, {**(extra or {}), "dni": dni})
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(response.data, {"error": "DNI not allowed"})
+
+    def test_query_endpoints_reject_blocked_dni(self):
+        contract = {"contract_token": "ANY"}
+        cases = [
+            (reverse("contracts-ov"), None),
+            (reverse("person-data-ov"), None),
+            (reverse("person-invoices-ov"), None),
+            (reverse("person-contracts-ov"), None),
+            (
+                reverse("payment-receipt-ov"),
+                {"contract_token": "ANY", "payment_token": "ANY"},
+            ),
+            (reverse("consumptions-ov"), contract),
+            (reverse("consumption-download-ov", args=[1]), contract),
+            (reverse("contract-ov"), contract),
+            (reverse("contract-detail-by-token-ov", args=["ANY"]), None),
+        ]
+        for url, extra in cases:
+            self._assert_query_blocked(url, extra)
+
+    def test_other_dni_is_not_blocked(self):
+        response = self.client.get(reverse("person-data-ov"), {"dni": "87654321X"})
+
+        self.assertEqual(response.status_code, 404)
+
+    def _assert_field_blocked(self, url, payload, path, query=None):
+        if query:
+            url = f"{url}?{query}"
+        response = self.client.post(url, payload, format="json")
+        self.assertEqual(response.status_code, 400)
+        errors = response.data
+        for key in path:
+            errors = errors[key]
+        self.assertEqual([str(error) for error in errors], ["DNI not allowed."])
+
+    def test_consumptions_download_rejects_blocked_dni(self):
+        self._assert_field_blocked(
+            reverse("consumptions-download-ov"),
+            {"contract_token": "ANY", "dni": " 99.999.999-r "},
+            ["dni"],
+        )
+
+    def test_update_iban_rejects_blocked_dni(self):
+        Contract.objects.create(token="OV-BLOCKED-DNI")
+        for field in ("nif", "iban_holder_dni"):
+            with self.subTest(field=field):
+                cache.clear()
+                payload = {
+                    "iban": "ES9121000418450200051332",
+                    "nif": "87654321X",
+                    "iban_holder_name": "Nom",
+                    "iban_holder_dni": "87654321X",
+                    field: "99999999R",
+                }
+                self._assert_field_blocked(
+                    reverse("update-iban-ov"),
+                    payload,
+                    ["error", field],
+                    query="contract_token=OV-BLOCKED-DNI",
+                )
+
+    def test_contract_procedure_rejects_blocked_dni(self):
+        for field in ("holder_dni", "iban_holder_dni"):
+            with self.subTest(field=field):
+                self._assert_field_blocked(
+                    reverse("contract-procedure-ov"),
+                    {"holder_dni": "87654321X", field: "99999999R"},
+                    [field],
+                )
+        self.assertEqual(Person.objects.filter(token="87654321X").count(), 0)
+
+    def test_contract_termination_rejects_blocked_dni(self):
+        self._assert_field_blocked(
+            reverse("contract-termination-procedure-ov"),
+            {"contract_token": "ANY", "holder_dni": "99999999R", "reason_token": "1"},
+            ["holder_dni"],
+        )
+
+    def test_contract_change_rejects_blocked_dni(self):
+        cases = [
+            ("outgoing", "holder_dni"),
+            ("incoming", "holder_dni"),
+            ("incoming", "iban_holder_dni"),
+        ]
+        for block, field in cases:
+            with self.subTest(block=block, field=field):
+                payload = {
+                    "outgoing": {"contract_token": "ANY", "holder_dni": "87654321X"},
+                    "incoming": {"holder_dni": "12345678Z"},
+                }
+                payload[block][field] = "99999999R"
+                self._assert_field_blocked(
+                    reverse("contract-change-procedure-ov"),
+                    payload,
+                    [block, field],
+                )

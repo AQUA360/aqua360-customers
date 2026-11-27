@@ -4,6 +4,7 @@ from django.conf import settings
 from rest_framework import serializers
 from ov.invoice_visibility import exclude_future_invoices
 from ov.invoice_returns import ov_return_info
+from ov.blocked_dni import reject_ov_blocked_dni
 from contract.models import (
     Contract,
     ContractDataChange,
@@ -473,9 +474,13 @@ IBAN_BASIC_FORMAT = re.compile(r"^[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}$")
 
 class UpdateBillingDataOVIBANSerializer(serializers.Serializer):
     iban = serializers.CharField(required=True, max_length=64)
-    nif = serializers.CharField(required=True, max_length=50)
+    nif = serializers.CharField(
+        required=True, max_length=50, validators=[reject_ov_blocked_dni]
+    )
     iban_holder_name = serializers.CharField(required=True, max_length=255)
-    iban_holder_dni = serializers.CharField(required=True, max_length=50)
+    iban_holder_dni = serializers.CharField(
+        required=True, max_length=50, validators=[reject_ov_blocked_dni]
+    )
 
     def validate(self, data):
         """Validate input data"""
@@ -1893,7 +1898,12 @@ class ConsumptionDownloadRequestSerializer(serializers.Serializer):
     contract_token = serializers.CharField(required=True)
     # Opcional: només les lectures facturades a aquesta persona (titular o
     # pagadora). Buit o nul, com si no hi fos.
-    dni = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    dni = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        validators=[reject_ov_blocked_dni],
+    )
     reading_ids = serializers.ListField(
         child=serializers.IntegerField(), required=False, allow_empty=True
     )
@@ -2918,7 +2928,9 @@ class ContractProcedureRequestSerializer(ProcedureNewHolderSerializer):
     titular (vegeu `ProcedureNewHolderSerializer`).
     """
 
-    holder_dni = serializers.CharField(max_length=255)
+    holder_dni = serializers.CharField(
+        max_length=255, validators=[reject_ov_blocked_dni]
+    )
     property_token = serializers.CharField(max_length=255)
     supply_point_token = serializers.CharField(
         max_length=255, required=False, allow_blank=True, allow_null=True
@@ -2932,7 +2944,11 @@ class ContractProcedureRequestSerializer(ProcedureNewHolderSerializer):
         max_length=255, required=False, allow_blank=True, allow_null=True
     )
     iban_holder_dni = serializers.CharField(
-        max_length=255, required=False, allow_blank=True, allow_null=True
+        max_length=255,
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        validators=[reject_ov_blocked_dni],
     )
     iban_holder_swift = serializers.CharField(
         max_length=11, required=False, allow_blank=True, allow_null=True
@@ -3009,7 +3025,9 @@ class ContractTerminationProcedureRequestSerializer(serializers.Serializer):
     """
 
     contract_token = serializers.CharField(max_length=255)
-    holder_dni = serializers.CharField(max_length=255)
+    holder_dni = serializers.CharField(
+        max_length=255, validators=[reject_ov_blocked_dni]
+    )
     observation = serializers.CharField(max_length=1000, required=False, allow_blank=True, allow_null=True)
     reason_token = serializers.CharField(
         max_length=255
@@ -3067,7 +3085,9 @@ class ContractChangeOutgoingSerializer(serializers.Serializer):
     """
 
     contract_token = serializers.CharField(max_length=255)
-    holder_dni = serializers.CharField(max_length=255)
+    holder_dni = serializers.CharField(
+        max_length=255, validators=[reject_ov_blocked_dni]
+    )
     reason_token = serializers.CharField(
         max_length=255, required=False, allow_blank=True, allow_null=True
     )
@@ -3110,7 +3130,9 @@ class ContractChangeIncomingSerializer(ProcedureNewHolderSerializer):
     `holder` (o `None` si s'ha de crear).
     """
 
-    holder_dni = serializers.CharField(max_length=255)
+    holder_dni = serializers.CharField(
+        max_length=255, validators=[reject_ov_blocked_dni]
+    )
     procedure_type_token = serializers.CharField(max_length=255)
     payment_type_token = serializers.CharField(max_length=255)
     iban = serializers.CharField(
@@ -3120,7 +3142,11 @@ class ContractChangeIncomingSerializer(ProcedureNewHolderSerializer):
         max_length=255, required=False, allow_blank=True, allow_null=True
     )
     iban_holder_dni = serializers.CharField(
-        max_length=255, required=False, allow_blank=True, allow_null=True
+        max_length=255,
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        validators=[reject_ov_blocked_dni],
     )
     iban_holder_swift = serializers.CharField(
         max_length=11, required=False, allow_blank=True, allow_null=True
