@@ -304,3 +304,141 @@ class InsolvencyErrorMessagesTestCase(TestCase):
             codes |= set(re.findall(r"InsolvencyProcessError\('([a-z_]+)'\)", Path(module.__file__).read_text()))
         self.assertTrue(codes)
         self.assertEqual(sorted(codes - set(insolvency_service.ERROR_MESSAGES)), [])
+
+
+class InsolvencyInvoiceDelinquencyTestCase(TestCase):
+    """Factures del procés a morositat o irrecuperable: decisió manual de l'usuari (#3025)."""
+
+    def setUp(self):
+        from billing.models import PaymentStatus
+        disconnect_payment_signals()
+        self.addCleanup(reconnect_payment_signals)
+        ConfigProject.objects.get_or_create(token='contract_terminated_status', defaults={'value': '0'})
+        configs = {
+            'invoice_status_confirmed_token': '2', 'invoice_status_expired_token': '-1',
+            'invoice_status_endowment_token': '-3', 'invoice_status_irrecoverable_token': '-5',
+            'invoice_status_paid_token': '0', 'invoice_status_cancelled_token': '-6',
+            'payment_status_endowment_token': '-3', 'payment_status_irrecoverable_token': '-5',
+            'payment_status_paid_token': '0', 'payment_status_pending_token': '1',
+            'payment_status_piggy_token': '5',
+        }
+        for token, value in configs.items():
+            ConfigProject.objects.update_or_create(token=token, defaults={'value': value})
+        names = {'2': 'Confirmada', '-1': 'Vençuda', '-3': 'Morositat', '-5': 'Irrecuperable', '0': 'Pagada',
+                 '-6': 'Abonada'}
+        self.invoice_status = {token: InvoiceStatus.objects.get_or_create(token=token, defaults={'name': name})[0]
+                               for token, name in names.items()}
+        self.payment_status = {token: PaymentStatus.objects.get_or_create(token=token, defaults={'name': token})[0]
+                               for token in ('1', '0', '-3', '-5', '5')}
+
+        self.user = User.objects.create_user('insolvency-3025', 'insolvency-3025@example.com', 'x')
+        self.user.user_permissions.add(_perm('billing.view_payment'), _perm('billing.add_payment'))
+        self.person = Person.objects.create(token='PERSON-3025', name='Prova')
+        self.other = Person.objects.create(token='PERSON-OTHER-3025', name='Altra')
+        self.contract = Contract.objects.create(token='C-3025', holder=self.person, is_active=True)
+
+        self.confirmed = self._invoice('F-CONF', '2')
+        self.expired = self._invoice('F-EXP', '-1')
+        self.paid = self._invoice('F-PAID', '0')
+        self.endowment = self._invoice('F-END', '-3', endowment_date=date(2026, 4, 1))
+        self.before = self._invoice('F-OLD', '2', issue_date=date(2026, 1, 10))
+        self.other_invoice = Invoice.objects.create(token='F-OTHER', person=self.other, issue_date=date(2026, 3, 1),
+                                                    status=self.invoice_status['2'], total_final=10)
+        self.pending_payment = Payment.objects.create(invoice=self.confirmed, status=self.payment_status['1'], amount=10)
+        self.paid_payment = Payment.objects.create(invoice=self.confirmed, status=self.payment_status['0'], amount=5)
+
+        self.process = create_insolvency_process(person=self.person, kind=InsolvencyProcess.KIND_CREDITORS,
+                                                 start_date=date(2026, 2, 1), user=self.user)
+        self.factory = APIRequestFactory()
+
+    def _invoice(self, token, status, issue_date=date(2026, 3, 1), **kwargs):
+        return Invoice.objects.create(token=token, person=self.person, contract=self.contract, issue_date=issue_date,
+                                      status=self.invoice_status[status], total_final=15, **kwargs)
+
+    def _change(self, ids, target):
+        from billing.utils.insolvency_service import change_invoices_delinquency_status
+        return change_invoices_delinquency_status(self.process, ids, target, self.user)
+
+    def test_targets_in_process_detail(self):
+        targets = {row['id']: row['delinquency_targets']
+                   for row in InsolvencyProcessSerializer(self.process).data['invoices']}
+        self.assertEqual(targets[self.confirmed.id], ['endowment', 'irrecoverable'])
+        self.assertEqual(targets[self.expired.id], ['endowment', 'irrecoverable'])
+        self.assertEqual(targets[self.endowment.id], ['irrecoverable'])
+        self.assertEqual(targets[self.paid.id], [])
+        self.assertNotIn(self.before.id, targets)
+
+    def test_endowment_changes_invoice_and_pending_payments_with_log(self):
+        from logger.models import LogInvoiceChangeStatus, LogPaymentStatusChange
+        self.assertEqual(self._change([self.confirmed.id, self.expired.id], 'endowment'), 2)
+        for invoice in (self.confirmed, self.expired):
+            invoice.refresh_from_db()
+            self.assertEqual(invoice.status.token, '-3')
+            self.assertIsNotNone(invoice.endowment_date)
+            self.assertIsNone(invoice.irrecoverable_date)
+        self.pending_payment.refresh_from_db()
+        self.paid_payment.refresh_from_db()
+        self.assertEqual(self.pending_payment.status.token, '-3')
+        self.assertEqual(self.paid_payment.status.token, '0')
+        log = LogInvoiceChangeStatus.objects.get(object=self.confirmed)
+        self.assertEqual((log.previous_status.token, log.current_status.token, log.user), ('2', '-3', self.user))
+        self.assertEqual(LogPaymentStatusChange.objects.filter(object=self.pending_payment).count(), 1)
+        self.assertFalse(LogPaymentStatusChange.objects.filter(object=self.paid_payment).exists())
+
+    def test_endowment_invoice_can_go_to_irrecoverable(self):
+        self._change([self.endowment.id], 'irrecoverable')
+        self.endowment.refresh_from_db()
+        self.assertEqual(self.endowment.status.token, '-5')
+        self.assertEqual(self.endowment.endowment_date, date(2026, 4, 1))
+        self.assertIsNotNone(self.endowment.irrecoverable_date)
+
+    def test_pending_invoice_straight_to_irrecoverable_sets_both_dates(self):
+        self._change([self.confirmed.id], 'irrecoverable')
+        self.confirmed.refresh_from_db()
+        self.assertEqual(self.confirmed.status.token, '-5')
+        self.assertIsNotNone(self.confirmed.endowment_date)
+        self.assertIsNotNone(self.confirmed.irrecoverable_date)
+
+    def test_invalid_selection_changes_nothing(self):
+        cases = [
+            ([self.confirmed.id, self.paid.id], 'endowment'),          # una de pagada
+            ([self.confirmed.id, self.endowment.id], 'endowment'),     # ja és a morositat
+            ([self.confirmed.id, self.before.id], 'endowment'),        # anterior a la data del procés
+            ([self.confirmed.id, self.other_invoice.id], 'endowment'),  # d'una altra persona
+        ]
+        for ids, target in cases:
+            with self.assertRaises(InsolvencyProcessError) as raised:
+                self._change(ids, target)
+            self.assertEqual(raised.exception.code, 'invalid_invoices')
+        self.confirmed.refresh_from_db()
+        self.assertEqual(self.confirmed.status.token, '2')
+        for ids, target, code in (([], 'endowment', 'no_invoices'), ([self.confirmed.id], 'paid', 'invalid_target'),
+                                  (['x'], 'endowment', 'invalid_ids')):
+            with self.assertRaises(InsolvencyProcessError) as raised:
+                self._change(ids, target)
+            self.assertEqual(raised.exception.code, code)
+
+    def test_closed_process_uses_its_invoices(self):
+        close_insolvency_process(self.process, self.user, date(2026, 6, 1))
+        later = self._invoice('F-LATER', '2', issue_date=date(2026, 7, 1))
+        with self.assertRaises(InsolvencyProcessError):
+            self._change([later.id], 'irrecoverable')
+        self._change([self.confirmed.id], 'irrecoverable')
+        self.confirmed.refresh_from_db()
+        self.assertEqual(self.confirmed.status.token, '-5')
+
+    def test_api(self):
+        request = self.factory.post('/billing/insolvency-process/', {
+            'invoice_ids': [self.confirmed.id], 'target': 'endowment'}, format='json')
+        force_authenticate(request, user=User.objects.get(pk=self.user.pk))
+        response = InsolvencyProcessViewSet.as_view({'post': 'invoice_status'})(request, pk=self.process.pk)
+        self.assertEqual(response.status_code, 200, response.data)
+        row = next(row for row in response.data['invoices'] if row['id'] == self.confirmed.id)
+        self.assertEqual(row['delinquency_targets'], ['irrecoverable'])
+
+        request = self.factory.post('/billing/insolvency-process/', {
+            'invoice_ids': [self.paid.id], 'target': 'endowment'}, format='json')
+        force_authenticate(request, user=User.objects.get(pk=self.user.pk))
+        response = InsolvencyProcessViewSet.as_view({'post': 'invoice_status'})(request, pk=self.process.pk)
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(set(response.data), {'error'})

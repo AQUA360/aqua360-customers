@@ -2,7 +2,12 @@ from rest_framework import serializers
 
 from auth.serializers import UserMinimalSerializer
 from billing.models import InsolvencyProcess, InsolvencyProcessContract
-from billing.utils.insolvency_service import eligible_invoices, excluded_invoice_status_tokens
+from billing.utils.insolvency_service import (
+    delinquency_status_tokens,
+    delinquency_targets,
+    excluded_invoice_status_tokens,
+    process_invoices,
+)
 
 
 class InsolvencyInvoiceSerializer(serializers.Serializer):
@@ -13,6 +18,14 @@ class InsolvencyInvoiceSerializer(serializers.Serializer):
     left_to_pay = serializers.DecimalField(max_digits=12, decimal_places=2, allow_null=True)
     status_name = serializers.CharField(source='status.name', allow_null=True, default=None)
     contract_token = serializers.CharField(source='contract.token', allow_null=True, default=None)
+    # Estats als quals l'usuari la pot passar: endowment (morositat) i/o irrecoverable
+    delinquency_targets = serializers.SerializerMethodField()
+
+    def get_delinquency_targets(self, obj):
+        # Una sola lectura de la configuració per a totes les files
+        if 'insolvency_delinquency_tokens' not in self.context:
+            self.context['insolvency_delinquency_tokens'] = delinquency_status_tokens()
+        return delinquency_targets(obj, self.context['insolvency_delinquency_tokens'])
 
 
 class InsolvencyContractSerializer(serializers.Serializer):
@@ -72,7 +85,7 @@ class InsolvencyProcessListSerializer(serializers.ModelSerializer):
 
     def get_invoices_count(self, obj):
         if obj.status == InsolvencyProcess.STATUS_OPEN:
-            return eligible_invoices(obj.person, obj.start_date, self._excluded_status()).count()
+            return process_invoices(obj, self._excluded_status()).count()
         return getattr(obj, 'invoices_count', None) or obj.invoices.count()
 
     def get_person_name(self, obj):
@@ -101,11 +114,8 @@ class InsolvencyProcessSerializer(InsolvencyProcessListSerializer):
 
     def get_invoices(self, obj):
         # Obert: totes les factures emeses des de la data, també les noves; tancat: les que hi havia en tancar-lo
-        if obj.status == InsolvencyProcess.STATUS_OPEN:
-            invoices = eligible_invoices(obj.person, obj.start_date, self._excluded_status()).select_related('contract')
-        else:
-            invoices = obj.invoices.all()
-        return InsolvencyInvoiceSerializer(invoices, many=True).data
+        invoices = process_invoices(obj, self._excluded_status()).select_related('contract')
+        return InsolvencyInvoiceSerializer(invoices, many=True, context=self.context).data
 
     def get_documents(self, obj):
         return [

@@ -21,6 +21,7 @@ from billing.serializers.insolvency_process_serializer import (
 )
 from billing.utils.insolvency_service import (
     InsolvencyProcessError,
+    change_invoices_delinquency_status,
     close_insolvency_process,
     create_insolvency_process,
     eligible_invoices,
@@ -139,6 +140,18 @@ class InsolvencyProcessViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
             end_date = _get_date(request.data.get('end_date')) if request.data.get('end_date') else None
             close_insolvency_process(process, request.user, end_date,
                                      restore_payment=request.data.get('restore_payment') is True)
+        except InsolvencyProcessError as error:
+            return Response({'error': insolvency_error_message(error.code)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(InsolvencyProcessSerializer(self.get_queryset().get(pk=process.pk)).data)
+
+    @action(detail=True, methods=['post'], url_path='invoice-status')
+    def invoice_status(self, request, pk=None):
+        """Passa les factures seleccionades del procés a morositat o a irrecuperable (decisió manual).
+        Cos: {"invoice_ids": [...], "target": "endowment" | "irrecoverable"}."""
+        process = self.get_object()
+        try:
+            change_invoices_delinquency_status(process, request.data.get('invoice_ids'),
+                                               request.data.get('target'), request.user)
         except InsolvencyProcessError as error:
             return Response({'error': insolvency_error_message(error.code)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(InsolvencyProcessSerializer(self.get_queryset().get(pk=process.pk)).data)

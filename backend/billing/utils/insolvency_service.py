@@ -36,6 +36,10 @@ ERROR_MESSAGES = {
     'no_iban': 'Algun contracte no té compte bancari per domiciliar-lo.',
     'already_closed': 'El procés ja està tancat.',
     'close_before_start': "La data de tancament no pot ser anterior a l'inici de l'anomalia.",
+    'invalid_target': 'Estat de destinació no vàlid.',
+    'no_invoices': 'Cal seleccionar alguna factura.',
+    'invalid_invoices': "Alguna factura no és del procés o ja no es pot passar a aquest estat.",
+    'missing_status': "No hi ha configurat l'estat de morositat o d'irrecuperable.",
 }
 GENERIC_ERROR_MESSAGE = "No s'ha pogut desar el procés d'insolvència."
 
@@ -369,6 +373,109 @@ def close_insolvency_process(process, user, end_date=None, restore_payment=False
             if update_fields:
                 row.save(update_fields=update_fields)
     return process
+
+
+# ---------------------------------------------------------------------------
+# Factures del procés a morositat o irrecuperable (decisió manual de l'usuari)
+# ---------------------------------------------------------------------------
+
+TARGET_ENDOWMENT = 'endowment'
+TARGET_IRRECOVERABLE = 'irrecoverable'
+
+
+def process_invoices(process, excluded_status=None):
+    """Factures del procés: obert, totes les emeses des de la data; tancat, les que hi havia en tancar-lo."""
+    from billing.models import InsolvencyProcess
+    if process.status == InsolvencyProcess.STATUS_OPEN:
+        return eligible_invoices(process.person, process.start_date, excluded_status)
+    return process.invoices.select_related('status').order_by('issue_date', 'id')
+
+
+def delinquency_status_tokens():
+    """Tokens d'estat de factura: els pendents de cobrar, morositat i irrecuperable."""
+    return {
+        'pending': [value for value in (
+            _config_value('invoice_status_confirmed_token'),
+            _config_value('invoice_status_expired_token'),
+        ) if value],
+        TARGET_ENDOWMENT: _config_value('invoice_status_endowment_token'),
+        TARGET_IRRECOVERABLE: _config_value('invoice_status_irrecoverable_token'),
+    }
+
+
+def delinquency_targets(invoice, tokens):
+    """Estats als quals es pot passar la factura, com a la gestió de morositat: una pendent de
+    cobrar pot anar a morositat o a irrecuperable; una en morositat, només a irrecuperable."""
+    if not invoice.total_final or invoice.total_final <= 0:
+        return []
+    status_token = invoice.status.token if invoice.status_id and invoice.status else None
+    if not status_token:
+        return []
+    if status_token == tokens[TARGET_ENDOWMENT]:
+        return [TARGET_IRRECOVERABLE]
+    if status_token in tokens['pending']:
+        return [TARGET_IRRECOVERABLE] if invoice.endowment_date else [TARGET_ENDOWMENT, TARGET_IRRECOVERABLE]
+    return []
+
+
+def change_invoices_delinquency_status(process, invoice_ids, target, user):
+    """Passa les factures seleccionades del procés a morositat o a irrecuperable.
+
+    Igual que la gestió de morositat: estat de la factura, data de morositat i/o d'irrecuperable,
+    i els cobraments pendents al mateix estat. Queda a l'historial d'estats de cada factura i de
+    cada cobrament. Si alguna factura no és del procés o no es pot passar a l'estat, no es canvia res.
+    """
+    from billing.models import Invoice, InvoiceStatus, Payment, PaymentStatus
+    from billing.utils.payment_service import log_invoice_status, log_payment_status
+
+    if target not in (TARGET_ENDOWMENT, TARGET_IRRECOVERABLE):
+        raise InsolvencyProcessError('invalid_target')
+    ids = set(_parse_ids(invoice_ids))
+    if not ids:
+        raise InsolvencyProcessError('no_invoices')
+    tokens = delinquency_status_tokens()
+    invoice_status = InvoiceStatus.objects.filter(token=tokens[target]).first() if tokens[target] else None
+    payment_token = _config_value(f'payment_status_{target}_token')
+    payment_status = PaymentStatus.objects.filter(token=payment_token).first() if payment_token else None
+    if not invoice_status or not payment_status:
+        raise InsolvencyProcessError('missing_status')
+    # Cobraments que ja no estan pendents: no es toquen
+    settled_payment_tokens = [value for value in (
+        _config_value('payment_status_paid_token'),
+        _config_value('payment_status_piggy_token'),
+        _config_value('payment_status_cancelled_token'),
+        _config_value('payment_status_payoff_token'),
+        _config_value('payment_status_dropped_token'),
+    ) if value]
+
+    today = timezone.now().date()
+    with transaction.atomic():
+        if set(process_invoices(process).filter(id__in=ids).values_list('id', flat=True)) != ids:
+            raise InsolvencyProcessError('invalid_invoices')
+        # Es bloquegen i es tornen a validar: l'estat pot haver canviat des que es va carregar la llista
+        invoices = list(Invoice.objects.select_for_update().filter(id__in=ids).order_by('id'))
+        for invoice in invoices:
+            if target not in delinquency_targets(invoice, tokens):
+                raise InsolvencyProcessError('invalid_invoices')
+        for invoice in invoices:
+            log_invoice_status(invoice, invoice_status, user)
+            fields = {'status': invoice_status}
+            if target == TARGET_ENDOWMENT or not invoice.endowment_date:
+                fields['endowment_date'] = today
+            if target == TARGET_IRRECOVERABLE:
+                fields['irrecoverable_date'] = today
+            # update(): sense els senyals de desar la factura, com la gestió de morositat
+            Invoice.objects.filter(pk=invoice.pk).update(**fields)
+        payments = list(
+            Payment.objects.filter(invoice_id__in=ids)
+            .exclude(status__token__in=settled_payment_tokens)
+            .exclude(status=payment_status)
+            .select_related('status')
+        )
+        for payment in payments:
+            log_payment_status(payment, payment_status, user, today)
+        Payment.objects.filter(id__in=[payment.id for payment in payments]).update(status=payment_status)
+    return len(invoices)
 
 
 # ---------------------------------------------------------------------------

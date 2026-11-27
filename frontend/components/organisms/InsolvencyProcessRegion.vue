@@ -42,9 +42,51 @@ const closing = ref(false);
 const paymentChanges = computed(() => (data.value?.contracts || []).filter((row) => row.new_payment_type_name));
 const invalidCloseDate = computed(() => !closeDate.value || (!!data.value?.start_date && closeDate.value < data.value.start_date));
 
+// Factures a morositat o irrecuperable: decisió manual sobre les seleccionades. Cada factura diu
+// a quins estats pot passar (delinquency_targets); el servidor ho torna a validar.
+const canChangeInvoiceStatus = computed(() => !!props.permissions?.can_add);
+const selectedInvoiceIds = ref([]);
+const changingStatus = ref(false);
+const selectableInvoices = computed(() => (data.value?.invoices || []).filter((invoice) => invoice.delinquency_targets?.length));
+const selectedInvoices = computed(() => (data.value?.invoices || []).filter((invoice) => selectedInvoiceIds.value.includes(invoice.id)));
+const allSelected = computed(() => selectableInvoices.value.length > 0
+  && selectableInvoices.value.every((invoice) => selectedInvoiceIds.value.includes(invoice.id)));
+const canApplyTarget = (target) => selectedInvoices.value.length > 0
+  && selectedInvoices.value.every((invoice) => invoice.delinquency_targets?.includes(target));
+const invoiceGrid = computed(() => (canChangeInvoiceStatus.value
+  ? 'grid-cols-[2rem,1.2fr,1fr,1fr,1fr,1fr]'
+  : 'grid-cols-[1.2fr,1fr,1fr,1fr,1fr]'));
+
+const toggleAllInvoices = () => {
+  selectedInvoiceIds.value = allSelected.value ? [] : selectableInvoices.value.map((invoice) => invoice.id);
+};
+
+const changeInvoiceStatus = async (target) => {
+  if (!canApplyTarget(target) || changingStatus.value) return;
+  const n = selectedInvoices.value.length;
+  if (!confirm(t(`insolvency.confirm_invoice_status.${target}`, { n }))) return;
+  const currentId = props.id;
+  changingStatus.value = true;
+  try {
+    const result = await $InsolvencyProcessApiService.changeInvoiceStatus(currentId, selectedInvoiceIds.value, target);
+    if (currentId !== props.id) return;
+    data.value = result;
+    selectedInvoiceIds.value = [];
+    toast.success(t('insolvency.invoice_status_changed', { n }));
+    emit('change');
+  } catch (err) {
+    // L'error ja surt al toast; es recarrega perquè la llista mostri l'estat real de les factures
+    console.error(err);
+    if (currentId === props.id) await getData();
+  } finally {
+    changingStatus.value = false;
+  }
+};
+
 const getData = async () => {
   const currentId = props.id;
   showClose.value = false;
+  selectedInvoiceIds.value = [];
   pending.value = true;
   error.value = null;
   try {
@@ -187,9 +229,31 @@ watch(() => props.id, getData);
         </FieldDetail>
       </div>
 
-      <h2 class="mt-4 mb-1 font-semibold text-slate-700">{{ t('insolvency.invoices') }} ({{ data.invoices.length }})</h2>
+      <div class="mt-4 mb-1 flex flex-wrap items-center justify-between gap-2">
+        <h2 class="font-semibold text-slate-700">{{ t('insolvency.invoices') }} ({{ data.invoices.length }})</h2>
+        <div v-if="canChangeInvoiceStatus && selectableInvoices.length" class="flex flex-wrap items-center gap-2">
+          <span class="text-xs text-slate-500">{{ t('insolvency.selected_invoices', { n: selectedInvoices.length }) }}</span>
+          <button type="button" class="button-default-xs text-xs flex items-center gap-1"
+            :disabled="!canApplyTarget('endowment') || changingStatus" @click="changeInvoiceStatus('endowment')">
+            <Icon :name="changingStatus ? 'fa6-solid:spinner' : 'fa6-solid:triangle-exclamation'" :class="{ 'animate-spin': changingStatus }" />
+            {{ t('insolvency.to_endowment') }}
+          </button>
+          <button type="button" class="button-default-xs text-xs flex items-center gap-1"
+            :disabled="!canApplyTarget('irrecoverable') || changingStatus" @click="changeInvoiceStatus('irrecoverable')">
+            <Icon :name="changingStatus ? 'fa6-solid:spinner' : 'fa6-solid:ban'" :class="{ 'animate-spin': changingStatus }" />
+            {{ t('insolvency.to_irrecoverable') }}
+          </button>
+        </div>
+      </div>
+      <p v-if="canChangeInvoiceStatus && selectableInvoices.length" class="mb-1 text-xs text-slate-500">
+        {{ t('insolvency.invoice_status_help') }}
+      </p>
       <div v-if="data.invoices.length" class="rounded-md border border-gray-300 divide-y bg-white">
-        <div class="grid grid-cols-[1.2fr,1fr,1fr,1fr,1fr] divide-x text-sm leading-4">
+        <div class="grid divide-x text-sm leading-4" :class="invoiceGrid">
+          <span v-if="canChangeInvoiceStatus" class="p-2 flex items-center justify-center">
+            <input type="checkbox" :checked="allSelected" :disabled="!selectableInvoices.length || changingStatus"
+              :title="t('insolvency.select_all')" @change="toggleAllInvoices" />
+          </span>
           <span class="p-2 pl-3 text-slate-600">{{ t('invoice') }}</span>
           <span class="p-2 pl-3 text-slate-600">{{ t('common.date') }}</span>
           <span class="p-2 pl-3 text-slate-600">{{ t('insolvency.contract') }}</span>
@@ -197,7 +261,11 @@ watch(() => props.id, getData);
           <span class="p-2 pl-3 text-slate-600">{{ t('common.status') }}</span>
         </div>
         <div v-for="invoice in data.invoices" :key="invoice.id"
-          class="grid grid-cols-[1.2fr,1fr,1fr,1fr,1fr] divide-x text-sm leading-4">
+          class="grid divide-x text-sm leading-4" :class="invoiceGrid">
+          <span v-if="canChangeInvoiceStatus" class="p-2 flex items-center justify-center">
+            <input v-if="invoice.delinquency_targets?.length" v-model="selectedInvoiceIds" type="checkbox"
+              :value="invoice.id" :disabled="changingStatus" />
+          </span>
           <span class="footering text-slate-800 p-2">{{ invoice.serie_final || '-' }}</span>
           <span class="footering text-slate-500 p-2">{{ formatDate(invoice.issue_date) }}</span>
           <span class="footering text-slate-500 p-2">{{ invoice.contract_token || '-' }}</span>
