@@ -1104,6 +1104,8 @@ def obtain_claim_request_data(payload=None):
     total_expired_invoices = sum(contract['expired_invoices'] for contract in serialized_contracts)
 
     return {
+        # Qui ha demanat les dades (el posa la vista): el resultat només el pot llegir ell
+        "requested_by": payload.get('_requested_by'),
         "contracts": serialized_contracts,
         "total_contracts": total_contracts,
         "total_payments": total_payments,

@@ -2,7 +2,7 @@ from django.utils.translation import gettext
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
+from rest_framework.permissions import IsAuthenticated
 from django.db import transaction
 from datetime import datetime
 import logging
@@ -10,12 +10,18 @@ import logging
 from order.models import Order, OrderType, OrderStatus
 from contract.models import Contract, ContractTerminationRequest, ContractTerminationStatus, ContractTerminationType
 from coredata.models import ConfigProject
-from claimrequest.models import ClaimRequest
+from claimrequest.models import ClaimRequest, ClaimRequestPayment
+from claimrequest.permissions import CanTerminateContracts
 
 logger = logging.getLogger(__name__)
 
+MAX_MASSIVE_ROWS = 1000
+
+
 class MassiveTerminationContractViewSet(APIView):
-    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    """Crea les baixes dels contractes d'una reclamació. Només accepta contractes que són a la
+    reclamació (afecten el subministrament: difícil de revertir)."""
+    permission_classes = [IsAuthenticated, CanTerminateContracts]
     queryset = ClaimRequest.objects.all().order_by('-created_at')
     def post(self, request):
         try:
@@ -41,6 +47,18 @@ class MassiveTerminationContractViewSet(APIView):
 
             
             try:
+                if not isinstance(contracts, list) or any(isinstance(c, bool) for c in contracts):
+                    raise ValueError
+                contracts = list(dict.fromkeys(int(c) for c in contracts))
+            except (TypeError, ValueError):
+                return Response({'error': 'contracts ha de ser una llista d\'ids.'}, status=status.HTTP_400_BAD_REQUEST)
+            if len(contracts) > MAX_MASSIVE_ROWS:
+                return Response(
+                    {'error': f'Massa contractes ({len(contracts)}); el màxim és {MAX_MASSIVE_ROWS}.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            try:
                 termination_type = ContractTerminationType.objects.get(id=cancellation_reason)
             except ContractTerminationType.DoesNotExist:
                 return Response({
@@ -56,6 +74,21 @@ class MassiveTerminationContractViewSet(APIView):
                 }, status=status.HTTP_400_BAD_REQUEST)
 
             
+            in_claim = set(
+                ClaimRequestPayment.objects.filter(claim_request=claim_request, contract_id__in=contracts)
+                .values_list('contract_id', flat=True)
+            )
+            outside_claim = [contract_id for contract_id in contracts if contract_id not in in_claim]
+            if outside_claim:
+                return Response(
+                    {'error': 'Hi ha contractes que no són a la reclamació.', 'contracts': outside_claim},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            logger.info(
+                'Baixa massiva de contractes: reclamació %s, %s contractes, usuari %s',
+                claim_request.pk, len(contracts), request.user.pk,
+            )
+
             with transaction.atomic():
                 try:
                     # Obtenir l'estat de cancel·lació pendent

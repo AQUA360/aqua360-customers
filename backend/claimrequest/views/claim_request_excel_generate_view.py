@@ -21,6 +21,8 @@ from service.models import SupplyPoint
 from service.serializers.supply_point_serializer import SupplyPointListSerializer
 from claimrequest.models import ClaimRequest, ClaimRequestPayment, VulnerabilityRequest
 from statistics.utils.report_service import delete_file_later
+from claimrequest.permissions import ClaimRequestModelPermission
+from documentmanager.utils.csv_safety import csv_safe_value
 
 
 TRUE_VALUES = {'1', 'true', 'si', 'sí', 's', 'yes', 'y'}
@@ -105,7 +107,7 @@ def contract_variables_by_contract(contract_ids, today=None):
     return {contract_id: ', '.join(displays) for contract_id, displays in result.items()}
 
 class ClaimRequestExcelGenerateViewSet(APIView):
-    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    permission_classes = [IsAuthenticated, ClaimRequestModelPermission]
     queryset = ClaimRequest.objects.all().order_by('-created_at')
     def get(self, request, id, *args, **kwargs):
         print("Customer Excel File Generation View")
@@ -150,7 +152,9 @@ class ClaimRequestExcelGenerateViewSet(APIView):
                     _("Deute Pendent"): str(sum([claim_payment.payment.amount for claim_payment in contract_claim_payments])).replace('.', ','),
                     _("Last vuln data"): last_vulnerability_request.request_at if last_vulnerability_request and last_vulnerability_request.request_at else last_vulnerability_request.created_at if last_vulnerability_request else "",
                 }
-                persons.append(person)
+                # Cap valor que vingui de dades escrites pels usuaris (noms, variables, ús...) pot
+                # arribar a Excel com a fórmula
+                persons.append({column: csv_safe_value(value) for column, value in person.items()})
 
 
         csv_data = pd.DataFrame(persons)
