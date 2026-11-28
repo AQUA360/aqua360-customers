@@ -6,6 +6,7 @@ from order.models import Operator, Order, OrderStatus, OrderObservation
 from django.db.models import Q
 from django.utils import timezone
 from coredata.models import Address, ConfigProject
+from order.utils.upload_rules import clean_text, valid_username
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,24 @@ else:
             "finalized": "2",
             "cancelled": "-1",
         }
+
+MAX_TOKEN_LENGTH = 255
+MAX_NAME_LENGTH = 100
+MAX_TEXT_LENGTH = 5000
+MAX_ADDRESS_LENGTH = 500
+
+
+def _token(payload, field, required=True):
+    """Valor de text curt del missatge (token): ha de ser un text de mida raonable."""
+    value = payload.get(field)
+    if value is None or value == "":
+        if required:
+            raise ValueError(f"missing {field}")
+        return None
+    if not isinstance(value, str) or len(value) > MAX_TOKEN_LENGTH:
+        raise ValueError(f"invalid {field}")
+    return value
+
 
 # Visual flags for orders created in GMAO that cannot be linked to any entity
 MANUAL_REVIEW_FLAG = "[REVISIÓ MANUAL]"
@@ -106,17 +125,8 @@ def handle_order_status_change(payload: dict) -> dict:
     """
     try:
         # Extract required fields
-        order_token = payload.get("order_token")
-        status = payload.get("status_token")
-
-        # Validate required fields
-        if not order_token:
-            logger.error("handle_order_status_change: missing order_token")
-            raise ValueError("missing order_token")
-
-        if not status:
-            logger.error("handle_order_status_change: missing status")
-            raise ValueError("missing status")
+        order_token = _token(payload, "order_token")
+        status = _token(payload, "status_token")
 
         # Find the order by token
         try:
@@ -426,11 +436,7 @@ def handle_order_created(payload: dict) -> dict:
         }
     """
     try:
-        order_token = payload.get("order_token")
-
-        if not order_token:
-            logger.error("handle_order_created: missing order_token")
-            raise ValueError("missing order_token")
+        order_token = _token(payload, "order_token")
 
         # Idempotency: GMAO may redeliver the same event
         if Order.objects.filter(token=order_token).exists():
@@ -444,8 +450,8 @@ def handle_order_created(payload: dict) -> dict:
                 "order_token": order_token,
             }
 
-        raw_address = (payload.get("address") or "").strip()
-        parent_token = payload.get("parent_order_token")
+        raw_address = clean_text(payload.get("address"), MAX_ADDRESS_LENGTH).strip()
+        parent_token = _token(payload, "parent_order_token", required=False)
 
         parent = None
         if parent_token:
@@ -476,7 +482,7 @@ def handle_order_created(payload: dict) -> dict:
         orphan = linking_tier == "orphan"
 
         # Status: map GMAO status token, fallback to the default CRM status
-        status_token = payload.get("status_token")
+        status_token = _token(payload, "status_token", required=False)
         mapped_status_token = GMAO_STATUS_MAPPING.get(status_token) if status_token else None
         if mapped_status_token is not None:
             try:
@@ -516,8 +522,8 @@ def handle_order_created(payload: dict) -> dict:
             )
 
         description = _build_order_description(
-            title=payload.get("order_title"),
-            body=payload.get("order_description"),
+            title=clean_text(payload.get("order_title"), MAX_TOKEN_LENGTH),
+            body=clean_text(payload.get("order_description"), MAX_TEXT_LENGTH),
             raw_address=raw_address,
             orphan=orphan,
         )
@@ -589,13 +595,14 @@ def handle_observation_created(payload: dict) -> dict:
     }
     """
     try:
-        order_token = payload.get("order_token")
+        order_token = _token(payload, "order_token")
         username = payload.get("username")
         message = payload.get("message")
 
-        if not order_token or not username or not message:
-            logger.error("handle_observation_created: missing required fields")
+        if not valid_username(username) or not isinstance(message, str) or not message.strip():
+            logger.error("handle_observation_created: missing or invalid required fields")
             raise ValueError("missing required fields (order_token, username, message)")
+        message = message[:MAX_TEXT_LENGTH]
 
         try:
             order = Order.objects.get(token=order_token)
@@ -610,8 +617,8 @@ def handle_observation_created(payload: dict) -> dict:
         operator, created = Operator.objects.get_or_create(
             token=operator_token,
             defaults={
-                "name": payload.get("user_first_name", ""),
-                "surname": payload.get("user_last_name", ""),
+                "name": clean_text(payload.get("user_first_name"), MAX_NAME_LENGTH),
+                "surname": clean_text(payload.get("user_last_name"), MAX_NAME_LENGTH),
                 "is_active": True,
             },
         )

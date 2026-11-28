@@ -10,6 +10,9 @@ from order.services.rabbit import mask_url_password
 
 logger = logging.getLogger(__name__)
 
+# Un missatge del GMAO més gran que això es rebutja sense processar-lo
+MAX_MESSAGE_BYTES = 1024 * 1024
+
 
 class Command(BaseCommand):
     help = "Consume messages from the instance gmao-events queue"
@@ -98,6 +101,8 @@ class Command(BaseCommand):
                     # Close stale or idle database connections before processing.
                     close_old_connections()
                     try:
+                        if len(body) > MAX_MESSAGE_BYTES:
+                            raise ValueError(f"message too large ({len(body)} bytes)")
                         payload = json.loads(body.decode("utf-8"))
                         self.stdout.write(self.style.HTTP_INFO("=" * 60))
                         self.stdout.write(
@@ -137,7 +142,8 @@ class Command(BaseCommand):
                         self.stdout.write(
                             self.style.ERROR(f"[ERROR] Failed to decode JSON: {e}")
                         )
-                        self.stdout.write(f"Raw body: {body!r}")
+                        # No s'escriu el contingut: pot portar dades personals.
+                        self.stdout.write(f"Body: {len(body)} bytes")
                         self.stdout.write(self.style.ERROR("[NACK] Message rejected\n"))
                         if ch.is_open:
                             ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
