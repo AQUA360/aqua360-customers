@@ -1,6 +1,7 @@
 import requests
 import logging
 from datetime import datetime, date
+from urllib.parse import urlsplit
 from django.conf import settings
 from django.core.files.base import ContentFile
 from django.db import transaction
@@ -9,38 +10,57 @@ from got.models import OrderFormSubmission
 from documentmanager.models import Document
 from documentmanager.utils.main_utils import upload_document
 from coredata.utils.name_utils import generate_token
+from order.utils.upload_rules import MAX_UPLOAD_BYTES, UploadRejected, clean_text, resolve_gmao_url, valid_username, validate_file
 
 logger = logging.getLogger(__name__)
 
 host = settings.GMAO_HOST
 
+# Límits del que pot portar un missatge del GMAO
+MAX_REPORTS = 50
+MAX_PHOTOS = 20
+MAX_FORM_FIELDS = 100
+MAX_TOKEN_LENGTH = 100
+MAX_NAME_LENGTH = 100
+MAX_TEXT_LENGTH = 5000
+
 def _download_and_upload_document(url, entity, field, entity_id, entity_token):
     """
     Download a file from GMAO host and upload it to document manager.
+
+    Només es baixen fitxers del servidor del GMAO (el missatge no pot apuntar a una altra
+    adreça), sense seguir redireccions, i només imatges i PDF de mida limitada.
     """
     if not url:
         return None
-    
-    if url.startswith('http://') or url.startswith('https://'):
-        full_url = url
-    else:
-        #  host doesn't end with slash and url doesn't start with slash
-        clean_host = host.rstrip('/')
-        clean_url = url.lstrip('/')
-        if not clean_host:
-            full_url = clean_url  # If host is not set, use the URL as is (assuming it's absolute)
-        else:
-            full_url = f"{clean_host}/{clean_url}"
-    
+
+    full_url = resolve_gmao_url(url, host)
+    if not full_url:
+        logger.warning("Fitxer del GMAO descartat: l'adreça no és del servidor del GMAO.")
+        return None
+
     try:
-        response = requests.get(full_url, timeout=10)
-        response.raise_for_status()
-        
-        file_name = full_url.split('/')[-1]
-        content = ContentFile(response.content)
-        
+        with requests.get(full_url, timeout=10, stream=True, allow_redirects=False) as response:
+            response.raise_for_status()
+            declared_size = int(response.headers.get('Content-Length') or 0)
+            if declared_size > MAX_UPLOAD_BYTES:
+                logger.warning("Fitxer del GMAO descartat: supera la mida màxima (%s bytes).", declared_size)
+                return None
+            chunks = []
+            total = 0
+            for chunk in response.iter_content(chunk_size=64 * 1024):
+                total += len(chunk)
+                if total > MAX_UPLOAD_BYTES:
+                    logger.warning("Fitxer del GMAO descartat: supera la mida màxima.")
+                    return None
+                chunks.append(chunk)
+        data = b''.join(chunks)
+
+        file_name = validate_file(urlsplit(full_url).path, data[:16], len(data))
+        content = ContentFile(data)
+
         service = settings.DOCUMENT_MANAGER_SERVICES.get("order", "hdd")
-        
+
         document = upload_document(
             file=content,
             entity=entity,
@@ -52,8 +72,11 @@ def _download_and_upload_document(url, entity, field, entity_id, entity_token):
             document_name=file_name
         )
         return document
+    except UploadRejected as e:
+        logger.warning("Fitxer del GMAO descartat: %s", e)
+        return None
     except Exception as e:
-        logger.error(f"Error downloading/uploading document from {full_url}: {e}")
+        logger.error("Error downloading/uploading document from %s: %s", full_url, e)
         return None
 
 def process_gmao_order_report(order, reports_payload):
@@ -61,11 +84,21 @@ def process_gmao_order_report(order, reports_payload):
     Process reports from GMAO and create OrderReport, OrderFormSubmission and Documents.
     """
     results = []
-    
+
+    if not isinstance(reports_payload, list):
+        logger.warning("GMAO reports ignorats: no són una llista.")
+        return results
+    if len(reports_payload) > MAX_REPORTS:
+        logger.warning("GMAO reports: %s informes, només es processen els %s primers.", len(reports_payload), MAX_REPORTS)
+        reports_payload = reports_payload[:MAX_REPORTS]
+
     for report_data in reports_payload:
+        if not isinstance(report_data, dict):
+            logger.warning("Report no vàlid (no és un objecte), skipping ...")
+            continue
         username = report_data.get("username")
-        if not username:
-            logger.warning("Report missing username, skipping ...")
+        if not valid_username(username):
+            logger.warning("Report missing or invalid username, skipping ...")
             continue
             
         # Get or create Operator
@@ -73,8 +106,8 @@ def process_gmao_order_report(order, reports_payload):
         operator, created = Operator.objects.get_or_create(
             token=operator_token,
             defaults={
-                "name": report_data.get("user_first_name", ""),
-                "surname": report_data.get("user_last_name", ""),
+                "name": clean_text(report_data.get("user_first_name"), MAX_NAME_LENGTH),
+                "surname": clean_text(report_data.get("user_last_name"), MAX_NAME_LENGTH),
                 "is_active": True
             }
         )
@@ -111,7 +144,9 @@ def process_gmao_order_report(order, reports_payload):
 
         #  Create OrderReport
         try:
-            order_report_token = report_data.get("report_token", generate_token(OrderReport))
+            order_report_token = report_data.get("report_token")
+            if not isinstance(order_report_token, str) or not order_report_token.strip() or len(order_report_token) > MAX_TOKEN_LENGTH:
+                order_report_token = generate_token(OrderReport)
             check_existing = OrderReport.objects.filter(token=order_report_token).exists()
             if check_existing:
                 logger.warning(f"OrderReport with token {order_report_token} already exists, skipping creation.")
@@ -124,13 +159,15 @@ def process_gmao_order_report(order, reports_payload):
                     end_at=end_time,
                     time_dedicated=max(0, time_dedicated),
                     report_date=report_date,
-                    observation=report_data.get("description", ""),
+                    observation=clean_text(report_data.get("description"), MAX_TEXT_LENGTH),
                     token=order_report_token
                 )
 
                 #  Handle general photos (OrderReportDocument)
                 photos = report_data.get("photos", [])
-                for photo_url in photos:
+                if not isinstance(photos, list):
+                    photos = []
+                for photo_url in photos[:MAX_PHOTOS]:
                     # Using entity "ORDER_REPORT" as per general requirement
                     document = _download_and_upload_document(
                         photo_url, 
@@ -148,6 +185,14 @@ def process_gmao_order_report(order, reports_payload):
                 
                 #  Handle form submission
                 form_submission_data = report_data.get("form_submission")
+                if isinstance(form_submission_data, list):
+                    form_submission_data = [
+                        item for item in form_submission_data[:MAX_FORM_FIELDS]
+                        if isinstance(item, dict) and isinstance(item.get("token"), str)
+                        and 0 < len(item["token"]) <= MAX_TOKEN_LENGTH
+                    ]
+                else:
+                    form_submission_data = None
                 if form_submission_data:
                     processed_form = []
                     new_doc_ids = []

@@ -15,6 +15,7 @@ from ..models import OrderReport, OrderReportDocument
 from ..serializers.order_report_serializer import OrderReportDocumentSerializer
 from ..filters.order_report_document_filter import OrderReportDocumentFilter
 from order.permissions import OrderPermission
+from order.utils.upload_rules import UploadRejected, validate_uploaded_file
 class OrderReportDocumentViewSet(viewsets.ModelViewSet):
     queryset = OrderReportDocument.objects.all().order_by('id')
     permission_classes = [IsAuthenticated, OrderPermission]
@@ -34,15 +35,26 @@ class OrderReportDocumentViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
 
-        order_report = OrderReport.objects.get(id=request.data.get('id'))
-        request.data.pop('id')
-        file = request.data.pop('file')
-        print(request.FILES)
-        
+        report_id = request.data.get('id')
+        if not str(report_id or '').isdigit():
+            return Response({'error': "Cal indicar l'informe (id)."}, status=status.HTTP_400_BAD_REQUEST)
+        order_report = OrderReport.objects.select_related('order').filter(id=int(report_id)).first()
+        if order_report is None:
+            return Response({'error': "L'informe no existeix."}, status=status.HTTP_404_NOT_FOUND)
+
+        files = request.FILES.getlist('file')
+        if len(files) != 1:
+            return Response({'error': 'Cal adjuntar un únic fitxer (file).'}, status=status.HTTP_400_BAD_REQUEST)
+        uploaded = files[0]
+        try:
+            file_name = validate_uploaded_file(uploaded)
+        except UploadRejected as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
         serializer.is_valid(raise_exception=True)
         
         service = settings.DOCUMENT_MANAGER_SERVICES.get("order")
-        document = upload_document(file[0], order_report.order.token, 'ORDER', order_report.id, order_report.token, '', service, file[0].name)
+        document = upload_document(uploaded, order_report.order.token, 'ORDER', order_report.id, order_report.token, '', service, file_name)
         validated_data = serializer.validated_data
         validated_data['order_report'] = order_report
         validated_data['file'] = document 
