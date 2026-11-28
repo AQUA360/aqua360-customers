@@ -14,7 +14,7 @@ from service.models import Meter, MeterStatus, SupplyPoint
 
 class TestMeterLog(TestCase):
     def setUp(self):
-        self.user = User.objects.create_user(username='testuser', password='password')
+        self.user = User.objects.create_user(username='testuser', password='password', is_superuser=True)
         self.status_actiu = MeterStatus.objects.create(token='actiu', name='Actiu')
         self.status_baixa = MeterStatus.objects.create(token='baixa', name='Baixa')
 

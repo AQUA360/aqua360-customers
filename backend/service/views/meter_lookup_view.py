@@ -3,6 +3,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from service.models import Meter
+from service.permissions import CanViewMeter
 from service.serializers.meter_lookup_serializer import MeterLookupSerializer
 from service.utils.meter_lookup_service import lookup_meters_by_codes, normalize_meter_codes
 
@@ -11,18 +12,11 @@ class MeterLookupViewSet(viewsets.ViewSet):
     """
     Lookup de comptadors per llista de meter.code (JSON + export CSV async).
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CanViewMeter]
     queryset = Meter.objects.all()
-    required_permissions = ['service.view_meter']
 
     def get_queryset(self):
         return Meter.objects.filter(is_active=True)
-
-    def check_permissions(self, request):
-        super().check_permissions(request)
-        for perm in self.required_permissions:
-            if not request.user.has_perm(perm):
-                self.permission_denied(request)
 
     def _parse_codes(self, request):
         codes = request.data.get('codes')

@@ -33,6 +33,7 @@ from service.utils.meter_bulk_change_service import (
     build_preview as build_change_preview,
 )
 import logging
+from service.permissions import MeterModelPermission, CanChangeMeter
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +43,7 @@ class MeterViewSet(viewsets.ModelViewSet):
     """
     queryset = Meter.objects.filter(is_active=True)
     serializer_class = MeterSerializer
-    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    permission_classes = [IsAuthenticated, MeterModelPermission]
     filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
     filterset_class = MeterFilter
     search_fields = ['code', 'supply_points__address__street__name']
@@ -408,7 +409,7 @@ class MeterViewSet(viewsets.ModelViewSet):
             return [IsAuthenticated()]
         # POST custom: DjangoModelPermissions demanaria add_meter; aquí cal change_meter
         if self.action in ('bulk_update_preview', 'bulk_update_confirm', 'bulk_change_preview', 'bulk_change_confirm'):
-            return [IsAuthenticated()]
+            return [IsAuthenticated(), CanChangeMeter()]
         return super().get_permissions()
 
     def check_permissions(self, request):

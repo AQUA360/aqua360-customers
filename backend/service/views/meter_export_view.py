@@ -9,6 +9,7 @@ from django.db.models import Subquery, OuterRef, Max, Prefetch
 from service.models import Meter, SupplyPoint
 from billing.models import Reading
 import logging
+from service.permissions import ServiceModelPermission
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +18,7 @@ class MeterExportViewSet(viewsets.ViewSet):
     """
     ViewSet per exportar comptadors en CSV amb la seva última lectura.
     """
-    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    permission_classes = [IsAuthenticated, ServiceModelPermission]
     queryset = Meter.objects.all()
     
     def get_queryset(self):

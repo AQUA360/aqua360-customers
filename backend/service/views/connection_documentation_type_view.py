@@ -6,13 +6,14 @@ from django_filters.rest_framework import DjangoFilterBackend
 
 from service.models import ConnectionDocumentationType
 from service.serializers.value_objects_serializer import ConnectionDocumentationTypeSerializer
+from service.permissions import ServiceModelPermission
 
 
 class ConnectionDocumentationTypeViewSet(viewsets.ModelViewSet):
     queryset = ConnectionDocumentationType.objects.all().order_by('position')
     serializer_class = ConnectionDocumentationTypeSerializer
     filter_backends = (DjangoFilterBackend,)
-    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    permission_classes = [IsAuthenticated, ServiceModelPermission]
 
     @action(detail=False, methods=['post'], url_path='update-positions')
     def update_positions(self, request):

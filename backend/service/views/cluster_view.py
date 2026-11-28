@@ -15,13 +15,14 @@ from service.filters.cluster_filter import ClusterFilter
 from service.models import ClusterObservation, Cluster, ClusterDocumentationType, ClusterDocumentationFile
 from service.serializers.cluster_serializer import ClusterSaveSerializer, ClusterSerializer, ClusterListSerializer
 from documentmanager.utils.main_utils import upload_document
+from service.permissions import ServiceModelPermission
 
 class ClusterViewSet(viewsets.ModelViewSet):
     """
     API endpoint that allows cluster to be viewed or edited.
     """
     queryset = Cluster.objects.all().filter(is_active=True).order_by('token')
-    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    permission_classes = [IsAuthenticated, ServiceModelPermission]
     filter_backends = [DjangoFilterBackend, OrderingFilter]
     filterset_class = ClusterFilter
     ordering_fields = ['token','address_complete','nb_nozzles','connection_token']

@@ -14,6 +14,7 @@ from service.models import Route
 from service.serializers.route_serializer import RouteSerializer, RouteListSerializer
 from service.filters.route_filter import RouteFilter
 from service.utils import route_bulk_service
+from service.permissions import RouteModelPermission, CanChangeRoute
 
 
 class RouteSupplyPointsPagination(PageNumberPagination):
@@ -28,7 +29,7 @@ class RouteViewSet(viewsets.ModelViewSet):
     """
     queryset = Route.objects.all().filter(is_active=True)
     serializer_class = RouteSerializer
-    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    permission_classes = [IsAuthenticated, RouteModelPermission]
     filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
     filterset_class = RouteFilter
     search_fields = ['token', 'name']
@@ -69,7 +70,7 @@ class RouteViewSet(viewsets.ModelViewSet):
         if self.action in ('add_street_preview', 'add_street'):
             # Afegir un carrer modifica una ruta existent: cal permís de modificar
             # rutes (DjangoModelPermissions demanaria el d'afegir en un POST).
-            return [IsAuthenticated()]
+            return [IsAuthenticated(), CanChangeRoute()]
         return super().get_permissions()
 
     def _can_change_routes(self, request):

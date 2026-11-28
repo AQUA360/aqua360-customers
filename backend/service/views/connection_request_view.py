@@ -19,6 +19,7 @@ from documentmanager.utils.main_utils import upload_document
 from service.models import ConnectionRequest, ConnectionRequestObservation, ConnectionDocumentationType, ConnectionRequestDocumentationFile
 from service.serializers.connection_request_serializer import ConnectionRequestSerializer, ConnectionRequestSaveSerializer, ConnectionRequestListSerializer
 from service.filters.connection_request_filter import ConnectionRequestFilter
+from service.permissions import ServiceModelPermission
 
 # Només es pot eliminar una sol·licitud que encara no s'ha tramitat.
 DELETABLE_STATUS_TOKENS = ('draft', 'pending')
@@ -28,7 +29,7 @@ class ConnectionRequestViewSet(viewsets.ModelViewSet):
     API endpoint that allows ConnectionRequest to be viewed or edited.
     """
     queryset = ConnectionRequest.objects.all().order_by('-created_at')
-    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    permission_classes = [IsAuthenticated, ServiceModelPermission]
     filter_backends = [DjangoFilterBackend, OrderingFilter, SearchFilter]
     filterset_class = ConnectionRequestFilter
     search_fields = ['token', 'address_street__name', 'person__name', 'person__surname']

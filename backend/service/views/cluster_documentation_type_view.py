@@ -6,13 +6,14 @@ from django_filters.rest_framework import DjangoFilterBackend
 
 from service.models import ClusterDocumentationType
 from service.serializers.value_objects_serializer import ClusterDocumentationTypeSerializer
+from service.permissions import ServiceModelPermission
 
 
 class ClusterDocumentationTypeViewSet(viewsets.ModelViewSet):
     queryset = ClusterDocumentationType.objects.all().order_by('position')
     serializer_class = ClusterDocumentationTypeSerializer
     filter_backends = (DjangoFilterBackend,)
-    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    permission_classes = [IsAuthenticated, ServiceModelPermission]
 
     @action(detail=False, methods=['post'], url_path='update-positions')
     def update_positions(self, request):
