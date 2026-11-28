@@ -17,6 +17,7 @@ from service.models import ConnectionObservation, Connection, ConnectionStatus, 
 from service.serializers.connection_serializer import ConnectionSaveSerializer, ConnectionSerializer, ConnectionListSerializer
 from coredata.models import ConfigProject
 from documentmanager.utils.main_utils import upload_document
+from service.permissions import ConnectionModelPermission
 
 class ConnectionViewSet(viewsets.ModelViewSet):
     """
@@ -24,7 +25,7 @@ class ConnectionViewSet(viewsets.ModelViewSet):
     """
     queryset = Connection.objects.filter(is_active=True).all()
     # serializer_class = ConnectionSerializer
-    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    permission_classes = [IsAuthenticated, ConnectionModelPermission]
     filter_backends = [DjangoFilterBackend, OrderingFilter]
     filterset_class = ConnectionFilter
     ordering_fields = ['token', 'installation_at','dma_name','exploitation_name','use_type_name','diameter_name','status_name',
@@ -177,6 +178,6 @@ class ConnectionViewSet(viewsets.ModelViewSet):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def get_permissions(self):
-        if self.action in ['permissions', 'activate']:
+        if self.action == 'permissions':
             return [IsAuthenticated()]
         return super().get_permissions()

@@ -9,6 +9,7 @@ from auth.permissions import PermissionManager
 from service.models import Property
 from service.serializers.property_serializer import PropertySerializer, PropertyListSerializer
 from service.filters.property_filter import PropertyFilter
+from service.permissions import ServiceModelPermission
 
 
 class PropertyViewSet(viewsets.ModelViewSet):
@@ -17,7 +18,7 @@ class PropertyViewSet(viewsets.ModelViewSet):
     """
     queryset = Property.objects.all().filter(is_active=True).order_by('token')
     serializer_class = PropertySerializer
-    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    permission_classes = [IsAuthenticated, ServiceModelPermission]
     filter_backends = [DjangoFilterBackend, OrderingFilter]
     filterset_class = PropertyFilter
     ordering_fields = ['id', 'token', 'name']

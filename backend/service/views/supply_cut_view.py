@@ -17,6 +17,7 @@ from service.models import SupplyCut, SupplyCutCause, SupplyCutStatus, SupplyPoi
 from service.serializers.supply_cut_serializer import SupplyCutSerializer, SupplyCutMinimalSerializer
 from service.utils import supply_cut_service
 from service.utils import supply_cut_bulk_planner as bulk_planner
+from service.permissions import SupplyCutModelPermission, CanBulkPlanSupplyCuts, CanAddSupplyCut
 
 # Paraula que l'operador ha d'escriure per confirmar la creació d'un tall
 # temporal que afecta persones vulnerables. Els talls permanents no tenen
@@ -36,7 +37,7 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
         )
     ).order_by('status', 'date_start', '-id')
     serializer_class = SupplyCutSerializer
-    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    permission_classes = [IsAuthenticated, SupplyCutModelPermission]
     filterset_class = SupplyCutFilter
     search_fields = [
         'token',
@@ -618,10 +619,10 @@ class SupplyCutViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action == 'permissions':
             return [IsAuthenticated()]
-        if self.action in ('bulk_plan_preview', 'bulk_plan', 'sync_giswater'):
-            # Custom POSTs: DjangoModelPermissions would demand add_supplycut
-            # on the preview too; both are gated explicitly in check_permissions.
-            return [IsAuthenticated()]
+        if self.action == 'bulk_plan_preview':
+            return [IsAuthenticated(), CanBulkPlanSupplyCuts()]
+        if self.action in ('bulk_plan', 'sync_giswater'):
+            return [IsAuthenticated(), CanAddSupplyCut()]
         return super().get_permissions()
 
     def check_permissions(self, request):

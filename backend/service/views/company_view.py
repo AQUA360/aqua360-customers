@@ -10,6 +10,7 @@ from service.models import Company
 from service.serializers.company_serializer import CompanySerializer
 from rest_framework.response import Response
 from rest_framework import status
+from service.permissions import ServiceModelPermission
 
 class CompanyViewSet(viewsets.ModelViewSet):
     """
@@ -17,7 +18,7 @@ class CompanyViewSet(viewsets.ModelViewSet):
     """
     queryset = Company.objects.all().filter(is_active=True).order_by('name')
     serializer_class = CompanySerializer
-    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    permission_classes = [IsAuthenticated, ServiceModelPermission]
     filterset_class = CompanyFilter
     
     def destroy(self, request, *args, **kwargs):

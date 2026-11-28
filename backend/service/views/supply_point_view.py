@@ -36,13 +36,16 @@ from service.permissions import SupplyPointPermission
 from contract.permissions import ContractPermission, ContractRequestPermission
 from fraud.permissions import FraudPermission
 import logging
+from service.permissions import (
+    CanChangeSupplyPoint, CanChangeSupplyPointMeter, ServiceModelPermission,
+)
 
 logger = logging.getLogger(__name__)
 
 
 class SupplyPointViewSet(viewsets.ModelViewSet):
     serializer_class = SupplyPointSerializer
-    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    permission_classes = [IsAuthenticated, ServiceModelPermission]
     filterset_class = SupplyPointFilter
     filter_backends = [DjangoFilterBackend, OrderingFilter]
     ordering_fields = ['token', 'address_complete', 'address_city', 'status_name', 'type_name',
@@ -473,17 +476,15 @@ class SupplyPointViewSet(viewsets.ModelViewSet):
         if self.action == 'permissions':
             return [IsAuthenticated()]
         elif self.action == 'update_meter':
-            return [IsAuthenticated()]
-        elif self.action == 'bulk_update_property':
-            return [IsAuthenticated()]
-        elif self.action == 'set_route':
-            # La vista comprova el permís de modificar punts (no el d'afegir).
-            return [IsAuthenticated()]
+            return [IsAuthenticated(), CanChangeSupplyPointMeter()]
+        elif self.action in ('bulk_update_property', 'set_route'):
+            # Modifiquen punts existents: cal el permís de modificar (no el d'afegir).
+            return [IsAuthenticated(), CanChangeSupplyPoint()]
         return super().get_permissions()
 
 
 class SupplyPointActivateView(APIView):
-    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    permission_classes = [IsAuthenticated, ServiceModelPermission]
     queryset = SupplyPoint.objects.all()
     
     def put(self, request, id):
@@ -498,7 +499,7 @@ class SupplyPointActivateView(APIView):
             return Response({"error": gettext("An unexpected error has occurred.")}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class SupplyPointDeactivateView(APIView):
-    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    permission_classes = [IsAuthenticated, ServiceModelPermission]
     queryset = SupplyPoint.objects.all()
     
     def put(self, request, id):
@@ -521,7 +522,7 @@ class SupplyPointDeactivateView(APIView):
 
 
 class SupplyPointChangeAddressView(APIView):
-    permission_classes = [IsAuthenticated, DjangoModelPermissions]
+    permission_classes = [IsAuthenticated, ServiceModelPermission]
     queryset = SupplyPoint.objects.all()
     
     def put(self, request, id):
